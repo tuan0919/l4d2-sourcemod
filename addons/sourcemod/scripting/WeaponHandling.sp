@@ -32,7 +32,7 @@
 
 #define GAMEDATA "WeaponHandling"
 
-#define PLUGIN_VERSION "1.0.6"
+#define PLUGIN_VERSION "1.0.7"
 
 #define USING_PILLS_ACT 187
 
@@ -122,8 +122,10 @@ static bool g_bDoublePistolCycle;
 static bool g_bUseIncapCycle;
 static int g_iDeploySetting;
 
+#define RATELIMITING_GRACE 0.1
 static ConVar hCvar_IncapCycle;
 static float g_fIncapCycle = 0.3;
+static float g_flIncapCycleRate_client[MAXPLAYERS+1];
 
 static bool g_bL4D1IsUsingPills;
 static int g_iPillsUseTimerOffset;
@@ -226,6 +228,9 @@ void CvarsChanged()
 	{
 		g_bUseIncapCycle = false;
 	}
+	
+	for(int i = 1; i<=MAXPLAYERS; ++i)
+		g_flIncapCycleRate_client[i] = -1.0;
 }
 
 public MRESReturn OnMeleeSwingPre(int pThis, Handle hReturn, Handle hParams)
@@ -389,7 +394,7 @@ public MRESReturn OnGetRateOfFire(int pThis, Handle hReturn)
 		}
 		else
 		{
-			fRateOfFire = 0.075000003;
+			fRateOfFire = 0.075000003;// hardcoded double pistol firerate
 		}
 	}
 	
@@ -407,6 +412,29 @@ public MRESReturn OnGetRateOfFire(int pThis, Handle hReturn)
 	
 	DHookSetReturn(hReturn, fRateOfFire);
 	SetEntPropFloat(pThis, Prop_Send, "m_flPlaybackRate", fRateOfFireModifier);
+	
+	if(IsFakeClient(iClient))
+		return MRES_Override;
+	
+	switch(FloatCompare(g_flIncapCycleRate_client[iClient], fRateOfFire))
+	{
+		case 1, -1:
+		{
+			static char rateString[32];
+			static float flRateLimit[MAXPLAYERS+1];
+			float flEngineTime = GetEngineTime();
+			
+			if(flEngineTime < flRateLimit[iClient])
+				return MRES_Override;
+			
+			flRateLimit[iClient] = flEngineTime + RATELIMITING_GRACE;
+			g_flIncapCycleRate_client[iClient] = fRateOfFire;
+			FloatToString(fRateOfFire, rateString, sizeof(rateString));
+			SendConVarValue(iClient, hCvar_IncapCycle, rateString);
+			
+		}
+	}
+	
 	
 	return MRES_Override;
 }
@@ -678,7 +706,7 @@ void LoadHooksAndPatches()
 		hDesertBurstFire = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, OnGetRateOfFireBurst);
 		
 		g_DesertBurstOffset = GameConfGetOffset(hGamedata, "CRifle_Desert::BurstTimes_StartOffset");
-		if(iOffset == -1)
+		if(g_DesertBurstOffset == -1)
 			SetFailState("Unable to get offset for 'CRifle_Desert::BurstTimes_StartOffset'");
 	}
 	else
@@ -697,7 +725,7 @@ void LoadHooksAndPatches()
 		hItemUseDuration = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, OnGetRateOfFireL4D1Pills);
 		
 		g_iPillsUseTimerOffset = GameConfGetOffset(hGamedata, "CPainPills::GetUseTimer");
-		if(iOffset == -1)
+		if(g_iPillsUseTimerOffset == -1)
 			SetFailState("Unable to get offset for 'CPainPills::GetUseTime'");
 	}
 	

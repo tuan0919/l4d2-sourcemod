@@ -90,3 +90,13 @@ Age=1552135118
 Age=1552136693
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\server-sourcemod\addons\sourcemod\scripting\Tuan_night_vision.sp]
 Age=1552223310
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d2_fix_changelevel.sp]
+Age=1552266692
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d2_fix_character_mixed.sp]
+Age=1552267066
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\zombie_spawn_fix.sp]
+Age=1552269048
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d_unrestrict_panic_battlefield.sp]
+Age=1552269165
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d_fix_deathfall_cam.sp]
+Age=1552285736

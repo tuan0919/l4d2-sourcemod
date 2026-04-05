@@ -1,9 +1,9 @@
 /*
  *  [L4D2] Laser Toggle
  *
- *  Double-tap RELOAD while holding a primary weapon to toggle laser sight.
+ *  Hold USE while holding a primary weapon to toggle laser sight.
  *  Laser ON = -10% primary weapon bullet damage (accuracy tradeoff).
- *  Status shown via per-client instructor hints.
+ *  Status shown via per-client instructor hint after toggle.
  */
 
 #pragma semicolon 1
@@ -13,9 +13,8 @@
 #include <sdkhooks>
 #include <sdktools>
 
-#define PLUGIN_VERSION      "1.1.0"
+#define PLUGIN_VERSION      "1.2.0"
 #define TEAM_SURVIVOR       2
-#define DOUBLE_TAP_WINDOW   0.4     // seconds between two reload presses
 #define LASER_DAMAGE_MULT   0.9     // 10% damage reduction when laser ON
 #define IHFLAG_STATIC       (1 << 8)
 
@@ -33,7 +32,7 @@ public Plugin myinfo =
 {
     name        = "[L4D2] Laser Toggle",
     author      = "Tuan",
-    description = "Double-tap reload to toggle laser sight; ON = -10% primary weapon damage",
+    description = "Hold USE to toggle laser sight; ON = -10% primary weapon damage",
     version     = PLUGIN_VERSION,
     url         = ""
 };
@@ -42,9 +41,12 @@ public Plugin myinfo =
 //                  GLOBALS
 // ====================================================================================================
 
-bool    g_bReloadHeld[MAXPLAYERS + 1];
-bool    g_bWaitingSecond[MAXPLAYERS + 1];
-float   g_fLastReload[MAXPLAYERS + 1];
+ConVar  g_hCvarHoldSeconds = null;
+
+bool    g_bHoldActive[MAXPLAYERS + 1];
+bool    g_bUseLocked[MAXPLAYERS + 1];
+float   g_fHoldStartTime[MAXPLAYERS + 1];
+int     g_iHoldWeaponRef[MAXPLAYERS + 1];
 
 // ====================================================================================================
 //                  PLUGIN START / LATE LOAD
@@ -62,6 +64,15 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+    g_hCvarHoldSeconds = CreateConVar(
+        "l4d2_laser_toggle_hold_seconds",
+        "1.2",
+        "Seconds of holding USE required to toggle laser sight.",
+        FCVAR_NOTIFY,
+        true, 0.2,
+        true, 5.0
+    );
+
     HookEvent("player_death",  Event_PlayerDeath);
     HookEvent("player_spawn",  Event_PlayerSpawn);
 
@@ -86,7 +97,6 @@ public void OnClientPutInServer(int client)
 
 public void OnClientDisconnecting(int client)
 {
-    StopHintForClient(client, "laser_toggle_usage");
     StopHintForClient(client, "laser_toggle_status");
     ClearClientState(client);
     SDKUnhook(client, SDKHook_WeaponSwitchPost,  Hook_WeaponSwitchPost);
@@ -107,7 +117,7 @@ public void OnEntityCreated(int entity, const char[] classname)
 }
 
 // ====================================================================================================
-//                  DOUBLE-TAP RELOAD DETECTION
+//                  HOLD USE DETECTION
 // ====================================================================================================
 
 public void OnPlayerRunCmdPost(int client, int buttons)
@@ -119,53 +129,52 @@ public void OnPlayerRunCmdPost(int client, int buttons)
 
     bool eligible = HasLaserEligibleWeapon(client);
 
-    // Switched away from primary — reset
     if (!eligible)
     {
-        g_bWaitingSecond[client] = false;
-        g_bReloadHeld[client]    = false;
+        CancelHoldProgress(client);
+        g_bUseLocked[client] = false;
         return;
     }
 
-    bool reloadDown = (buttons & IN_RELOAD) != 0;
-
-    // Rising edge: reload just pressed
-    if (reloadDown && !g_bReloadHeld[client])
+    bool useHeld = (buttons & IN_USE) != 0;
+    if (!useHeld)
     {
-        g_bReloadHeld[client] = true;
-
-        if (!g_bWaitingSecond[client])
-        {
-            // First press — start window
-            g_bWaitingSecond[client] = true;
-            g_fLastReload[client]    = GetGameTime();
-        }
-        else
-        {
-            // Second press — check window
-            float delta = GetGameTime() - g_fLastReload[client];
-            if (delta <= DOUBLE_TAP_WINDOW)
-                ToggleLaser(client);
-
-            g_bWaitingSecond[client] = false;
-        }
-    }
-    // Falling edge: reload released
-    else if (!reloadDown && g_bReloadHeld[client])
-    {
-        g_bReloadHeld[client] = false;
+        g_bUseLocked[client] = false;
+        CancelHoldProgress(client);
+        return;
     }
 
-    // Timeout: first press expired — ignore and reset
-    if (g_bWaitingSecond[client] &&
-        GetGameTime() - g_fLastReload[client] > DOUBLE_TAP_WINDOW)
+    if (g_bUseLocked[client] || IsClientBusy(client))
     {
-        g_bWaitingSecond[client] = false;
+        CancelHoldProgress(client);
+        return;
+    }
+
+    int activeWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (activeWeapon <= 0 || !IsValidEntity(activeWeapon))
+    {
+        CancelHoldProgress(client);
+        return;
+    }
+
+    int weaponRef = EntIndexToEntRef(activeWeapon);
+    if (!g_bHoldActive[client] || g_iHoldWeaponRef[client] != weaponRef)
+    {
+        StartHoldProgress(client, activeWeapon);
+        return;
+    }
+
+    float holdDuration = g_hCvarHoldSeconds.FloatValue;
+    if (GetGameTime() - g_fHoldStartTime[client] >= holdDuration)
+    {
+        ToggleLaser(client);
+        g_bUseLocked[client] = true;
+        CancelHoldProgress(client);
     }
 }
 
 // ====================================================================================================
-//                  WEAPON SWITCH — show / hide usage hint
+//                  WEAPON SWITCH — clear status hint when not eligible
 // ====================================================================================================
 
 public void Hook_WeaponSwitchPost(int client, int weapon)
@@ -175,18 +184,11 @@ public void Hook_WeaponSwitchPost(int client, int weapon)
     if (GetClientTeam(client) != TEAM_SURVIVOR)
         return;
 
-    if (HasLaserEligibleWeapon(client))
+    if (!HasLaserEligibleWeapon(client))
     {
-        ShowUsageHint(client);
-
-        // Re-show status if laser is already on (carried from previous weapon)
-        if (IsLaserOnActiveWeapon(client))
-            ShowStatusHint(client, true);
-    }
-    else
-    {
-        StopHintForClient(client, "laser_toggle_usage");
         StopHintForClient(client, "laser_toggle_status");
+        CancelHoldProgress(client);
+        g_bUseLocked[client] = false;
     }
 }
 
@@ -235,7 +237,6 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (client < 1 || client > MaxClients) return;
 
-    StopHintForClient(client, "laser_toggle_usage");
     StopHintForClient(client, "laser_toggle_status");
     ClearClientState(client);
 }
@@ -278,7 +279,7 @@ void ToggleLaser(int client)
 }
 
 // ====================================================================================================
-//                  HELPERS
+//                  HOLD / HELPERS
 // ====================================================================================================
 
 bool HasLaserEligibleWeapon(int client)
@@ -311,9 +312,88 @@ bool IsLaserOnActiveWeapon(int client)
 
 void ClearClientState(int client)
 {
-    g_bReloadHeld[client]    = false;
-    g_bWaitingSecond[client] = false;
-    g_fLastReload[client]    = 0.0;
+    g_bHoldActive[client]   = false;
+    g_bUseLocked[client]    = false;
+    g_fHoldStartTime[client]= 0.0;
+    g_iHoldWeaponRef[client]= INVALID_ENT_REFERENCE;
+    ClearClientHoldProgress(client);
+}
+
+void StartHoldProgress(int client, int weapon)
+{
+    if (!IsClientInGame(client) || !IsPlayerAlive(client))
+    {
+        return;
+    }
+
+    g_bHoldActive[client]    = true;
+    g_fHoldStartTime[client] = GetGameTime();
+    g_iHoldWeaponRef[client] = EntIndexToEntRef(weapon);
+    SetClientHoldProgress(client, g_hCvarHoldSeconds.FloatValue, g_fHoldStartTime[client]);
+}
+
+void CancelHoldProgress(int client)
+{
+    if (client < 1 || client > MaxClients)
+    {
+        return;
+    }
+
+    if (!g_bHoldActive[client])
+    {
+        return;
+    }
+
+    g_bHoldActive[client]    = false;
+    g_fHoldStartTime[client] = 0.0;
+    g_iHoldWeaponRef[client] = INVALID_ENT_REFERENCE;
+    ClearClientHoldProgress(client);
+}
+
+bool HasClientHoldProgressProps(int client)
+{
+    return HasEntProp(client, Prop_Send, "m_flProgressBarDuration")
+        && HasEntProp(client, Prop_Send, "m_flProgressBarStartTime");
+}
+
+void SetClientHoldProgress(int client, float duration, float startTime)
+{
+    if (client < 1 || client > MaxClients || !IsClientInGame(client) || !HasClientHoldProgressProps(client))
+    {
+        return;
+    }
+
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", startTime);
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarDuration", duration);
+}
+
+void ClearClientHoldProgress(int client)
+{
+    if (client < 1 || client > MaxClients || !IsClientInGame(client) || !HasClientHoldProgressProps(client))
+    {
+        return;
+    }
+
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarDuration", 0.0);
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", GetGameTime());
+}
+
+bool IsClientBusy(int client)
+{
+    int reviveOwner = GetEntPropEnt(client, Prop_Send, "m_reviveOwner");
+    return (reviveOwner > 0 && reviveOwner != client)
+        || GetEntPropEnt(client, Prop_Send, "m_pummelAttacker") > 0
+        || GetEntPropEnt(client, Prop_Send, "m_tongueOwner") > 0
+        || GetEntPropEnt(client, Prop_Send, "m_carryAttacker") > 0
+        || GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) != 0;
+}
+
+bool CanSendClientHintEvent(int client)
+{
+    return client >= 1
+        && client <= MaxClients
+        && IsClientInGame(client)
+        && !IsFakeClient(client);
 }
 
 // ====================================================================================================
@@ -331,6 +411,11 @@ void ShowInstructorHintToClient(int client,
                                  int timeout,
                                  int r, int g, int b)
 {
+    if (!CanSendClientHintEvent(client))
+    {
+        return;
+    }
+
     Event ev = CreateEvent("instructor_server_hint_create", true);
     if (ev == null) return;
 
@@ -361,28 +446,16 @@ void ShowInstructorHintToClient(int client,
  */
 void StopHintForClient(int client, const char[] hintName)
 {
+    if (!CanSendClientHintEvent(client))
+    {
+        return;
+    }
+
     Event ev = CreateEvent("instructor_server_hint_stop", true);
     if (ev == null) return;
     ev.SetString("hint_name", hintName);
     ev.FireToClient(client);
     delete ev;
-}
-
-/**
- * Persistent usage hint shown when player equips a laser-eligible weapon.
- */
-void ShowUsageHint(int client)
-{
-    StopHintForClient(client, "laser_toggle_usage");
-    ShowInstructorHintToClient(
-        client,
-        "laser_toggle_usage",
-        "Double-tap RELOAD to toggle laser sight",
-        "icon_reload",
-        "+reload",
-        0,            // 0 = persistent
-        200, 200, 50  // yellow
-    );
 }
 
 /**

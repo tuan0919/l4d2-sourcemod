@@ -1,0 +1,30 @@
+"Phrases"
+{
+	"Player Marked Item"
+	{
+		"#format"	"{1:N},{2:s}"
+		"en"	"{blue}{1} {default}has {olive}marked {blue}[{2}]"
+	}
+	"Player In Cooldown Message"
+	{
+		"#format"	"{1:s}"
+		"en"	"{default}Cannot {olive}mark {default}at this moment. {olive}({default}Wait: {blue}{1}{olive} {default}seconds{olive})"
+	}
+	"Player Ready To Use"
+	{
+		"en"	"{olive}Mark {default}function is ready to use"
+	}
+	"Marker Setting Menu - Title"
+	{
+		"en"	"Marker Settings"
+	}
+	"Color List Menu - Title"
+	{
+		"en"	"Available Colors"
+	}
+	"Color List Menu - Current"
+	{
+		"#format"	"{1:s}"
+		"en"	"Current Chosen: {1}"
+	}
+}

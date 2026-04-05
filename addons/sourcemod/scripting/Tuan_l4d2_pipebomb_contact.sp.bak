@@ -1,0 +1,488 @@
+#pragma semicolon 1
+#pragma newdecls required
+
+#include <sourcemod>
+#include <sdktools>
+#include <sdkhooks>
+#include <colors>
+
+#define PLUGIN_VERSION           "1.0.0"
+#define GAMEDATA_FILE            "Tuan_l4d2_pipebomb_change_timer"
+#define TEAM_SURVIVOR            2
+#define MAX_TRACKED_ENTITIES     2049
+
+#define CLASS_PIPEBOMB_WEAPON    "weapon_pipe_bomb"
+#define CLASS_PIPEBOMB_PROJECTILE "pipe_bomb_projectile"
+#define PARTICLE_CONTACT_PIPEBOMB "fire_small_01"
+
+Handle g_hSDK_CBaseGrenade_Detonate = null;
+
+ConVar g_hCvarEnable = null;
+ConVar g_hCvarHoldSeconds = null;
+ConVar g_hCvarArmDelay = null;
+
+bool g_bWeaponContact[MAX_TRACKED_ENTITIES];
+bool g_bProjectileContact[MAX_TRACKED_ENTITIES];
+float g_fProjectileSpawnTime[MAX_TRACKED_ENTITIES];
+int g_iProjectileOwner[MAX_TRACKED_ENTITIES];
+
+bool g_bHoldActive[MAXPLAYERS + 1];
+float g_fHoldStartTime[MAXPLAYERS + 1];
+int g_iHoldWeaponRef[MAXPLAYERS + 1];
+float g_fNextProjectileDeadline[MAXPLAYERS + 1];
+int g_iLastButtons[MAXPLAYERS + 1];
+
+public Plugin myinfo =
+{
+    name = "[L4D2] Pipebomb Contact Detonation",
+    author = "Roo",
+    description = "Hold USE to convert a pipebomb into a contact-explosion throwable",
+    version = PLUGIN_VERSION,
+    url = ""
+};
+
+public void OnPluginStart()
+{
+    LoadDetonateSDK();
+
+    CreateConVar("l4d2_pipebomb_contact_version", PLUGIN_VERSION, "Pipebomb contact detonation plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
+    g_hCvarEnable = CreateConVar("l4d2_pipebomb_contact_enable", "1", "Enable pipebomb contact detonation conversion.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    g_hCvarHoldSeconds = CreateConVar("l4d2_pipebomb_contact_hold_seconds", "3", "Seconds of holding USE required to remove the fuse.", FCVAR_NOTIFY, true, 1.0, true, 10.0);
+    g_hCvarArmDelay = CreateConVar("l4d2_pipebomb_contact_arm_delay", "0.10", "Small safety delay after throw before touch can detonate the modified pipebomb.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+    AutoExecConfig(true, "l4d2_pipebomb_contact");
+
+    HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
+    HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
+    HookEvent("player_bot_replace", Event_PlayerReplace, EventHookMode_Post);
+    HookEvent("bot_player_replace", Event_PlayerReplace, EventHookMode_Post);
+
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        ResetClientState(client);
+    }
+}
+
+public void OnMapStart()
+{
+    PrecacheParticle(PARTICLE_CONTACT_PIPEBOMB);
+}
+
+public void OnMapEnd()
+{
+    ResetAllState();
+}
+
+public void OnClientDisconnect(int client)
+{
+    ResetClientState(client);
+}
+
+public void OnClientPutInServer(int client)
+{
+    ResetClientState(client);
+}
+
+public Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+    ResetAllState();
+    return Plugin_Continue;
+}
+
+public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (client > 0 && client <= MaxClients)
+    {
+        CancelHoldProgress(client);
+        g_fNextProjectileDeadline[client] = 0.0;
+    }
+    return Plugin_Continue;
+}
+
+public Action Event_PlayerReplace(Event event, const char[] name, bool dontBroadcast)
+{
+    int player = GetClientOfUserId(event.GetInt("player"));
+    int bot = GetClientOfUserId(event.GetInt("bot"));
+
+    if (player > 0 && player <= MaxClients)
+    {
+        CancelHoldProgress(player);
+        g_fNextProjectileDeadline[player] = 0.0;
+    }
+
+    if (bot > 0 && bot <= MaxClients)
+    {
+        CancelHoldProgress(bot);
+        g_fNextProjectileDeadline[bot] = 0.0;
+    }
+
+    return Plugin_Continue;
+}
+
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
+{
+    if (!g_hCvarEnable.BoolValue || !IsValidSurvivor(client))
+    {
+        if (client > 0 && client <= MaxClients)
+        {
+            CancelHoldProgress(client);
+            g_fNextProjectileDeadline[client] = 0.0;
+            g_iLastButtons[client] = buttons;
+        }
+        return Plugin_Continue;
+    }
+
+    if (g_fNextProjectileDeadline[client] > 0.0 && g_fNextProjectileDeadline[client] < GetGameTime())
+    {
+        g_fNextProjectileDeadline[client] = 0.0;
+    }
+
+    int activeWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    bool hasPipebomb = IsPipebombWeapon(activeWeapon);
+    bool isConvertedWeapon = hasPipebomb && g_bWeaponContact[activeWeapon];
+
+    bool useHeld = (buttons & IN_USE) != 0;
+    bool attackHeld = (buttons & IN_ATTACK) != 0;
+    bool attackPressed = attackHeld && !(g_iLastButtons[client] & IN_ATTACK);
+
+    if (attackPressed && isConvertedWeapon)
+    {
+        g_fNextProjectileDeadline[client] = GetGameTime() + 0.35;
+        CancelHoldProgress(client);
+    }
+
+    bool canStartHold = hasPipebomb
+        && !isConvertedWeapon
+        && !attackHeld
+        && useHeld
+        && !IsClientBusy(client);
+
+    if (canStartHold)
+    {
+        int weaponRef = EntIndexToEntRef(activeWeapon);
+
+        if (!g_bHoldActive[client] || g_iHoldWeaponRef[client] != weaponRef)
+        {
+            StartHoldProgress(client, activeWeapon);
+        }
+        else
+        {
+            float holdDuration = float(g_hCvarHoldSeconds.IntValue);
+            if (GetGameTime() - g_fHoldStartTime[client] >= holdDuration)
+            {
+                CompleteWeaponConversion(client, activeWeapon);
+            }
+        }
+    }
+    else
+    {
+        CancelHoldProgress(client);
+    }
+
+    g_iLastButtons[client] = buttons;
+    return Plugin_Continue;
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+    if (entity <= MaxClients)
+    {
+        return;
+    }
+
+    if (strcmp(classname, CLASS_PIPEBOMB_PROJECTILE) == 0)
+    {
+        SDKHook(entity, SDKHook_SpawnPost, OnPipebombProjectileSpawnPost);
+    }
+}
+
+public void OnEntityDestroyed(int entity)
+{
+    if (entity > MaxClients && entity < MAX_TRACKED_ENTITIES)
+    {
+        g_bWeaponContact[entity] = false;
+        g_bProjectileContact[entity] = false;
+        g_fProjectileSpawnTime[entity] = 0.0;
+        g_iProjectileOwner[entity] = 0;
+    }
+}
+
+public void OnPipebombProjectileSpawnPost(int entity)
+{
+    RequestFrame(OnPipebombProjectileNextFrame, EntIndexToEntRef(entity));
+}
+
+public void OnPipebombProjectileNextFrame(int entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (!IsValidTrackedEntity(entity))
+    {
+        return;
+    }
+
+    int owner = GetEntPropEnt(entity, Prop_Data, "m_hThrower");
+    if (!IsValidClient(owner))
+    {
+        owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+    }
+
+    SDKHook(entity, SDKHook_Touch, OnPipebombProjectileTouch);
+
+    if (!IsValidSurvivor(owner))
+    {
+        return;
+    }
+
+    if (g_fNextProjectileDeadline[owner] <= 0.0 || g_fNextProjectileDeadline[owner] < GetGameTime())
+    {
+        return;
+    }
+
+    g_fNextProjectileDeadline[owner] = 0.0;
+    g_bProjectileContact[entity] = true;
+    g_fProjectileSpawnTime[entity] = GetGameTime();
+    g_iProjectileOwner[entity] = owner;
+
+    CreateAttachedParticle(entity, PARTICLE_CONTACT_PIPEBOMB, 10.0);
+}
+
+public void OnPipebombProjectileTouch(int entity, int other)
+{
+    if (!IsValidTrackedEntity(entity) || !g_bProjectileContact[entity])
+    {
+        return;
+    }
+
+    int owner = g_iProjectileOwner[entity];
+    if (other == owner)
+    {
+        return;
+    }
+
+    if (GetGameTime() - g_fProjectileSpawnTime[entity] < g_hCvarArmDelay.FloatValue)
+    {
+        return;
+    }
+
+    g_bProjectileContact[entity] = false;
+    SDKCall(g_hSDK_CBaseGrenade_Detonate, entity);
+}
+
+void LoadDetonateSDK()
+{
+    char path[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, path, sizeof(path), "gamedata/%s.txt", GAMEDATA_FILE);
+    if (!FileExists(path))
+    {
+        SetFailState("Missing required gamedata file: %s", path);
+    }
+
+    Handle gameData = LoadGameConfigFile(GAMEDATA_FILE);
+    if (gameData == null)
+    {
+        SetFailState("Failed to load gamedata file: %s", GAMEDATA_FILE);
+    }
+
+    StartPrepSDKCall(SDKCall_Entity);
+    if (!PrepSDKCall_SetFromConf(gameData, SDKConf_Virtual, "CBaseGrenade::Detonate"))
+    {
+        delete gameData;
+        SetFailState("Failed to find signature: CBaseGrenade::Detonate");
+    }
+
+    g_hSDK_CBaseGrenade_Detonate = EndPrepSDKCall();
+    delete gameData;
+
+    if (g_hSDK_CBaseGrenade_Detonate == null)
+    {
+        SetFailState("Failed to create SDKCall: CBaseGrenade::Detonate");
+    }
+}
+
+void StartHoldProgress(int client, int weapon)
+{
+    if (!IsValidSurvivor(client) || !IsPipebombWeapon(weapon))
+    {
+        return;
+    }
+
+    g_bHoldActive[client] = true;
+    g_fHoldStartTime[client] = GetGameTime();
+    g_iHoldWeaponRef[client] = EntIndexToEntRef(weapon);
+
+    SetClientHoldProgress(client, g_hCvarHoldSeconds.IntValue, g_fHoldStartTime[client]);
+}
+
+void CancelHoldProgress(int client)
+{
+    if (client < 1 || client > MaxClients)
+    {
+        return;
+    }
+
+    if (!g_bHoldActive[client])
+    {
+        return;
+    }
+
+    g_bHoldActive[client] = false;
+    g_fHoldStartTime[client] = 0.0;
+    g_iHoldWeaponRef[client] = INVALID_ENT_REFERENCE;
+
+    ClearClientHoldProgress(client);
+}
+
+void CompleteWeaponConversion(int client, int weapon)
+{
+    if (!IsPipebombWeapon(weapon))
+    {
+        CancelHoldProgress(client);
+        return;
+    }
+
+    g_bWeaponContact[weapon] = true;
+    CancelHoldProgress(client);
+
+    CPrintToChat(client, "{olive}[Pipebomb]{default} Contact mode armed. This pipebomb will now explode on impact.");
+}
+
+void ResetClientState(int client)
+{
+    g_bHoldActive[client] = false;
+    g_fHoldStartTime[client] = 0.0;
+    g_iHoldWeaponRef[client] = INVALID_ENT_REFERENCE;
+    g_fNextProjectileDeadline[client] = 0.0;
+    g_iLastButtons[client] = 0;
+
+    if (client >= 1 && client <= MaxClients && IsClientInGame(client))
+    {
+        ClearClientHoldProgress(client);
+    }
+}
+
+void ResetAllState()
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        ResetClientState(client);
+    }
+
+    for (int entity = MaxClients + 1; entity < MAX_TRACKED_ENTITIES; entity++)
+    {
+        g_bWeaponContact[entity] = false;
+        g_bProjectileContact[entity] = false;
+        g_fProjectileSpawnTime[entity] = 0.0;
+        g_iProjectileOwner[entity] = 0;
+    }
+}
+
+bool IsValidClient(int client)
+{
+    return client >= 1 && client <= MaxClients && IsClientInGame(client);
+}
+
+bool IsValidSurvivor(int client)
+{
+    return IsValidClient(client) && GetClientTeam(client) == TEAM_SURVIVOR && !IsFakeClient(client) ? true : IsValidClient(client) && GetClientTeam(client) == TEAM_SURVIVOR;
+}
+
+bool IsValidTrackedEntity(int entity)
+{
+    return entity > MaxClients && entity < MAX_TRACKED_ENTITIES && IsValidEntity(entity);
+}
+
+bool IsPipebombWeapon(int entity)
+{
+    if (!IsValidTrackedEntity(entity))
+    {
+        return false;
+    }
+
+    char classname[64];
+    GetEntityClassname(entity, classname, sizeof(classname));
+    return strcmp(classname, CLASS_PIPEBOMB_WEAPON) == 0;
+}
+
+bool IsClientBusy(int client)
+{
+    int reviveOwner = GetEntPropEnt(client, Prop_Send, "m_reviveOwner");
+    return (reviveOwner > 0 && reviveOwner != client)
+        || GetEntPropEnt(client, Prop_Send, "m_pummelAttacker") > 0
+        || GetEntPropEnt(client, Prop_Send, "m_tongueOwner") > 0
+        || GetEntPropEnt(client, Prop_Send, "m_carryAttacker") > 0
+        || GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) != 0;
+}
+
+void SetClientHoldProgress(int client, int duration, float startTime)
+{
+    if (!IsValidClient(client))
+    {
+        return;
+    }
+
+    SetEntPropEnt(client, Prop_Send, "m_reviveOwner", client);
+    SetEntProp(client, Prop_Send, "m_iProgressBarDuration", duration);
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", startTime);
+}
+
+void ClearClientHoldProgress(int client)
+{
+    if (!IsValidClient(client))
+    {
+        return;
+    }
+
+    if (GetEntPropEnt(client, Prop_Send, "m_reviveOwner") == client)
+    {
+        SetEntPropEnt(client, Prop_Send, "m_reviveOwner", -1);
+    }
+
+    SetEntProp(client, Prop_Send, "m_iProgressBarDuration", 0);
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", 0.0);
+}
+
+void CreateAttachedParticle(int target, const char[] particleName, float lifeTime)
+{
+    int particle = CreateEntityByName("info_particle_system");
+    if (particle == -1 || !IsValidEntity(particle))
+    {
+        return;
+    }
+
+    DispatchKeyValue(particle, "effect_name", particleName);
+    DispatchSpawn(particle);
+    ActivateEntity(particle);
+    AcceptEntityInput(particle, "Start");
+
+    SetVariantString("!activator");
+    AcceptEntityInput(particle, "SetParent", target);
+
+    CreateTimer(lifeTime, Timer_DeleteEntity, EntIndexToEntRef(particle), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action Timer_DeleteEntity(Handle timer, int entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
+    {
+        AcceptEntityInput(entity, "Kill");
+    }
+    return Plugin_Stop;
+}
+
+void PrecacheParticle(const char[] effectName)
+{
+    static int table = INVALID_STRING_TABLE;
+    if (table == INVALID_STRING_TABLE)
+    {
+        table = FindStringTable("ParticleEffectNames");
+    }
+
+    if (FindStringIndex(table, effectName) == INVALID_STRING_INDEX)
+    {
+        bool locked = LockStringTables(false);
+        AddToStringTable(table, effectName);
+        LockStringTables(locked);
+    }
+}

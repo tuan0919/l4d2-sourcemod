@@ -1,0 +1,14 @@
+﻿"Games"
+{
+	"left4dead2"
+	{
+		"Offsets"
+		{
+			"CBaseGrenade::Detonate"
+			{
+				"windows"	"346"
+				"linux"		"347"
+			}
+		}
+	}
+}

@@ -1,0 +1,12 @@
+"Phrases"
+{
+	"Helper Message"
+	{
+		"en"	"Để {olive}thay đổi {default}thời gian nổ của {olive}pipebomb {default}hãy bấm {blue}[Nạp đạn] {default}khi đang {blue}giữ ném"
+	}
+	"Change Message"
+	{
+		"#format"	"{1:d}"
+		"en"	"Thời gian nổ của {olive}pipebomb {default}này: {blue}{1} giây"
+	}
+}

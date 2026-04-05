@@ -1,0 +1,65 @@
+"Phrases"
+{
+	"INFO_TAG"
+	{
+		"en"	"{green}[{olive}!{green}]"
+	}
+	"DANGER_TAG"
+	{
+		"en"	"{green}[{olive}x{green}]"
+	}
+	"NEW_TAG"
+	{
+		"en"	"{green}[{olive}#{green}]"
+	}
+	"HELP_TAG"
+	{
+		"en"	"{green}[{olive}?{green}]"
+	}  
+	//{1}: tên user | {2}: tên vũ khí
+	"Self_Incap"
+	{
+		"#format"	"{1:s}, {2:s}"
+		"en"	"{blue}{1} {default}tự gạt giò {olive}({2})"
+	}
+	"Invalid_Entity_Incap_Survivor"
+	{
+		"#format"	"{1:s}, {2:s}"
+		"en"	"{blue}{1} {default}bị gạt giò {olive}({2})"
+	}	
+	//{1}: tên attacker | {2}: tên nạn nhân | {3}: tên vũ khí
+	"Infected_Incap_Survivor"
+	{
+		"#format"	"{1:s}, {2:s}, {3:s}"
+		"en"	"{blue}{1} {default}gạt giò {blue}{2}"
+	}
+	"Survivor_Incap_Survivor"
+	{
+		"#format"	"{1:s}, {2:s}, {3:s}"
+		"en"	"{blue}{1} {default}gạt giò {blue}{2} {olive}({3})"
+	}  /**************************************************************
+		TRANSLATION CHO SỰ KIỆN player_death
+	***************************************************************/
+	//{1}: tên user | {2}: tên vũ khí
+	"Self_Kill"
+	{
+		"#format"	"{1:s}, {2:s}"
+		"en"	"{blue}{1} {default}tự sát {olive}({2})"  
+	}
+	"Invalid_Entity_Kill_Client"  //case này bao gồm cả Survivor và Tank/Witch
+	{
+		"#format"	"{1:s}, {2:s}"
+		"en"	"{blue}{1} {default}chết {olive}({2})"  
+	}
+	//{1}: tên attacker | {2}: tên nạn nhân | {3}: tên vũ khí
+	"Infected_Kill_Survivor"
+	{
+		"#format"	"{1:s}, {2:s}, {3:s}"
+		"en"	"{blue}{1} {default}giết {blue}{2}"
+	}
+	"Survivor_Kill_Survivor"
+	{
+		"#format"	"{1:s}, {2:s}, {3:s}"
+		"en"	"{blue}{1} {default}giết {blue}{2} {olive}({3})"
+	}
+}

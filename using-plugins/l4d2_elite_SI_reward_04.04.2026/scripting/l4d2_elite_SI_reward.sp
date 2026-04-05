@@ -4,6 +4,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#tryinclude <left4dhooks>
 
 #define PLUGIN_VERSION "1.1.0"
 
@@ -19,6 +20,9 @@
 #define ZC_TANK    8
 
 #define MAX_ACID_POOLS 128
+#if !defined DMG_RADIATION
+    #define DMG_RADIATION (1 << 18)
+#endif
 
 bool g_bIsElite[MAXPLAYERS + 1];
 bool g_bBoomerIgniteVariant[MAXPLAYERS + 1];
@@ -170,7 +174,10 @@ public void OnPluginStart()
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 	HookEvent("witch_killed", OnWitchKilled);
 	HookEvent("round_start", OnRoundStart);
+	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Post);
+	HookEvent("player_incapacitated", OnPlayerIncap, EventHookMode_Post);
 	HookEvent("charger_impact", OnChargerImpact, EventHookMode_Post);
+	HookEvent("charger_pummel_start", OnChargerPummelStart, EventHookMode_Post);
 	HookEvent("lunge_pounce", OnLungePounce, EventHookMode_Post);
 	
 	iFirst = GetConVarInt(hHRFirst);
@@ -465,6 +472,55 @@ public void OnLungePounce(Event event, const char[] name, bool dontBroadcast) {
     }
 }
 
+public void OnChargerPummelStart(Event event, const char[] name, bool dontBroadcast) {
+    if (!g_cvEliteSpecialEnable.BoolValue) {
+        return;
+    }
+
+    int charger = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsValidInfectedElite(charger) || GetEntProp(charger, Prop_Send, "m_zombieClass") != ZC_CHARGER) {
+        return;
+    }
+
+    // Reference-inspired move: on pummel start, emit another local blast.
+    DoEliteBlast(charger, charger, g_cvEliteBlastRadius.FloatValue * 0.8, g_cvEliteBlastDamage.FloatValue, g_cvEliteBlastForce.FloatValue, false);
+    EmitSoundToAll("player/charger/hit/charger_smash_02.wav", charger, SNDCHAN_AUTO, SNDLEVEL_NORMAL);
+}
+
+public void OnPlayerHurt(Event event, const char[] name, bool dontBroadcast) {
+    ProcessSpitterAcidSlowFromEvent(event);
+}
+
+public void OnPlayerIncap(Event event, const char[] name, bool dontBroadcast) {
+    ProcessSpitterAcidSlowFromEvent(event);
+}
+
+void ProcessSpitterAcidSlowFromEvent(Event event) {
+    if (!g_cvEliteSpecialEnable.BoolValue) {
+        return;
+    }
+
+    int damage = event.GetInt("dmg_health");
+    if (damage < 1) {
+        return;
+    }
+    int dmgType = event.GetInt("type");
+    if (!(dmgType & DMG_RADIATION)) {
+        return;
+    }
+
+    int victim = GetClientOfUserId(event.GetInt("userid"));
+    int attacker = GetClientOfUserId(event.GetInt("attacker"));
+    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim)) {
+        return;
+    }
+    if (!IsValidInfectedElite(attacker) || GetEntProp(attacker, Prop_Send, "m_zombieClass") != ZC_SPITTER) {
+        return;
+    }
+
+    ApplySlow(victim, g_cvEliteSlowMult.FloatValue, g_cvEliteSlowDuration.FloatValue);
+}
+
 bool IsPlayerIncapped(int client) {
 	return GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) == 1;
 }
@@ -566,6 +622,47 @@ bool IsValidInfectedElite(int client) {
         && GetClientTeam(client) == TEAM_INFECTED
         && g_bIsElite[client];
 }
+
+#if defined _left4dhooks_included
+public Action L4D2_OnStagger(int client, int source) {
+    // Borrowed behavior from reference boomer plugin: prevent default boomer stagger on survivors.
+    if (IsValidSurvivor(client)
+        && source > 0 && source <= MaxClients
+        && IsClientInGame(source)
+        && GetClientTeam(source) == TEAM_INFECTED
+        && GetEntProp(source, Prop_Send, "m_zombieClass") == ZC_BOOMER
+        && g_bIsElite[source]) {
+        return Plugin_Handled;
+    }
+    return Plugin_Continue;
+}
+
+public void L4D_OnVomitedUpon_Post(int victim, int attacker, bool boomerExplosion) {
+    if (!g_cvEliteSpecialEnable.BoolValue || !boomerExplosion) {
+        return;
+    }
+    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim) || IsPlayerIncapped(victim)) {
+        return;
+    }
+    if (!IsValidInfectedElite(attacker) || GetEntProp(attacker, Prop_Send, "m_zombieClass") != ZC_BOOMER) {
+        return;
+    }
+
+    float survivorPos[3];
+    float boomerPos[3];
+    float force[3];
+    GetClientAbsOrigin(victim, survivorPos);
+    GetClientAbsOrigin(attacker, boomerPos);
+    MakeVectorFromPoints(boomerPos, survivorPos, force);
+    NormalizeVector(force, force);
+    ScaleVector(force, g_cvEliteBlastForce.FloatValue);
+    force[2] = g_cvEliteBlastForce.FloatValue * 0.65;
+
+    SetEntPropFloat(victim, Prop_Send, "m_staggerTimer", -1.0, 1);
+    L4D2_CTerrorPlayer_Fling(victim, attacker, force);
+    ShowBlastFX(survivorPos, g_cvEliteBlastRadius.FloatValue * 0.5, true);
+}
+#endif
 
 void ResetEliteState(int client) {
     if (client < 1 || client > MaxClients) {

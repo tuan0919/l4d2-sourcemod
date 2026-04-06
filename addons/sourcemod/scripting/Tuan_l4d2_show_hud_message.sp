@@ -15,6 +15,8 @@
 #include <Tuan_custom_forwards>
 #include <colors>
 
+native bool L4D2_IsEliteSI(int client);
+
 public Plugin myinfo = {
 	name			= PLUGIN_NAME_FULL,
 	author			= PLUGIN_AUTHOR,
@@ -51,6 +53,10 @@ public Plugin myinfo = {
 #define HUD_WIDTH	0.7
 #define HUD_SLOT	4
 #define HUD_POSITION_X 0.0
+#define STATS_HUD_INTERVAL 0.5
+#define STATS_HUD_X 0.72
+#define STATS_HUD_Y 0.08
+#define STATS_HUD_HOLD 0.55
 #define CLASSNAME_INFECTED            "Infected"
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
@@ -65,6 +71,18 @@ public Plugin myinfo = {
 #define TYPE_GAS_PUMP                 6
 #define TYPE_FIREWORKS_CRATE          7
 #define TYPE_OIL_DRUM_EXPLOSIVE       8
+
+static const char SI_CLASS_NAMES[9][16] = {
+	"Unknown",
+	"Smoker",
+	"Boomer",
+	"Hunter",
+	"Spitter",
+	"Jockey",
+	"Charger",
+	"Unknown",
+	"Tank"
+};
 
 
 static const char WEAPON_NAMES_KEYs[][] = {
@@ -115,6 +133,9 @@ static float g_HUDpos[][] = {
 static int g_iHUDFlags_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
 static char output[256];
+static char g_sLastEliteKiller[64];
+static char g_sLastEliteVictim[32];
+static float g_fEliteKillSuppressUntil;
 
 enum struct HUD
 {
@@ -130,22 +151,60 @@ enum struct HUD
 
 ArrayList g_hud_info;
 Handle g_hHudDecreaseTimer;
+Handle g_hStatsHudSync;
 StringMap mapWeaponName;
+bool g_bEliteNativeAvailable;
+int g_iCIKills[MAXPLAYERS + 1];
+int g_iSIKills[MAXPLAYERS + 1];
+int g_iTotalFF[MAXPLAYERS + 1];
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	MarkNativeAsOptional("L4D2_IsEliteSI");
+	return APLRes_Success;
+}
 
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	g_hud_info = new ArrayList(ByteCountToCells(128));
+	g_hStatsHudSync = CreateHudSynchronizer();
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
 		
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
+	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+	HookEvent("player_death", Event_PlayerDeath_Stats, EventHookMode_Post);
+	HookEvent("player_hurt", Event_PlayerHurt_Stats, EventHookMode_Post);
+
+	CreateTimer(STATS_HUD_INTERVAL, Timer_UpdatePersonalStatsHud, _, TIMER_REPEAT);
+}
+
+public void OnAllPluginsLoaded()
+{
+	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
 }
 
 public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
+		if (GetGameTime() <= g_fEliteKillSuppressUntil
+			&& StrEqual(attacker_name, g_sLastEliteKiller, false)
+			&& (StrEqual(victim_name, g_sLastEliteVictim, false) || StrContains(victim_name, g_sLastEliteVictim, false) != -1)) {
+			return;
+		}
+
 		if (isSelf) {
 			FormatEx(output, sizeof(output), "%s suicide", attacker_name);
 			DisplayHUD(output);
@@ -243,13 +302,21 @@ public void OnMapStart() {
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
-	for (int slot = KILL_HUD_BASE; slot < MAX_HUD_NUMBER; slot++)
+	for (int slot = KILL_HUD_BASE; slot < KILL_HUD_BASE + KILL_INFO_MAX; slot++)
 		RemoveHUD(slot);
 
 	delete g_hud_info;
 	g_hud_info = new ArrayList(ByteCountToCells(128));
 
 	delete g_hHudDecreaseTimer;
+	ResetAllStats();
+
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (IsClient(client)) {
+			ClearSyncHud(client, g_hStatsHudSync);
+		}
+	}
 }
 
 public void OnMapEnd() {
@@ -257,6 +324,17 @@ public void OnMapEnd() {
 	g_hud_info = new ArrayList(ByteCountToCells(128));
 
 	delete g_hHudDecreaseTimer;
+	ResetAllStats();
+}
+
+public void OnClientDisconnect(int client)
+{
+	if (client > 0 && client <= MaxClients)
+	{
+		g_iCIKills[client] = 0;
+		g_iSIKills[client] = 0;
+		g_iTotalFF[client] = 0;
+	}
 }
 
 
@@ -334,6 +412,75 @@ void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
 	if (client > 0 && subject > 0) {
 		FormatEx(output, sizeof(output), "%N brought %N back from dead", client, subject);
 		DisplayHUD(output);
+	}
+}
+
+void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_bEliteNativeAvailable) {
+		return;
+	}
+
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (!IsClient(victim) || GetClientTeam(victim) != TEAM_INFECTED || !L4D2_IsEliteSI(victim)) {
+		return;
+	}
+
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (!IsClient(attacker) || GetClientTeam(attacker) != TEAM_SURVIVOR) {
+		return;
+	}
+
+	int zClass = GetEntProp(victim, Prop_Send, "m_zombieClass");
+	if (zClass < 1 || zClass > 8) {
+		zClass = 0;
+	}
+
+	FormatEx(output, sizeof(output), "%N killed Elite %s", attacker, SI_CLASS_NAMES[zClass]);
+	DisplayHUD(output);
+	GetClientName(attacker, g_sLastEliteKiller, sizeof(g_sLastEliteKiller));
+	strcopy(g_sLastEliteVictim, sizeof(g_sLastEliteVictim), SI_CLASS_NAMES[zClass]);
+	g_fEliteKillSuppressUntil = GetGameTime() + 0.35;
+}
+
+void Event_PlayerDeath_Stats(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (!IsClient(attacker) || GetClientTeam(attacker) != TEAM_SURVIVOR) {
+		return;
+	}
+
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (IsClient(victim))
+	{
+		if (GetClientTeam(victim) == TEAM_INFECTED) {
+			g_iSIKills[attacker]++;
+		}
+		return;
+	}
+
+	char victimName[32];
+	event.GetString("victimname", victimName, sizeof(victimName));
+	if (StrEqual(victimName, CLASSNAME_INFECTED, false)) {
+		g_iCIKills[attacker]++;
+	}
+}
+
+void Event_PlayerHurt_Stats(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (!IsClient(attacker) || !IsClient(victim) || attacker == victim) {
+		return;
+	}
+
+	if (GetClientTeam(attacker) != TEAM_SURVIVOR || GetClientTeam(victim) != TEAM_SURVIVOR) {
+		return;
+	}
+
+	int damage = event.GetInt("dmg_health");
+	if (damage > 0) {
+		g_iTotalFF[attacker] += damage;
 	}
 }
 
@@ -420,6 +567,20 @@ Action Timer_KillHUDDecrease(Handle timer) {
 	return Plugin_Continue;
 }
 
+Action Timer_UpdatePersonalStatsHud(Handle timer)
+{
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (!IsClient(client) || GetClientTeam(client) != TEAM_SURVIVOR) {
+			continue;
+		}
+
+		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 255, 255, 255, 255);
+		ShowSyncHudText(client, g_hStatsHudSync, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
+	}
+	return Plugin_Continue;
+}
+
 void HUDPlace(int slot, float x, float y, float width, float height) {
 	GameRules_SetPropFloat("m_fScriptedHUDPosX", x, slot, true);
 	GameRules_SetPropFloat("m_fScriptedHUDPosY", y, slot, true);
@@ -436,4 +597,14 @@ void RemoveHUD(int slot) {
 	GameRules_SetPropFloat("m_fScriptedHUDWidth", 0.0, slot, true);
 	GameRules_SetPropFloat("m_fScriptedHUDHeight", 0.0, slot, true);
 	GameRules_SetPropString("m_szScriptedHUDStringSet", "", true, slot);
+}
+
+void ResetAllStats()
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		g_iCIKills[i] = 0;
+		g_iSIKills[i] = 0;
+		g_iTotalFF[i] = 0;
+	}
 }

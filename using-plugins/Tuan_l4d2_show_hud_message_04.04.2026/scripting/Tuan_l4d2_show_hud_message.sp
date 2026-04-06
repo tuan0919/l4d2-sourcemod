@@ -61,9 +61,9 @@ public Plugin myinfo = {
 #define L4D2_ZOMBIECLASS_TANK		8
 #define HUD_TIMEOUT	5.0
 #define PLAYERCOUNT_INTERVAL 1.0
-#define PLAYERCOUNT_X 0.22
+#define PLAYERCOUNT_X 0.72
 #define PLAYERCOUNT_Y 0.03
-#define PLAYERCOUNT_W 0.56
+#define PLAYERCOUNT_W 0.28
 #define PLAYERCOUNT_H 0.05
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
@@ -138,7 +138,7 @@ static int g_iHUDFlags_Left_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_F
 static int g_iHUDFlags_Left_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
 static int g_iHUDFlags_Right_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
-static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_CENTER | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];

@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION		"1.0"
+#define PLUGIN_VERSION		"1.1.0"
 #define PLUGIN_PREFIX		"l4d2_"
 #define PLUGIN_NAME			"show_hud_messages"
 #define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD"
@@ -151,12 +151,12 @@ enum struct HUD
 
 ArrayList g_hud_info;
 Handle g_hHudDecreaseTimer;
-Handle g_hStatsHudSync;
 StringMap mapWeaponName;
 bool g_bEliteNativeAvailable;
 int g_iCIKills[MAXPLAYERS + 1];
 int g_iSIKills[MAXPLAYERS + 1];
 int g_iTotalFF[MAXPLAYERS + 1];
+bool g_bHudTextUnsupportedWarned[MAXPLAYERS + 1];
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -167,7 +167,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	g_hud_info = new ArrayList(ByteCountToCells(128));
-	g_hStatsHudSync = CreateHudSynchronizer();
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
@@ -310,13 +309,6 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
 
 	delete g_hHudDecreaseTimer;
 	ResetAllStats();
-
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (IsClient(client)) {
-			ClearSyncHud(client, g_hStatsHudSync);
-		}
-	}
 }
 
 public void OnMapEnd() {
@@ -334,6 +326,7 @@ public void OnClientDisconnect(int client)
 		g_iCIKills[client] = 0;
 		g_iSIKills[client] = 0;
 		g_iTotalFF[client] = 0;
+		g_bHudTextUnsupportedWarned[client] = false;
 	}
 }
 
@@ -575,8 +568,23 @@ Action Timer_UpdatePersonalStatsHud(Handle timer)
 			continue;
 		}
 
+		char sStats[96];
+		FormatEx(sStats, sizeof(sStats), "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
 		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 255, 255, 255, 255);
-		ShowSyncHudText(client, g_hStatsHudSync, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
+		int channelUsed = ShowHudText(client, -1, sStats);
+		if (channelUsed == -1)
+		{
+			PrintHintText(client, sStats);
+			if (!g_bHudTextUnsupportedWarned[client])
+			{
+				g_bHudTextUnsupportedWarned[client] = true;
+				LogMessage("[StatsHUD] ShowHudText unsupported for client %N, fallback to HintText.", client);
+			}
+		}
+		else
+		{
+			g_bHudTextUnsupportedWarned[client] = false;
+		}
 	}
 	return Plugin_Continue;
 }

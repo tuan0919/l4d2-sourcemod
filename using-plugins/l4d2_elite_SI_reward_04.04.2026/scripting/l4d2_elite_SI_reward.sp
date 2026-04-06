@@ -4,30 +4,10 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
-#tryinclude <left4dhooks>
 
-#define PLUGIN_VERSION "1.1.0"
-
-#define TEAM_SURVIVOR 2
-#define TEAM_INFECTED 3
-
-#define ZC_SMOKER  1
-#define ZC_BOOMER  2
-#define ZC_HUNTER  3
-#define ZC_SPITTER 4
-#define ZC_JOCKEY  5
-#define ZC_CHARGER 6
-#define ZC_TANK    8
-
-#define MAX_ACID_POOLS 128
-#if !defined DMG_RADIATION
-    #define DMG_RADIATION (1 << 18)
-#endif
+#define PLUGIN_VERSION "1.0.0"
 
 bool g_bIsElite[MAXPLAYERS + 1];
-bool g_bBoomerIgniteVariant[MAXPLAYERS + 1];
-bool g_bSpitterStealth[MAXPLAYERS + 1];
-bool g_bForcedSlow[MAXPLAYERS + 1];
 
 ConVar hHRFirst;
 ConVar hHRSecond;
@@ -41,25 +21,6 @@ ConVar g_cvEliteChance;
 ConVar g_cvEliteHpMult;
 ConVar g_cvEliteSpeed;
 ConVar g_cvEliteFireChance;
-ConVar g_cvEliteSpecialEnable;
-ConVar g_cvEliteDebug;
-ConVar g_cvEliteBlastRadius;
-ConVar g_cvEliteBlastDamage;
-ConVar g_cvEliteBlastForce;
-ConVar g_cvEliteBleedDamage;
-ConVar g_cvEliteBleedTicks;
-ConVar g_cvEliteAcidDuration;
-ConVar g_cvEliteAcidTickDamage;
-ConVar g_cvEliteAcidRadius;
-ConVar g_cvEliteAcidTrailInterval;
-ConVar g_cvEliteSlowMult;
-ConVar g_cvEliteSlowDuration;
-ConVar g_cvEliteSpitterStealthInterval;
-ConVar g_cvEliteSpitterStealthDuration;
-ConVar g_cvEliteBoomerIgniteChance;
-ConVar g_cvEliteBoomerAutoExplodeTime;
-ConVar g_cvEliteChargerMaulDamage;
-ConVar g_cvEliteChargerMaulTick;
 
 int iFirst;
 int iSecond;
@@ -70,27 +31,6 @@ bool bWitch;
 bool bSI;
 
 float g_fDecayDecay;
-float g_fSpitterStealthEnd[MAXPLAYERS + 1];
-float g_fNextSpitterStealth[MAXPLAYERS + 1];
-float g_fNextSpitterTrail[MAXPLAYERS + 1];
-float g_fBoomerAutoExplodeTime[MAXPLAYERS + 1];
-float g_fSlowEndTime[MAXPLAYERS + 1];
-float g_fSlowMultiplier[MAXPLAYERS + 1];
-float g_fNextAcidTick[MAXPLAYERS + 1];
-float g_fNextChargerMaulTick[MAXPLAYERS + 1];
-int g_iChargerMaulTargetUserId[MAXPLAYERS + 1];
-
-float g_fAcidPosX[MAX_ACID_POOLS];
-float g_fAcidPosY[MAX_ACID_POOLS];
-float g_fAcidPosZ[MAX_ACID_POOLS];
-float g_fAcidExpireTime[MAX_ACID_POOLS];
-float g_fAcidNextFxTime[MAX_ACID_POOLS];
-int g_iAcidOwnerUserId[MAX_ACID_POOLS];
-
-Handle g_hEliteThinkTimer = null;
-int g_iBeamSprite = -1;
-int g_iHaloSprite = -1;
-int g_iExplodeSprite = -1;
 
 static const int ELITE_COLORS[6][3] =
 {
@@ -126,6 +66,13 @@ char g_ZombiesNames[9][32] = {
 	"Tank"
 };
 
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	CreateNative("L4D2_IsEliteSI", Native_L4D2_IsEliteSI);
+	RegPluginLibrary("l4d2_elite_SI_reward");
+	return APLRes_Success;
+}
+
 public Plugin myinfo =
 {
 	name = "[L4D2] SI Infected Rewards",
@@ -133,7 +80,7 @@ public Plugin myinfo =
 	description = "Elite Infected & HP Rewards (Temp HP)",
 	version = PLUGIN_VERSION,
 	url = ""
-}
+};
 
 public void OnPluginStart()
 {
@@ -146,39 +93,15 @@ public void OnPluginStart()
 	hHRWitch = CreateConVar("l4d_hp_rewards_witch", "1", "Enable/Disable Witch Rewards");
 	hHRSI = CreateConVar("l4d_hp_rewards_si", "1", "Enable/Disable Special Infected Rewards");
 
-	g_cvEliteChance = CreateConVar("l4d_hp_rewards_elite_chance", "100", "Chance for SI to become Elite (0-100)");
+	g_cvEliteChance = CreateConVar("l4d_hp_rewards_elite_chance", "30", "Chance for SI to become Elite (0-100)");
 	g_cvEliteHpMult = CreateConVar("l4d_hp_rewards_elite_hp_mult", "2.5", "Elite HP multiplier");
 	g_cvEliteSpeed = CreateConVar("l4d_hp_rewards_elite_speed", "1.15", "Elite SI movement speed multiplier");
     g_cvEliteFireChance = CreateConVar("l4d_hp_rewards_elite_fire", "20", "Chance for Elite to catch fire (0-100)");
-	g_cvEliteSpecialEnable = CreateConVar("l4d_hp_rewards_elite_special_enable", "1", "Enable elite special perks and moves");
-	g_cvEliteDebug = CreateConVar("l4d_hp_rewards_elite_debug", "1", "Show debug chat when elite perks trigger");
-	g_cvEliteBlastRadius = CreateConVar("l4d_hp_rewards_elite_blast_radius", "240.0", "Blast radius for elite special explosions");
-	g_cvEliteBlastDamage = CreateConVar("l4d_hp_rewards_elite_blast_damage", "10.0", "Blast damage for elite special explosions");
-	g_cvEliteBlastForce = CreateConVar("l4d_hp_rewards_elite_blast_force", "380.0", "Knockback force for elite special explosions");
-	g_cvEliteBleedDamage = CreateConVar("l4d_hp_rewards_elite_bleed_damage", "2.0", "Hunter bleed damage per tick");
-	g_cvEliteBleedTicks = CreateConVar("l4d_hp_rewards_elite_bleed_ticks", "5", "Hunter bleed ticks");
-	g_cvEliteAcidDuration = CreateConVar("l4d_hp_rewards_elite_acid_duration", "4.0", "Acid pool duration");
-	g_cvEliteAcidTickDamage = CreateConVar("l4d_hp_rewards_elite_acid_tick_damage", "2.0", "Acid pool damage per tick");
-	g_cvEliteAcidRadius = CreateConVar("l4d_hp_rewards_elite_acid_radius", "90.0", "Acid pool radius");
-	g_cvEliteAcidTrailInterval = CreateConVar("l4d_hp_rewards_elite_spitter_trail_interval", "0.55", "Spitter acid trail spawn interval while running");
-	g_cvEliteSlowMult = CreateConVar("l4d_hp_rewards_elite_slow_mult", "0.72", "Movement multiplier when slowed by elite acid");
-	g_cvEliteSlowDuration = CreateConVar("l4d_hp_rewards_elite_slow_duration", "1.2", "Slow duration from elite acid");
-	g_cvEliteSpitterStealthInterval = CreateConVar("l4d_hp_rewards_elite_spitter_stealth_interval", "12.0", "Seconds between elite spitter stealth activations");
-	g_cvEliteSpitterStealthDuration = CreateConVar("l4d_hp_rewards_elite_spitter_stealth_duration", "3.0", "Elite spitter stealth duration");
-	g_cvEliteBoomerIgniteChance = CreateConVar("l4d_hp_rewards_elite_boomer_ignite_variant_chance", "45", "Chance elite boomer becomes ignite auto-explode variant");
-	g_cvEliteBoomerAutoExplodeTime = CreateConVar("l4d_hp_rewards_elite_boomer_auto_explode_time", "6.0", "Seconds before ignite variant boomer auto explodes");
-	g_cvEliteChargerMaulDamage = CreateConVar("l4d_hp_rewards_elite_charger_maul_damage", "10.0", "Damage per tick when elite charger mauls incapacitated target");
-	g_cvEliteChargerMaulTick = CreateConVar("l4d_hp_rewards_elite_charger_maul_tick", "0.6", "Tick interval for elite charger maul damage");
 
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 	HookEvent("witch_killed", OnWitchKilled);
 	HookEvent("round_start", OnRoundStart);
-	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Post);
-	HookEvent("player_incapacitated", OnPlayerIncap, EventHookMode_Post);
-	HookEvent("charger_impact", OnChargerImpact, EventHookMode_Post);
-	HookEvent("charger_pummel_start", OnChargerPummelStart, EventHookMode_Post);
-	HookEvent("lunge_pounce", OnLungePounce, EventHookMode_Post);
 	
 	iFirst = GetConVarInt(hHRFirst);
 	iSecond = GetConVarInt(hHRSecond);
@@ -207,23 +130,6 @@ public void OnPluginStart()
             OnClientPutInServer(i);
         }
     }
-
-	if (g_hEliteThinkTimer == null) {
-		g_hEliteThinkTimer = CreateTimer(0.2, Timer_EliteThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-	}
-
-    // Force test defaults so every SI spawn is elite while verifying mechanics.
-    g_cvEliteChance.IntValue = 100;
-    g_cvEliteSpecialEnable.IntValue = 1;
-}
-
-public void OnMapStart() {
-    g_iBeamSprite = PrecacheModel("materials/sprites/laserbeam.vmt");
-    g_iHaloSprite = PrecacheModel("materials/sprites/glow01.vmt");
-    g_iExplodeSprite = PrecacheModel("materials/sprites/zerogxplode.vmt");
-    PrecacheSound("ambient/explosions/explode_8.wav", true);
-    PrecacheSound("player/charger/hit/charger_smash_02.wav", true);
-    PrecacheSound("player/spitter/voice/warn/spitter_spot06.wav", true);
 }
 
 public void OnDecayChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
@@ -231,12 +137,12 @@ public void OnDecayChanged(ConVar convar, const char[] oldValue, const char[] ne
 }
 
 public void OnClientPutInServer(int client) {
-    ResetEliteState(client);
+    g_bIsElite[client] = false;
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
 
 public void OnClientDisconnect(int client) {
-    ResetEliteState(client);
+    g_bIsElite[client] = false;
     SDKUnhook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
 
@@ -253,46 +159,18 @@ public void HRConfigsChanged(ConVar convar, const char[] oValue, const char[] nV
 
 public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast) {
     for (int i = 1; i <= MaxClients; i++) {
-        ResetEliteState(i);
+        ResetClientEliteState(i);
     }
-    ClearAllAcidPools();
     return Plugin_Continue;
 }
 
-public void OnMapEnd() {
-    ClearAllAcidPools();
-}
-
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
-    if (victim > 0 && victim <= MaxClients && IsClientInGame(victim) && GetClientTeam(victim) == TEAM_INFECTED && g_bIsElite[victim]) {
-        // Fire immunity retained from old elite logic.
-        if (damagetype & DMG_BURN) {
-            return Plugin_Handled;
-        }
-
-        // Spitter stealth state: brief phase immunity.
-        if (g_bSpitterStealth[victim]) {
-            return Plugin_Handled;
-        }
-    }
-
-    // Elite attacker extra effects on hit.
-    if (g_cvEliteSpecialEnable.BoolValue
-        && victim > 0 && victim <= MaxClients
-        && attacker > 0 && attacker <= MaxClients
-        && IsClientInGame(victim) && IsClientInGame(attacker)
-        && GetClientTeam(victim) == TEAM_SURVIVOR
-        && GetClientTeam(attacker) == TEAM_INFECTED
-        && g_bIsElite[attacker]
-        && damage > 0.0) {
-
-        int zClass = GetEntProp(attacker, Prop_Send, "m_zombieClass");
-        if (zClass == ZC_HUNTER) {
-            StartBleeding(victim, attacker, g_cvEliteBleedTicks.IntValue, g_cvEliteBleedDamage.FloatValue);
-        } else if (zClass == ZC_SPITTER) {
-            float pos[3];
-            GetClientAbsOrigin(victim, pos);
-            SpawnAcidPool(pos, attacker, g_cvEliteAcidDuration.FloatValue);
+    // If victim is elite SI and damage is FIRE, block it
+    if (victim > 0 && victim <= MaxClients && GetClientTeam(victim) == 3) {
+        if (g_bIsElite[victim]) {
+            if (damagetype & DMG_BURN) {
+                return Plugin_Handled;
+            }
         }
     }
     return Plugin_Continue;
@@ -313,6 +191,8 @@ public Action Timer_ProcessSpawn(Handle timer, int userid) {
         return Plugin_Stop;
     }
 
+	ResetClientEliteState(client);
+
 	int zClass = GetEntProp(client, Prop_Send, "m_zombieClass");
 	if (zClass < 1 || zClass > 6) // Excludes Tank (8) and randoms
 		return Plugin_Stop;
@@ -321,12 +201,6 @@ public Action Timer_ProcessSpawn(Handle timer, int userid) {
 		return Plugin_Stop;
 
 	g_bIsElite[client] = true;
-    g_bBoomerIgniteVariant[client] = false;
-    g_bSpitterStealth[client] = false;
-    g_fSpitterStealthEnd[client] = 0.0;
-    g_fNextSpitterTrail[client] = 0.0;
-    g_fNextSpitterStealth[client] = GetGameTime() + g_cvEliteSpitterStealthInterval.FloatValue;
-    g_fBoomerAutoExplodeTime[client] = 0.0;
 
 	// HP mult
 	int eliteHp = RoundToFloor(float(GetEntProp(client, Prop_Data, "m_iMaxHealth")) * g_cvEliteHpMult.FloatValue);
@@ -346,18 +220,6 @@ public Action Timer_ProcessSpawn(Handle timer, int userid) {
         IgniteEntity(client, 9999.0);
     }
 
-    if (g_cvEliteSpecialEnable.BoolValue && zClass == ZC_BOOMER) {
-        if (GetRandomInt(1, 100) <= g_cvEliteBoomerIgniteChance.IntValue) {
-            g_bBoomerIgniteVariant[client] = true;
-            IgniteEntity(client, 9999.0);
-            g_fBoomerAutoExplodeTime[client] = GetGameTime() + g_cvEliteBoomerAutoExplodeTime.FloatValue;
-        }
-    }
-
-    if (g_cvEliteDebug.BoolValue) {
-        PrintToChatAll("[Elite] %N spawned as ELITE %s", client, g_ZombiesNames[zClass]);
-    }
-
 	return Plugin_Stop;
 }
 
@@ -369,15 +231,9 @@ public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	bool headshot = event.GetBool("headshot");
 	int zClass = GetEntProp(victim, Prop_Send, "m_zombieClass");
-    bool wasElite = g_bIsElite[victim];
-
-    if (g_cvEliteSpecialEnable.BoolValue && wasElite && zClass == ZC_BOOMER) {
-        // Elite boomer death burst: fling and ignite nearby survivors.
-        DoEliteBlast(victim, attacker, g_cvEliteBlastRadius.FloatValue, g_cvEliteBlastDamage.FloatValue, g_cvEliteBlastForce.FloatValue, true);
-    }
 
     // TANK DEATH -> reward ALL
-	if (bTank && zClass == ZC_TANK) {
+	if (bTank && zClass == 8) {
 		for (int i = 1; i <= MaxClients; i++) {
 			if (IsClientInGame(i) && GetClientTeam(i) == 2 && IsPlayerAlive(i) && !IsPlayerIncapped(i)) {
 				int added = GiveBonus(i, 20);
@@ -386,15 +242,12 @@ public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 				DisplayInstructorHint(i, text, "Stat_vs_Most_Damage_As_Tank");
 			}
 		}
-        ResetEliteState(victim);
 		return;
 	}
 
     // SI DEATH -> reward killer ONLY IF ELITE
 	if (bSI) {
-		if (wasElite) {
-            g_bIsElite[victim] = false; // Avoid duplicate reward call in weird event chains.
-
+		if (g_bIsElite[victim]) {
             if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker) && GetClientTeam(attacker) == 2 && IsPlayerAlive(attacker)) {
                 int aHealth = 0;
                 if (zClass == 2 || zClass == 4) aHealth = iFirst;
@@ -411,8 +264,6 @@ public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
             }
         }
 	}
-
-    ResetEliteState(victim);
 }
 
 public void OnWitchKilled(Event event, const char[] name, bool dontBroadcast) {
@@ -426,99 +277,6 @@ public void OnWitchKilled(Event event, const char[] name, bool dontBroadcast) {
         Format(text, sizeof(text), "Witch slain, bonus %i Temp HP!", added);
         DisplayInstructorHint(attacker, text, "icon_skull");
     }
-}
-
-public void OnChargerImpact(Event event, const char[] name, bool dontBroadcast) {
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return;
-    }
-
-    int charger = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidInfectedElite(charger) || GetEntProp(charger, Prop_Send, "m_zombieClass") != ZC_CHARGER) {
-        return;
-    }
-
-    int victim = GetClientOfUserId(event.GetInt("victim"));
-    DoEliteBlast(charger, charger, g_cvEliteBlastRadius.FloatValue, g_cvEliteBlastDamage.FloatValue, g_cvEliteBlastForce.FloatValue, false);
-    if (g_cvEliteDebug.BoolValue) {
-        PrintToChatAll("[Elite] Charger impact blast by %N", charger);
-    }
-
-    // "Can keep smashing incapped survivor until dead" (simulated via periodic maul damage lock-on).
-    if (IsValidSurvivor(victim) && IsPlayerAlive(victim) && IsPlayerIncapped(victim)) {
-        g_iChargerMaulTargetUserId[charger] = GetClientUserId(victim);
-        g_fNextChargerMaulTick[charger] = GetGameTime() + 0.15;
-    }
-}
-
-public void OnLungePounce(Event event, const char[] name, bool dontBroadcast) {
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return;
-    }
-
-    int hunter = GetClientOfUserId(event.GetInt("userid"));
-    int victim = GetClientOfUserId(event.GetInt("victim"));
-    if (!IsValidInfectedElite(hunter) || GetEntProp(hunter, Prop_Send, "m_zombieClass") != ZC_HUNTER) {
-        return;
-    }
-
-    // Hunter landing shockwave + bleed.
-    DoEliteBlast(hunter, hunter, g_cvEliteBlastRadius.FloatValue, g_cvEliteBlastDamage.FloatValue, g_cvEliteBlastForce.FloatValue, false);
-    if (g_cvEliteDebug.BoolValue) {
-        PrintToChatAll("[Elite] Hunter shockwave by %N", hunter);
-    }
-    if (IsValidSurvivor(victim) && IsPlayerAlive(victim)) {
-        StartBleeding(victim, hunter, g_cvEliteBleedTicks.IntValue, g_cvEliteBleedDamage.FloatValue);
-    }
-}
-
-public void OnChargerPummelStart(Event event, const char[] name, bool dontBroadcast) {
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return;
-    }
-
-    int charger = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidInfectedElite(charger) || GetEntProp(charger, Prop_Send, "m_zombieClass") != ZC_CHARGER) {
-        return;
-    }
-
-    // Reference-inspired move: on pummel start, emit another local blast.
-    DoEliteBlast(charger, charger, g_cvEliteBlastRadius.FloatValue * 0.8, g_cvEliteBlastDamage.FloatValue, g_cvEliteBlastForce.FloatValue, false);
-    EmitSoundToAll("player/charger/hit/charger_smash_02.wav", charger, SNDCHAN_AUTO, SNDLEVEL_NORMAL);
-}
-
-public void OnPlayerHurt(Event event, const char[] name, bool dontBroadcast) {
-    ProcessSpitterAcidSlowFromEvent(event);
-}
-
-public void OnPlayerIncap(Event event, const char[] name, bool dontBroadcast) {
-    ProcessSpitterAcidSlowFromEvent(event);
-}
-
-void ProcessSpitterAcidSlowFromEvent(Event event) {
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return;
-    }
-
-    int damage = event.GetInt("dmg_health");
-    if (damage < 1) {
-        return;
-    }
-    int dmgType = event.GetInt("type");
-    if (!(dmgType & DMG_RADIATION)) {
-        return;
-    }
-
-    int victim = GetClientOfUserId(event.GetInt("userid"));
-    int attacker = GetClientOfUserId(event.GetInt("attacker"));
-    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim)) {
-        return;
-    }
-    if (!IsValidInfectedElite(attacker) || GetEntProp(attacker, Prop_Send, "m_zombieClass") != ZC_SPITTER) {
-        return;
-    }
-
-    ApplySlow(victim, g_cvEliteSlowMult.FloatValue, g_cvEliteSlowDuration.FloatValue);
 }
 
 bool IsPlayerIncapped(int client) {
@@ -607,452 +365,38 @@ Action DestroyEntityOnTimer(Handle timer, any entityRef) {
 	return Plugin_Stop;
 }
 
-bool IsValidSurvivor(int client) {
-    return client > 0
-        && client <= MaxClients
-        && IsClientInGame(client)
-        && GetClientTeam(client) == TEAM_SURVIVOR;
+public any Native_L4D2_IsEliteSI(Handle plugin, int numParams)
+{
+	if (numParams < 1) {
+		return false;
+	}
+
+	int client = GetNativeCell(1);
+	return IsEliteSI(client);
 }
 
-bool IsValidInfectedElite(int client) {
-    return client > 0
-        && client <= MaxClients
-        && IsClientInGame(client)
-        && IsPlayerAlive(client)
-        && GetClientTeam(client) == TEAM_INFECTED
-        && g_bIsElite[client];
+bool IsEliteSI(int client)
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client)) {
+		return false;
+	}
+
+	return g_bIsElite[client];
 }
 
-#if defined _left4dhooks_included
-public Action L4D2_OnStagger(int client, int source) {
-    // Borrowed behavior from reference boomer plugin: prevent default boomer stagger on survivors.
-    if (IsValidSurvivor(client)
-        && source > 0 && source <= MaxClients
-        && IsClientInGame(source)
-        && GetClientTeam(source) == TEAM_INFECTED
-        && GetEntProp(source, Prop_Send, "m_zombieClass") == ZC_BOOMER
-        && g_bIsElite[source]) {
-        return Plugin_Handled;
-    }
-    return Plugin_Continue;
-}
+void ResetClientEliteState(int client)
+{
+	if (client <= 0 || client > MaxClients) {
+		return;
+	}
 
-public void L4D_OnVomitedUpon_Post(int victim, int attacker, bool boomerExplosion) {
-    if (!g_cvEliteSpecialEnable.BoolValue || !boomerExplosion) {
-        return;
-    }
-    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim) || IsPlayerIncapped(victim)) {
-        return;
-    }
-    if (!IsValidInfectedElite(attacker) || GetEntProp(attacker, Prop_Send, "m_zombieClass") != ZC_BOOMER) {
-        return;
-    }
+	g_bIsElite[client] = false;
 
-    float survivorPos[3];
-    float boomerPos[3];
-    float force[3];
-    GetClientAbsOrigin(victim, survivorPos);
-    GetClientAbsOrigin(attacker, boomerPos);
-    MakeVectorFromPoints(boomerPos, survivorPos, force);
-    NormalizeVector(force, force);
-    ScaleVector(force, g_cvEliteBlastForce.FloatValue);
-    force[2] = g_cvEliteBlastForce.FloatValue * 0.65;
+	if (!IsClientInGame(client)) {
+		return;
+	}
 
-    SetEntPropFloat(victim, Prop_Send, "m_staggerTimer", -1.0, 1);
-    L4D2_CTerrorPlayer_Fling(victim, attacker, force);
-    ShowBlastFX(survivorPos, g_cvEliteBlastRadius.FloatValue * 0.5, true);
-}
-#endif
-
-void ResetEliteState(int client) {
-    if (client < 1 || client > MaxClients) {
-        return;
-    }
-
-    if (IsClientInGame(client)) {
-        if (GetClientTeam(client) == TEAM_SURVIVOR && g_bForcedSlow[client]) {
-            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
-        }
-        if (GetClientTeam(client) == TEAM_INFECTED && g_bSpitterStealth[client]) {
-            SetEntityRenderMode(client, RENDER_TRANSCOLOR);
-            SetEntityRenderColor(client, 255, 255, 255, 255);
-        }
-    }
-
-    g_bIsElite[client] = false;
-    g_bBoomerIgniteVariant[client] = false;
-    g_bSpitterStealth[client] = false;
-    g_bForcedSlow[client] = false;
-    g_fSpitterStealthEnd[client] = 0.0;
-    g_fNextSpitterStealth[client] = 0.0;
-    g_fNextSpitterTrail[client] = 0.0;
-    g_fBoomerAutoExplodeTime[client] = 0.0;
-    g_fSlowEndTime[client] = 0.0;
-    g_fSlowMultiplier[client] = 1.0;
-    g_fNextAcidTick[client] = 0.0;
-    g_fNextChargerMaulTick[client] = 0.0;
-    g_iChargerMaulTargetUserId[client] = 0;
-}
-
-void ClearAllAcidPools() {
-    for (int i = 0; i < MAX_ACID_POOLS; i++) {
-        g_fAcidExpireTime[i] = 0.0;
-        g_fAcidNextFxTime[i] = 0.0;
-        g_iAcidOwnerUserId[i] = 0;
-        g_fAcidPosX[i] = 0.0;
-        g_fAcidPosY[i] = 0.0;
-        g_fAcidPosZ[i] = 0.0;
-    }
-}
-
-void SpawnAcidPool(float pos[3], int owner, float duration) {
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return;
-    }
-
-    int slot = -1;
-    for (int i = 0; i < MAX_ACID_POOLS; i++) {
-        if (g_fAcidExpireTime[i] <= GetGameTime()) {
-            slot = i;
-            break;
-        }
-    }
-    if (slot == -1) {
-        return;
-    }
-
-    g_fAcidPosX[slot] = pos[0];
-    g_fAcidPosY[slot] = pos[1];
-    g_fAcidPosZ[slot] = pos[2];
-    g_fAcidExpireTime[slot] = GetGameTime() + duration;
-    g_fAcidNextFxTime[slot] = 0.0;
-    g_iAcidOwnerUserId[slot] = (owner > 0 && owner <= MaxClients) ? GetClientUserId(owner) : 0;
-    ShowAcidPoolFX(pos);
-
-    if (g_cvEliteDebug.BoolValue && owner > 0 && owner <= MaxClients && IsClientInGame(owner)) {
-        PrintToChatAll("[Elite] Spitter acid pool created by %N", owner);
-    }
-}
-
-void ApplySlow(int client, float slowMult, float duration) {
-    if (!IsValidSurvivor(client) || !IsPlayerAlive(client)) {
-        return;
-    }
-
-    if (slowMult < 0.15) {
-        slowMult = 0.15;
-    }
-    if (slowMult > 1.0) {
-        slowMult = 1.0;
-    }
-
-    if (!g_bForcedSlow[client] || slowMult < g_fSlowMultiplier[client]) {
-        g_fSlowMultiplier[client] = slowMult;
-    }
-    float newEnd = GetGameTime() + duration;
-    if (newEnd > g_fSlowEndTime[client]) {
-        g_fSlowEndTime[client] = newEnd;
-    }
-    g_bForcedSlow[client] = true;
-    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fSlowMultiplier[client]);
-}
-
-void StartBleeding(int victim, int attacker, int ticks, float damagePerTick) {
-    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim) || ticks <= 0 || damagePerTick <= 0.0) {
-        return;
-    }
-
-    DataPack pack;
-    CreateDataTimer(1.0, Timer_BleedTick, pack, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-    pack.WriteCell(GetClientUserId(victim));
-    pack.WriteCell((attacker > 0 && attacker <= MaxClients) ? GetClientUserId(attacker) : 0);
-    pack.WriteFloat(damagePerTick);
-    pack.WriteCell(ticks);
-}
-
-public Action Timer_BleedTick(Handle timer, DataPack pack) {
-    pack.Reset();
-    int victimUserId = pack.ReadCell();
-    int attackerUserId = pack.ReadCell();
-    float damagePerTick = pack.ReadFloat();
-    int ticks = pack.ReadCell();
-
-    int victim = GetClientOfUserId(victimUserId);
-    int attacker = GetClientOfUserId(attackerUserId);
-    if (!IsValidSurvivor(victim) || !IsPlayerAlive(victim)) {
-        return Plugin_Stop;
-    }
-
-    SDKHooks_TakeDamage(victim, attacker > 0 ? attacker : 0, attacker > 0 ? attacker : 0, damagePerTick, DMG_POISON);
-
-    ticks--;
-    if (ticks <= 0) {
-        return Plugin_Stop;
-    }
-
-    pack.Reset();
-    pack.WriteCell(victimUserId);
-    pack.WriteCell(attackerUserId);
-    pack.WriteFloat(damagePerTick);
-    pack.WriteCell(ticks);
-    return Plugin_Continue;
-}
-
-void DoEliteBlast(int sourceClient, int attacker, float radius, float damage, float force, bool igniteVictims) {
-    float sourcePos[3];
-    if (sourceClient <= 0 || sourceClient > MaxClients || !IsClientInGame(sourceClient)) {
-        return;
-    }
-    GetClientAbsOrigin(sourceClient, sourcePos);
-    ShowBlastFX(sourcePos, radius, igniteVictims);
-
-    for (int i = 1; i <= MaxClients; i++) {
-        if (!IsValidSurvivor(i) || !IsPlayerAlive(i)) {
-            continue;
-        }
-
-        float targetPos[3];
-        GetClientAbsOrigin(i, targetPos);
-        float dist = GetVectorDistance(sourcePos, targetPos);
-        if (dist > radius) {
-            continue;
-        }
-
-        SDKHooks_TakeDamage(i, attacker > 0 ? attacker : 0, attacker > 0 ? attacker : 0, damage, DMG_BLAST);
-
-        float push[3];
-        push[0] = targetPos[0] - sourcePos[0];
-        push[1] = targetPos[1] - sourcePos[1];
-        push[2] = 0.0;
-        NormalizeVector(push, push);
-        ScaleVector(push, force);
-        push[2] = force * 0.35;
-        TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, push);
-
-        if (igniteVictims) {
-            IgniteEntity(i, 2.5);
-        }
-    }
-}
-
-void EnterSpitterStealth(int client) {
-    if (!IsValidInfectedElite(client) || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER) {
-        return;
-    }
-
-    g_bSpitterStealth[client] = true;
-    g_fSpitterStealthEnd[client] = GetGameTime() + g_cvEliteSpitterStealthDuration.FloatValue;
-    ShowStealthFX(client, true);
-    SetEntityRenderMode(client, RENDER_TRANSCOLOR);
-    SetEntityRenderColor(client, 255, 255, 255, 45);
-    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvEliteSpeed.FloatValue * 1.35);
-
-    if (g_cvEliteDebug.BoolValue) {
-        PrintToChatAll("[Elite] Spitter stealth ON: %N", client);
-    }
-}
-
-void ExitSpitterStealth(int client) {
-    if (client < 1 || client > MaxClients || !IsClientInGame(client)) {
-        return;
-    }
-
-    g_bSpitterStealth[client] = false;
-    g_fSpitterStealthEnd[client] = 0.0;
-    ShowStealthFX(client, false);
-
-    int zClass = GetEntProp(client, Prop_Send, "m_zombieClass");
-    if (zClass >= 1 && zClass <= 6) {
-        SetEntityRenderMode(client, RENDER_TRANSCOLOR);
-        SetEntityRenderColor(client, ELITE_COLORS[zClass - 1][0], ELITE_COLORS[zClass - 1][1], ELITE_COLORS[zClass - 1][2], 255);
-    } else {
-        SetEntityRenderMode(client, RENDER_TRANSCOLOR);
-        SetEntityRenderColor(client, 255, 255, 255, 255);
-    }
-
-    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvEliteSpeed.FloatValue);
-
-    if (g_cvEliteDebug.BoolValue && IsClientInGame(client)) {
-        PrintToChatAll("[Elite] Spitter stealth OFF: %N", client);
-    }
-}
-
-bool IsClientMovingFast(int client, float minSpeed2D) {
-    float vel[3];
-    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
-    float speed2D = SquareRoot((vel[0] * vel[0]) + (vel[1] * vel[1]));
-    return speed2D >= minSpeed2D;
-}
-
-void ShowBlastFX(float origin[3], float radius, bool fireVariant) {
-    if (g_iBeamSprite == -1 || g_iHaloSprite == -1) {
-        return;
-    }
-
-    int r = fireVariant ? 255 : 80;
-    int g = fireVariant ? 120 : 180;
-    int b = fireVariant ? 20 : 255;
-    int color[4];
-    color[0] = r;
-    color[1] = g;
-    color[2] = b;
-    color[3] = 255;
-    TE_SetupBeamRingPoint(origin, 10.0, radius, g_iBeamSprite, g_iHaloSprite, 0, 10, 0.45, 10.0, 1.0, color, 0, 0);
-    TE_SendToAll();
-
-    if (g_iExplodeSprite != -1) {
-        TE_SetupExplosion(origin, g_iExplodeSprite, 0.9, 1, 0, 0, RoundToFloor(radius));
-        TE_SendToAll();
-    }
-
-    EmitAmbientSound("ambient/explosions/explode_8.wav", origin, SOUND_FROM_WORLD, SNDLEVEL_NORMAL);
-}
-
-void ShowAcidPoolFX(float origin[3]) {
-    if (g_iBeamSprite == -1 || g_iHaloSprite == -1) {
-        return;
-    }
-
-    int color[4];
-    color[0] = 30;
-    color[1] = 255;
-    color[2] = 80;
-    color[3] = 220;
-    TE_SetupBeamRingPoint(origin, 12.0, g_cvEliteAcidRadius.FloatValue, g_iBeamSprite, g_iHaloSprite, 0, 10, 0.35, 5.0, 0.6, color, 0, 0);
-    TE_SendToAll();
-}
-
-void ShowStealthFX(int client, bool entering) {
-    if (!IsClientInGame(client)) {
-        return;
-    }
-
-    float pos[3];
-    GetClientAbsOrigin(client, pos);
-    if (g_iBeamSprite != -1 && g_iHaloSprite != -1) {
-        int color[4];
-        if (entering) {
-            color[0] = 180; color[1] = 255; color[2] = 255; color[3] = 220;
-            TE_SetupBeamRingPoint(pos, 8.0, 130.0, g_iBeamSprite, g_iHaloSprite, 0, 8, 0.25, 6.0, 0.5, color, 0, 0);
-        } else {
-            color[0] = 255; color[1] = 255; color[2] = 255; color[3] = 180;
-            TE_SetupBeamRingPoint(pos, 8.0, 90.0, g_iBeamSprite, g_iHaloSprite, 0, 8, 0.2, 4.0, 0.4, color, 0, 0);
-        }
-        TE_SendToAll();
-    }
-
-    EmitSoundToAll("player/spitter/voice/warn/spitter_spot06.wav", client, SNDCHAN_AUTO, SNDLEVEL_NORMAL);
-}
-
-public Action Timer_EliteThink(Handle timer) {
-    float now = GetGameTime();
-
-    // Restore survivors when slow expires.
-    for (int i = 1; i <= MaxClients; i++) {
-        if (!g_bForcedSlow[i]) {
-            continue;
-        }
-        if (!IsValidSurvivor(i) || !IsPlayerAlive(i) || now >= g_fSlowEndTime[i]) {
-            if (IsValidSurvivor(i)) {
-                SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
-            }
-            g_bForcedSlow[i] = false;
-            g_fSlowEndTime[i] = 0.0;
-            g_fSlowMultiplier[i] = 1.0;
-        }
-    }
-
-    // Acid pool damage + slow.
-    float acidRadius = g_cvEliteAcidRadius.FloatValue;
-    for (int p = 0; p < MAX_ACID_POOLS; p++) {
-        if (g_fAcidExpireTime[p] <= 0.0) {
-            continue;
-        }
-        if (now >= g_fAcidExpireTime[p]) {
-            g_fAcidExpireTime[p] = 0.0;
-            continue;
-        }
-
-        float acidPos[3];
-        acidPos[0] = g_fAcidPosX[p];
-        acidPos[1] = g_fAcidPosY[p];
-        acidPos[2] = g_fAcidPosZ[p];
-
-        if (now >= g_fAcidNextFxTime[p]) {
-            ShowAcidPoolFX(acidPos);
-            g_fAcidNextFxTime[p] = now + 1.0;
-        }
-
-        for (int s = 1; s <= MaxClients; s++) {
-            if (!IsValidSurvivor(s) || !IsPlayerAlive(s)) {
-                continue;
-            }
-
-            float pos[3];
-            GetClientAbsOrigin(s, pos);
-            if (GetVectorDistance(pos, acidPos) > acidRadius) {
-                continue;
-            }
-            if (now < g_fNextAcidTick[s]) {
-                continue;
-            }
-
-            int owner = GetClientOfUserId(g_iAcidOwnerUserId[p]);
-            SDKHooks_TakeDamage(s, owner > 0 ? owner : 0, owner > 0 ? owner : 0, g_cvEliteAcidTickDamage.FloatValue, DMG_POISON);
-            ApplySlow(s, g_cvEliteSlowMult.FloatValue, g_cvEliteSlowDuration.FloatValue);
-            g_fNextAcidTick[s] = now + 0.45;
-        }
-    }
-
-    if (!g_cvEliteSpecialEnable.BoolValue) {
-        return Plugin_Continue;
-    }
-
-    // Per-elite passive move logic.
-    for (int i = 1; i <= MaxClients; i++) {
-        if (!IsValidInfectedElite(i)) {
-            continue;
-        }
-
-        int zClass = GetEntProp(i, Prop_Send, "m_zombieClass");
-        if (zClass == ZC_BOOMER) {
-            // Keep boomer mobile even during vomit animation.
-            SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", g_cvEliteSpeed.FloatValue * 1.20);
-
-            if (g_bBoomerIgniteVariant[i] && g_fBoomerAutoExplodeTime[i] > 0.0 && now >= g_fBoomerAutoExplodeTime[i]) {
-                g_fBoomerAutoExplodeTime[i] = 0.0;
-                if (g_cvEliteDebug.BoolValue) {
-                    PrintToChatAll("[Elite] Boomer auto explode: %N", i);
-                }
-                ForcePlayerSuicide(i);
-            }
-        } else if (zClass == ZC_SPITTER) {
-            if (!g_bSpitterStealth[i] && now >= g_fNextSpitterStealth[i]) {
-                EnterSpitterStealth(i);
-                g_fNextSpitterStealth[i] = now + g_cvEliteSpitterStealthInterval.FloatValue;
-            } else if (g_bSpitterStealth[i] && now >= g_fSpitterStealthEnd[i]) {
-                ExitSpitterStealth(i);
-            }
-
-            if (now >= g_fNextSpitterTrail[i] && IsClientMovingFast(i, 75.0)) {
-                float spitPos[3];
-                GetClientAbsOrigin(i, spitPos);
-                SpawnAcidPool(spitPos, i, g_cvEliteAcidDuration.FloatValue);
-                g_fNextSpitterTrail[i] = now + g_cvEliteAcidTrailInterval.FloatValue;
-            }
-        } else if (zClass == ZC_CHARGER) {
-            int target = GetClientOfUserId(g_iChargerMaulTargetUserId[i]);
-            if (IsValidSurvivor(target) && IsPlayerAlive(target) && IsPlayerIncapped(target)) {
-                if (now >= g_fNextChargerMaulTick[i]) {
-                    SDKHooks_TakeDamage(target, i, i, g_cvEliteChargerMaulDamage.FloatValue, DMG_CLUB);
-                    g_fNextChargerMaulTick[i] = now + g_cvEliteChargerMaulTick.FloatValue;
-                }
-            } else {
-                g_iChargerMaulTargetUserId[i] = 0;
-                g_fNextChargerMaulTick[i] = 0.0;
-            }
-        }
-    }
-
-    return Plugin_Continue;
+	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+	SetEntityRenderMode(client, RENDER_NORMAL);
+	SetEntityRenderColor(client, 255, 255, 255, 255);
 }

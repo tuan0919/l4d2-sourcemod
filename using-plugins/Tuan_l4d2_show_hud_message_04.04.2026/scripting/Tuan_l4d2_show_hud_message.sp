@@ -1,9 +1,9 @@
-#define PLUGIN_VERSION		"1.2.0"
+#define PLUGIN_VERSION		"1.3.0-tuan-gearpatch"
 #define PLUGIN_PREFIX		"l4d2_"
 #define PLUGIN_NAME			"show_hud_messages"
-#define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD"
-#define PLUGIN_DESCRIPTION	"show extra death messages those not included by game"
-#define PLUGIN_AUTHOR		"nqat0919"
+#define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD [GearPatch]"
+#define PLUGIN_DESCRIPTION	"show extra death messages + global HUD feedback with short bracket names"
+#define PLUGIN_AUTHOR		"nqat0919 | Patch: Roo for Tuan (2026-04-06)"
 #define PLUGIN_LINK			""
 
 #pragma newdecls required
@@ -24,6 +24,15 @@ public Plugin myinfo = {
 	version			= PLUGIN_VERSION,
 	url				= PLUGIN_LINK
 };
+
+/*
+ * Patch Changelog:
+ * - 1.3.0-tuan-gearpatch (2026-04-06)
+ *   + Added support for gear transfer HUD feedback from custom gives and game-native pills/adrenaline gives.
+ *   + Force player names in all HUD feedback messages to always render as bracketed format: [name].
+ *   + Added name shortening for long names in HUD-safe style.
+ *   + Marked plugin metadata (name/version/author/description) for easier identification.
+ */
 
 // noro.inc start
 #define HUD_FLAG_NONE                 0     // no flag
@@ -134,7 +143,7 @@ static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
 static float g_fEliteKillSuppressUntil;
-#define HUD_GEAR_NAME_VISIBLE 14
+#define HUD_NAME_VISIBLE 14
 
 enum struct HUD
 {
@@ -199,28 +208,36 @@ public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, ch
 			return;
 		}
 
+		char attacker_name_fmt[32];
+		char victim_name_fmt[32];
+		FormatHudNameFromRaw(attacker_name, attacker_name_fmt, sizeof(attacker_name_fmt));
+		FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
+
 		if (isSelf) {
-			FormatEx(output, sizeof(output), "%s suicide", attacker_name);
+			FormatEx(output, sizeof(output), "%s suicide", attacker_name_fmt);
 			DisplayKillHUD(output);
 		} else {
-			FormatEx(output, sizeof(output), "%s killed %s", attacker_name, victim_name);
+			FormatEx(output, sizeof(output), "%s killed %s", attacker_name_fmt, victim_name_fmt);
 			DisplayKillHUD(output);
 		}
 	}
 }
 
 public void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name) {
+	char victim_name_fmt[32];
+	FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
+
 	if (StrEqual(weapon_name, "Flame")) {
-		FormatEx(output, sizeof(output), "%s died by flame", victim_name);
+		FormatEx(output, sizeof(output), "%s died by flame", victim_name_fmt);
 	}
 	else if (StrEqual(weapon_name, "Explosion")) {
-		FormatEx(output, sizeof(output), "%s died by explosion", victim_name);
+		FormatEx(output, sizeof(output), "%s died by explosion", victim_name_fmt);
 	}
 	else if (StrEqual(weapon_name, "Falling")) {
-		FormatEx(output, sizeof(output), "%s died by falling", victim_name);
+		FormatEx(output, sizeof(output), "%s died by falling", victim_name_fmt);
 	}
 	else if (StrEqual(weapon_name, "Bleeding")) {
-		FormatEx(output, sizeof(output), "%s died by bleeding", victim_name);
+		FormatEx(output, sizeof(output), "%s died by bleeding", victim_name_fmt);
 	}
 	DisplayKillHUD(output);
 }
@@ -228,65 +245,88 @@ public void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name
 public void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
+		char attacker_name_fmt[32];
+		char victim_name_fmt[32];
+		FormatHudNameFromRaw(attacker_name, attacker_name_fmt, sizeof(attacker_name_fmt));
+		FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
+
 		if (isSelf) {
-			FormatEx(output, sizeof(output), "%s self-incapacitated", attacker_name);
+			FormatEx(output, sizeof(output), "%s self-incapacitated", attacker_name_fmt);
 		} else {
-			FormatEx(output, sizeof(output), "%s incapacitated %s", attacker_name, victim_name);
+			FormatEx(output, sizeof(output), "%s incapacitated %s", attacker_name_fmt, victim_name_fmt);
 		}
 		DisplayInfoHUD(output);
 	}
 }
 
 public void Tuan_OnClient_IncappedByUnknown(char[] victim_name, char[] weapon_name) {
+	char victim_name_fmt[32];
+	FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
+
 	if (StrEqual(weapon_name, "Flame")) {
-		FormatEx(output, sizeof(output), "%s incapacitated by flame", victim_name);
+		FormatEx(output, sizeof(output), "%s incapacitated by flame", victim_name_fmt);
 	}
 	else if (StrEqual(weapon_name, "Explosion")) {
-		FormatEx(output, sizeof(output), "%s incapacitated by explosion`", victim_name);
+		FormatEx(output, sizeof(output), "%s incapacitated by explosion`", victim_name_fmt);
 	}
 	else if (StrEqual(weapon_name, "Falling")) {
-		FormatEx(output, sizeof(output), "%s incapacitated by falling", victim_name);
+		FormatEx(output, sizeof(output), "%s incapacitated by falling", victim_name_fmt);
 	}
 	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_UsedThrowable(int client, int throwable_type) {
+	char client_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+
 	switch (throwable_type) {
 		case 0: {
-			FormatEx(output, sizeof(output), "%N thrown molotov", client);
+			FormatEx(output, sizeof(output), "%s thrown molotov", client_name_fmt);
 			DisplayInfoHUD(output);
 		}
 		case 1: {
-			FormatEx(output, sizeof(output), "%N thrown pipebomb", client);
+			FormatEx(output, sizeof(output), "%s thrown pipebomb", client_name_fmt);
 			DisplayInfoHUD(output);
 		}
 		case 2: {
-			FormatEx(output, sizeof(output), "%N thrown vomitjar", client);
+			FormatEx(output, sizeof(output), "%s thrown vomitjar", client_name_fmt);
 			DisplayInfoHUD(output);
 		}
 	}
 }
 
 public void Tuan_OnClient_HealedOther(int client, int victim) {
+	char client_name_fmt[32];
+	char victim_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+	FormatHudNameFromClient(victim, victim_name_fmt, sizeof(victim_name_fmt));
+
 	if (client == victim) {
-		FormatEx(output, sizeof(output), "%N healed himself and no longer at last life.", client);
+		FormatEx(output, sizeof(output), "%s healed himself and no longer at last life.", client_name_fmt);
 	} else {
-		FormatEx(output, sizeof(output), "%N was healed by %N and no longer at last life.", victim, client);
+		FormatEx(output, sizeof(output), "%s was healed by %s and no longer at last life.", victim_name_fmt, client_name_fmt);
 	}
 	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_GoBnW(int client) {
-	FormatEx(output, sizeof(output), "%N is at last life", client);
+	char client_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+	FormatEx(output, sizeof(output), "%s is at last life", client_name_fmt);
 	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_RevivedOther(int client, int target) {
+	char client_name_fmt[32];
+	char target_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+	FormatHudNameFromClient(target, target_name_fmt, sizeof(target_name_fmt));
+
 	if (client == target) {
-		FormatEx(output, sizeof(output), "%N self get up", client);
+		FormatEx(output, sizeof(output), "%s self get up", client_name_fmt);
 		DisplayInfoHUD(output);
 	} else {
-		FormatEx(output, sizeof(output), "%N helped %N to get up", client, target);
+		FormatEx(output, sizeof(output), "%s helped %s to get up", client_name_fmt, target_name_fmt);
 		DisplayInfoHUD(output);
 	}
 }
@@ -334,18 +374,33 @@ void HUDSetLayout(int slot, int flags, const char[] dataval, any ...) {
 	GameRules_SetPropString("m_szScriptedHUDStringSet", str, true, slot);
 }
 
+void GetShortHudNameFromRaw(const char[] name, char[] buffer, int maxlen) {
+	if (strlen(name) > HUD_NAME_VISIBLE) {
+		char short_name[HUD_NAME_VISIBLE + 1];
+		strcopy(short_name, sizeof(short_name), name);
+		short_name[HUD_NAME_VISIBLE] = '\0';
+		FormatEx(buffer, maxlen, "%s...", short_name);
+	} else {
+		strcopy(buffer, maxlen, name);
+	}
+}
+
 void GetShortHudClientName(int client, char[] buffer, int maxlen) {
 	char name[MAX_NAME_LENGTH];
 	GetClientName(client, name, sizeof(name));
+	GetShortHudNameFromRaw(name, buffer, maxlen);
+}
 
-	if (strlen(name) > HUD_GEAR_NAME_VISIBLE) {
-		char short_name[HUD_GEAR_NAME_VISIBLE + 1];
-		strcopy(short_name, sizeof(short_name), name);
-		short_name[HUD_GEAR_NAME_VISIBLE] = '\0';
-		FormatEx(buffer, maxlen, "[%s...]", short_name);
-	} else {
-		FormatEx(buffer, maxlen, "[%s]", name);
-	}
+void FormatHudNameFromRaw(const char[] name, char[] buffer, int maxlen) {
+	char short_name[64];
+	GetShortHudNameFromRaw(name, short_name, sizeof(short_name));
+	FormatEx(buffer, maxlen, "[%s]", short_name);
+}
+
+void FormatHudNameFromClient(int client, char[] buffer, int maxlen) {
+	char short_name[64];
+	GetShortHudClientName(client, short_name, sizeof(short_name));
+	FormatEx(buffer, maxlen, "[%s]", short_name);
 }
 
 void GetGearTransferWeaponNameById(int weaponid, char[] buffer, int maxlen) {
@@ -359,8 +414,8 @@ void GetGearTransferWeaponNameById(int weaponid, char[] buffer, int maxlen) {
 void FormatGearTransferGiveMessage(int client, int target, const char[] weapon_name, char[] buffer, int maxlen) {
 	char giver_name[32];
 	char receiver_name[32];
-	GetShortHudClientName(client, giver_name, sizeof(giver_name));
-	GetShortHudClientName(target, receiver_name, sizeof(receiver_name));
+	FormatHudNameFromClient(client, giver_name, sizeof(giver_name));
+	FormatHudNameFromClient(target, receiver_name, sizeof(receiver_name));
 	FormatEx(buffer, maxlen, "%s give %s to %s", giver_name, weapon_name, receiver_name);
 }
 
@@ -392,9 +447,13 @@ public void GearTransfer_OnWeaponGrab(int client, int target, int item) {
 	if (IsClient(target)) {
 		L4D2WeaponId weaponId = L4D2_GetWeaponId(item);
 		char weapon_name[64];
+		char client_name_fmt[32];
+		char target_name_fmt[32];
 		L4D2_GetWeaponNameByWeaponId(weaponId, weapon_name, sizeof(weapon_name));
 		mapWeaponName.GetString(weapon_name, weapon_name, sizeof(weapon_name));
-		FormatEx(output, sizeof(output), "%N grabbed %s from %N", client, weapon_name, target);
+		FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+		FormatHudNameFromClient(target, target_name_fmt, sizeof(target_name_fmt));
+		FormatEx(output, sizeof(output), "%s grabbed %s from %s", client_name_fmt, weapon_name, target_name_fmt);
 		DisplayInfoHUD(output);
 	}
 }
@@ -404,11 +463,15 @@ public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int
 	L4D2WeaponId takenWeaponId = L4D2_GetWeaponId(itemTaken);
 	char given_weapon_name[64];
 	char taken_weapon_name[64];
+	char client_name_fmt[32];
+	char target_name_fmt[32];
 	L4D2_GetWeaponNameByWeaponId(givenWeaponId, given_weapon_name, sizeof(given_weapon_name));
 	L4D2_GetWeaponNameByWeaponId(takenWeaponId, taken_weapon_name, sizeof(taken_weapon_name));
 	mapWeaponName.GetString(given_weapon_name, given_weapon_name, sizeof(given_weapon_name));
 	mapWeaponName.GetString(taken_weapon_name, taken_weapon_name, sizeof(taken_weapon_name));
-	FormatEx(output, sizeof(output), "%N swap %s for %s with %N", client, given_weapon_name, taken_weapon_name, target);
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+	FormatHudNameFromClient(target, target_name_fmt, sizeof(target_name_fmt));
+	FormatEx(output, sizeof(output), "%s swap %s for %s with %s", client_name_fmt, given_weapon_name, taken_weapon_name, target_name_fmt);
 	DisplayInfoHUD(output);
 }
 
@@ -456,7 +519,11 @@ void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
 	client = GetClientOfUserId(client);
 	subject = GetClientOfUserId(subject);
 	if (client > 0 && subject > 0) {
-		FormatEx(output, sizeof(output), "%N brought %N back from dead", client, subject);
+		char client_name_fmt[32];
+		char subject_name_fmt[32];
+		FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+		FormatHudNameFromClient(subject, subject_name_fmt, sizeof(subject_name_fmt));
+		FormatEx(output, sizeof(output), "%s brought %s back from dead", client_name_fmt, subject_name_fmt);
 		DisplayInfoHUD(output);
 	}
 }
@@ -482,7 +549,9 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		zClass = 0;
 	}
 
-	FormatEx(output, sizeof(output), "%N killed Elite %s", attacker, SI_CLASS_NAMES[zClass]);
+	char attacker_name_fmt[32];
+	FormatHudNameFromClient(attacker, attacker_name_fmt, sizeof(attacker_name_fmt));
+	FormatEx(output, sizeof(output), "%s killed Elite %s", attacker_name_fmt, SI_CLASS_NAMES[zClass]);
 	DisplayKillHUD(output);
 	GetClientName(attacker, g_sLastEliteKiller, sizeof(g_sLastEliteKiller));
 	strcopy(g_sLastEliteVictim, sizeof(g_sLastEliteVictim), SI_CLASS_NAMES[zClass]);
@@ -490,52 +559,55 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 }
 
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
+	char client_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+
 	switch (object_type) {
 		case TYPE_GASCAN:
         {
-			FormatEx(output, sizeof(output), "%N exploded a gascan", client);
+			FormatEx(output, sizeof(output), "%s exploded a gascan", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_FUEL_BARREL:
         {
-			FormatEx(output, sizeof(output), "%N exploded a fuel barrel", client);
+			FormatEx(output, sizeof(output), "%s exploded a fuel barrel", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_PROPANECANISTER:
         {
-			FormatEx(output, sizeof(output), "%N exploded a propane canister", client);
+			FormatEx(output, sizeof(output), "%s exploded a propane canister", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_OXYGENTANK:
         {
-			FormatEx(output, sizeof(output), "%N exploded an oxygen tank", client);
+			FormatEx(output, sizeof(output), "%s exploded an oxygen tank", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_BARRICADE_GASCAN:
         {
-			FormatEx(output, sizeof(output), "%N exploded a barricade gascan", client);
+			FormatEx(output, sizeof(output), "%s exploded a barricade gascan", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_GAS_PUMP:
         {
-			FormatEx(output, sizeof(output), "%N exploded a gas pump", client);
+			FormatEx(output, sizeof(output), "%s exploded a gas pump", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_FIREWORKS_CRATE:
         {
-			FormatEx(output, sizeof(output), "%N exploded a fireworks crate", client);
+			FormatEx(output, sizeof(output), "%s exploded a fireworks crate", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 
         case TYPE_OIL_DRUM_EXPLOSIVE:
         {
-			FormatEx(output, sizeof(output), "%N exploded an oil drum", client);
+			FormatEx(output, sizeof(output), "%s exploded an oil drum", client_name_fmt);
 			DisplayInfoHUD(output);
         }
 	}

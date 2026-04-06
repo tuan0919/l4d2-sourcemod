@@ -53,10 +53,9 @@ public Plugin myinfo = {
 #define HUD_WIDTH	0.7
 #define HUD_SLOT	4
 #define HUD_POSITION_X 0.0
-#define STATS_HUD_CHANNEL 5
 #define STATS_HUD_INTERVAL 0.5
-#define STATS_HUD_X 0.74
-#define STATS_HUD_Y 0.05
+#define STATS_HUD_X 0.72
+#define STATS_HUD_Y 0.08
 #define STATS_HUD_HOLD 0.55
 #define CLASSNAME_INFECTED            "Infected"
 #define CLASSNAME_WITCH               "witch"
@@ -152,6 +151,7 @@ enum struct HUD
 
 ArrayList g_hud_info;
 Handle g_hHudDecreaseTimer;
+Handle g_hStatsHudSync;
 StringMap mapWeaponName;
 bool g_bEliteNativeAvailable;
 int g_iCIKills[MAXPLAYERS + 1];
@@ -167,6 +167,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	g_hud_info = new ArrayList(ByteCountToCells(128));
+	g_hStatsHudSync = CreateHudSynchronizer();
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
@@ -309,6 +310,13 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
 
 	delete g_hHudDecreaseTimer;
 	ResetAllStats();
+
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (IsClient(client)) {
+			ClearSyncHud(client, g_hStatsHudSync);
+		}
+	}
 }
 
 public void OnMapEnd() {
@@ -567,8 +575,8 @@ Action Timer_UpdatePersonalStatsHud(Handle timer)
 			continue;
 		}
 
-		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 200, 255, 200, 255);
-		ShowHudText(client, STATS_HUD_CHANNEL, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
+		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 255, 255, 255, 255);
+		ShowSyncHudText(client, g_hStatsHudSync, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
 	}
 	return Plugin_Continue;
 }

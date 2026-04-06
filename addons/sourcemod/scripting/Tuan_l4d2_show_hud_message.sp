@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION		"1.0"
+#define PLUGIN_VERSION		"1.2.0"
 #define PLUGIN_PREFIX		"l4d2_"
 #define PLUGIN_NAME			"show_hud_messages"
 #define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD"
@@ -44,20 +44,18 @@ public Plugin myinfo = {
 #define HUD_FLAG_UNKNOWN1             4096  // ?
 #define HUD_FLAG_TEXT                 8192  // ?
 #define HUD_FLAG_NOTVISIBLE           16384 // if you want to keep the slot data but keep it from displaying
-#define KILL_HUD_BASE 9
-#define KILL_INFO_MAX 6
+#define HUD_FEED_MAX 6
+#define LEFT_FEED_BASE 9
+#define RIGHT_KILL_BASE 2
+#define PLAYERCOUNT_SLOT 0
 #define IsClient(%1) ((1 <= %1 <= MaxClients) && IsClientInGame(%1))
 #define L4D2_ZOMBIECLASS_TANK		8
-#define MAX_HUD_NUMBER	4
 #define HUD_TIMEOUT	5.0
-#define HUD_WIDTH	0.7
-#define HUD_SLOT	4
-#define HUD_POSITION_X 0.0
-#define STATS_HUD_INTERVAL 0.5
-#define STATS_HUD_X 0.72
-#define STATS_HUD_Y 0.08
-#define STATS_HUD_HOLD 0.55
-#define CLASSNAME_INFECTED            "Infected"
+#define PLAYERCOUNT_INTERVAL 1.0
+#define PLAYERCOUNT_X 0.72
+#define PLAYERCOUNT_Y 0.03
+#define PLAYERCOUNT_W 0.28
+#define PLAYERCOUNT_H 0.04
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
 #define TEAM_INFECTED		3
@@ -109,29 +107,29 @@ static const char WEAPON_NAMES_VALUEs[][] = {
 	"defibrillator"
 };
 
-static float g_HUDpos[][] = {
-    {0.00,0.00,0.00,0.00}, // 0
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-    {0.00,0.00,0.00,0.00},
-	{0.00,0.00,0.00,0.00},
-
-    // kill list
-	// {x, y, width, height}
-    {HUD_POSITION_X,0.04,HUD_WIDTH,0.04}, // 9
-    {HUD_POSITION_X,0.08,HUD_WIDTH,0.04}, // 10
-    {HUD_POSITION_X,0.12,HUD_WIDTH,0.04},
-    {HUD_POSITION_X,0.16,HUD_WIDTH,0.04},
-    {HUD_POSITION_X,0.20,HUD_WIDTH,0.04},
-    {HUD_POSITION_X,0.24,HUD_WIDTH,0.04}, // 14
+static float g_LeftHUDPos[HUD_FEED_MAX][4] = {
+	{0.00, 0.04, 0.70, 0.04},
+	{0.00, 0.08, 0.70, 0.04},
+	{0.00, 0.12, 0.70, 0.04},
+	{0.00, 0.16, 0.70, 0.04},
+	{0.00, 0.20, 0.70, 0.04},
+	{0.00, 0.24, 0.70, 0.04}
 };
 
-static int g_iHUDFlags_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
-static int g_iHUDFlags_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
+static float g_RightKillHUDPos[HUD_FEED_MAX][4] = {
+	{0.58, 0.08, 0.40, 0.04},
+	{0.58, 0.12, 0.40, 0.04},
+	{0.58, 0.16, 0.40, 0.04},
+	{0.58, 0.20, 0.40, 0.04},
+	{0.58, 0.24, 0.40, 0.04},
+	{0.58, 0.28, 0.40, 0.04}
+};
+
+static int g_iHUDFlags_Left_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_Left_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
+static int g_iHUDFlags_Right_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
+static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
@@ -149,14 +147,12 @@ enum struct HUD
 	}
 }
 
-ArrayList g_hud_info;
-Handle g_hHudDecreaseTimer;
-Handle g_hStatsHudSync;
+ArrayList g_hud_info_left;
+ArrayList g_hud_kill_right;
+Handle g_hInfoHudDecreaseTimer;
+Handle g_hKillHudDecreaseTimer;
 StringMap mapWeaponName;
 bool g_bEliteNativeAvailable;
-int g_iCIKills[MAXPLAYERS + 1];
-int g_iSIKills[MAXPLAYERS + 1];
-int g_iTotalFF[MAXPLAYERS + 1];
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -166,8 +162,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
-	g_hud_info = new ArrayList(ByteCountToCells(128));
-	g_hStatsHudSync = CreateHudSynchronizer();
+	g_hud_info_left = new ArrayList(ByteCountToCells(128));
+	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
@@ -175,10 +171,7 @@ public void OnPluginStart() {
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
-	HookEvent("player_death", Event_PlayerDeath_Stats, EventHookMode_Post);
-	HookEvent("player_hurt", Event_PlayerHurt_Stats, EventHookMode_Post);
-
-	CreateTimer(STATS_HUD_INTERVAL, Timer_UpdatePersonalStatsHud, _, TIMER_REPEAT);
+	CreateTimer(PLAYERCOUNT_INTERVAL, Timer_UpdatePlayerCountHUD, _, TIMER_REPEAT);
 }
 
 public void OnAllPluginsLoaded()
@@ -207,10 +200,10 @@ public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, ch
 
 		if (isSelf) {
 			FormatEx(output, sizeof(output), "%s suicide", attacker_name);
-			DisplayHUD(output);
+			DisplayKillHUD(output);
 		} else {
 			FormatEx(output, sizeof(output), "%s killed %s", attacker_name, victim_name);
-			DisplayHUD(output);
+			DisplayKillHUD(output);
 		}
 	}
 }
@@ -228,7 +221,7 @@ public void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name
 	else if (StrEqual(weapon_name, "Bleeding")) {
 		FormatEx(output, sizeof(output), "%s died by bleeding", victim_name);
 	}
-	DisplayHUD(output);
+	DisplayKillHUD(output);
 }
 
 public void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
@@ -239,7 +232,7 @@ public void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, c
 		} else {
 			FormatEx(output, sizeof(output), "%s incapacitated %s", attacker_name, victim_name);
 		}
-		DisplayHUD(output);
+		DisplayInfoHUD(output);
 	}
 }
 
@@ -253,22 +246,22 @@ public void Tuan_OnClient_IncappedByUnknown(char[] victim_name, char[] weapon_na
 	else if (StrEqual(weapon_name, "Falling")) {
 		FormatEx(output, sizeof(output), "%s incapacitated by falling", victim_name);
 	}
-	DisplayHUD(output);
+	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_UsedThrowable(int client, int throwable_type) {
 	switch (throwable_type) {
 		case 0: {
 			FormatEx(output, sizeof(output), "%N thrown molotov", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
 		}
 		case 1: {
 			FormatEx(output, sizeof(output), "%N thrown pipebomb", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
 		}
 		case 2: {
 			FormatEx(output, sizeof(output), "%N thrown vomitjar", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
 		}
 	}
 }
@@ -279,21 +272,21 @@ public void Tuan_OnClient_HealedOther(int client, int victim) {
 	} else {
 		FormatEx(output, sizeof(output), "%N was healed by %N and no longer at last life.", victim, client);
 	}
-	DisplayHUD(output);
+	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_GoBnW(int client) {
 	FormatEx(output, sizeof(output), "%N is at last life", client);
-	DisplayHUD(output);
+	DisplayInfoHUD(output);
 }
 
 public void Tuan_OnClient_RevivedOther(int client, int target) {
 	if (client == target) {
 		FormatEx(output, sizeof(output), "%N self get up", client);
-		DisplayHUD(output);
+		DisplayInfoHUD(output);
 	} else {
 		FormatEx(output, sizeof(output), "%N helped %N to get up", client, target);
-		DisplayHUD(output);
+		DisplayInfoHUD(output);
 	}
 }
 
@@ -302,39 +295,31 @@ public void OnMapStart() {
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
-	for (int slot = KILL_HUD_BASE; slot < KILL_HUD_BASE + KILL_INFO_MAX; slot++)
+	for (int slot = LEFT_FEED_BASE; slot < LEFT_FEED_BASE + HUD_FEED_MAX; slot++)
 		RemoveHUD(slot);
+	for (int slot = RIGHT_KILL_BASE; slot < RIGHT_KILL_BASE + HUD_FEED_MAX; slot++)
+		RemoveHUD(slot);
+	RemoveHUD(PLAYERCOUNT_SLOT);
 
-	delete g_hud_info;
-	g_hud_info = new ArrayList(ByteCountToCells(128));
+	delete g_hud_info_left;
+	g_hud_info_left = new ArrayList(ByteCountToCells(128));
+	delete g_hud_kill_right;
+	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 
-	delete g_hHudDecreaseTimer;
-	ResetAllStats();
-
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (IsClient(client)) {
-			ClearSyncHud(client, g_hStatsHudSync);
-		}
-	}
+	delete g_hInfoHudDecreaseTimer;
+	delete g_hKillHudDecreaseTimer;
+	UpdatePlayerCountHUD();
 }
 
 public void OnMapEnd() {
-	delete g_hud_info;
-	g_hud_info = new ArrayList(ByteCountToCells(128));
+	delete g_hud_info_left;
+	g_hud_info_left = new ArrayList(ByteCountToCells(128));
+	delete g_hud_kill_right;
+	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 
-	delete g_hHudDecreaseTimer;
-	ResetAllStats();
-}
-
-public void OnClientDisconnect(int client)
-{
-	if (client > 0 && client <= MaxClients)
-	{
-		g_iCIKills[client] = 0;
-		g_iSIKills[client] = 0;
-		g_iTotalFF[client] = 0;
-	}
+	delete g_hInfoHudDecreaseTimer;
+	delete g_hKillHudDecreaseTimer;
+	RemoveHUD(PLAYERCOUNT_SLOT);
 }
 
 
@@ -354,7 +339,7 @@ public void GearTransfer_OnWeaponGive(int client, int target, int item) {
 	L4D2_GetWeaponNameByWeaponId(weaponId, weapon_name, sizeof(weapon_name));
 	mapWeaponName.GetString(weapon_name, weapon_name, sizeof(weapon_name));
 	FormatEx(output, sizeof(output), "%N give %s to %N", client, weapon_name, target);
-	DisplayHUD(output);
+	DisplayInfoHUD(output);
 }
 
 public void GearTransfer_OnWeaponGrab(int client, int target, int item) {
@@ -364,7 +349,7 @@ public void GearTransfer_OnWeaponGrab(int client, int target, int item) {
 		L4D2_GetWeaponNameByWeaponId(weaponId, weapon_name, sizeof(weapon_name));
 		mapWeaponName.GetString(weapon_name, weapon_name, sizeof(weapon_name));
 		FormatEx(output, sizeof(output), "%N grabbed %s from %N", client, weapon_name, target);
-		DisplayHUD(output);
+		DisplayInfoHUD(output);
 	}
 }
 
@@ -378,30 +363,45 @@ public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int
 	mapWeaponName.GetString(given_weapon_name, given_weapon_name, sizeof(given_weapon_name));
 	mapWeaponName.GetString(taken_weapon_name, taken_weapon_name, sizeof(taken_weapon_name));
 	FormatEx(output, sizeof(output), "%N swap %s for %s with %N", client, given_weapon_name, taken_weapon_name, target);
-	DisplayHUD(output);
+	DisplayInfoHUD(output);
 }
 
 //Function-------------------------------
 
-void DisplayHUD(const char[] info) {
-	HUD kill_list;
-	FormatEx(kill_list.info, sizeof(kill_list.info), "%s", info);
-	g_hud_info.PushString(info);
-	if( g_hud_info.Length > MAX_HUD_NUMBER ) {
-		g_hud_info.Erase(0);
+void DisplayInfoHUD(const char[] info) {
+	HUD feed;
+	g_hud_info_left.PushString(info);
+	if (g_hud_info_left.Length > HUD_FEED_MAX) {
+		g_hud_info_left.Erase(0);
 	}
-	kill_list.slot = g_hud_info.Length - 1 + KILL_HUD_BASE;
-	kill_list.pos  = g_HUDpos[kill_list.slot];
-	for(int index = 0; index < KILL_INFO_MAX && index < g_hud_info.Length; index++)
+	for (int index = 0; index < HUD_FEED_MAX && index < g_hud_info_left.Length; index++)
 	{
-		g_hud_info.GetString(index, kill_list.info, sizeof(kill_list.info));
-		kill_list.slot = index+KILL_HUD_BASE;
-		kill_list.pos  = g_HUDpos[kill_list.slot];
-		kill_list.Place(index == g_hud_info.Length - 1 ? g_iHUDFlags_Newest : g_iHUDFlags_Normal);
+		g_hud_info_left.GetString(index, feed.info, sizeof(feed.info));
+		feed.slot = LEFT_FEED_BASE + index;
+		feed.pos = g_LeftHUDPos[index];
+		feed.Place(index == g_hud_info_left.Length - 1 ? g_iHUDFlags_Left_Newest : g_iHUDFlags_Left_Normal);
 	}
 
-	delete g_hHudDecreaseTimer;
-	g_hHudDecreaseTimer = CreateTimer(HUD_TIMEOUT, Timer_KillHUDDecrease, _, TIMER_REPEAT);
+	delete g_hInfoHudDecreaseTimer;
+	g_hInfoHudDecreaseTimer = CreateTimer(HUD_TIMEOUT, Timer_InfoHUDDecrease, _, TIMER_REPEAT);
+}
+
+void DisplayKillHUD(const char[] info) {
+	HUD feed;
+	g_hud_kill_right.PushString(info);
+	if (g_hud_kill_right.Length > HUD_FEED_MAX) {
+		g_hud_kill_right.Erase(0);
+	}
+	for (int index = 0; index < HUD_FEED_MAX && index < g_hud_kill_right.Length; index++)
+	{
+		g_hud_kill_right.GetString(index, feed.info, sizeof(feed.info));
+		feed.slot = RIGHT_KILL_BASE + index;
+		feed.pos = g_RightKillHUDPos[index];
+		feed.Place(index == g_hud_kill_right.Length - 1 ? g_iHUDFlags_Right_Newest : g_iHUDFlags_Right_Normal);
+	}
+
+	delete g_hKillHudDecreaseTimer;
+	g_hKillHudDecreaseTimer = CreateTimer(HUD_TIMEOUT, Timer_KillHUDDecrease, _, TIMER_REPEAT);
 }
 
 void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
@@ -411,7 +411,7 @@ void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
 	subject = GetClientOfUserId(subject);
 	if (client > 0 && subject > 0) {
 		FormatEx(output, sizeof(output), "%N brought %N back from dead", client, subject);
-		DisplayHUD(output);
+		DisplayInfoHUD(output);
 	}
 }
 
@@ -437,51 +437,10 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	}
 
 	FormatEx(output, sizeof(output), "%N killed Elite %s", attacker, SI_CLASS_NAMES[zClass]);
-	DisplayHUD(output);
+	DisplayKillHUD(output);
 	GetClientName(attacker, g_sLastEliteKiller, sizeof(g_sLastEliteKiller));
 	strcopy(g_sLastEliteVictim, sizeof(g_sLastEliteVictim), SI_CLASS_NAMES[zClass]);
 	g_fEliteKillSuppressUntil = GetGameTime() + 0.35;
-}
-
-void Event_PlayerDeath_Stats(Event event, const char[] name, bool dontBroadcast)
-{
-	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	if (!IsClient(attacker) || GetClientTeam(attacker) != TEAM_SURVIVOR) {
-		return;
-	}
-
-	int victim = GetClientOfUserId(event.GetInt("userid"));
-	if (IsClient(victim))
-	{
-		if (GetClientTeam(victim) == TEAM_INFECTED) {
-			g_iSIKills[attacker]++;
-		}
-		return;
-	}
-
-	char victimName[32];
-	event.GetString("victimname", victimName, sizeof(victimName));
-	if (StrEqual(victimName, CLASSNAME_INFECTED, false)) {
-		g_iCIKills[attacker]++;
-	}
-}
-
-void Event_PlayerHurt_Stats(Event event, const char[] name, bool dontBroadcast)
-{
-	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	int victim = GetClientOfUserId(event.GetInt("userid"));
-	if (!IsClient(attacker) || !IsClient(victim) || attacker == victim) {
-		return;
-	}
-
-	if (GetClientTeam(attacker) != TEAM_SURVIVOR || GetClientTeam(victim) != TEAM_SURVIVOR) {
-		return;
-	}
-
-	int damage = event.GetInt("dmg_health");
-	if (damage > 0) {
-		g_iTotalFF[attacker] += damage;
-	}
 }
 
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
@@ -489,49 +448,49 @@ public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
 		case TYPE_GASCAN:
         {
 			FormatEx(output, sizeof(output), "%N exploded a gascan", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_FUEL_BARREL:
         {
 			FormatEx(output, sizeof(output), "%N exploded a fuel barrel", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_PROPANECANISTER:
         {
 			FormatEx(output, sizeof(output), "%N exploded a propane canister", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_OXYGENTANK:
         {
 			FormatEx(output, sizeof(output), "%N exploded an oxygen tank", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_BARRICADE_GASCAN:
         {
 			FormatEx(output, sizeof(output), "%N exploded a barricade gascan", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_GAS_PUMP:
         {
 			FormatEx(output, sizeof(output), "%N exploded a gas pump", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_FIREWORKS_CRATE:
         {
 			FormatEx(output, sizeof(output), "%N exploded a fireworks crate", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 
         case TYPE_OIL_DRUM_EXPLOSIVE:
         {
 			FormatEx(output, sizeof(output), "%N exploded an oil drum", client);
-			DisplayHUD(output);
+			DisplayInfoHUD(output);
         }
 	}
 }
@@ -539,45 +498,65 @@ public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
 
 //Timer-------------------------------
 
-Action Timer_KillHUDDecrease(Handle timer) {
-	if( g_hud_info.Length == 0 )
+Action Timer_InfoHUDDecrease(Handle timer) {
+	if( g_hud_info_left.Length == 0 )
 	{
-		g_hHudDecreaseTimer = null;
+		g_hInfoHudDecreaseTimer = null;
 		return Plugin_Stop;
 	}
 
-	g_hud_info.Erase(0);
+	g_hud_info_left.Erase(0);
 
-	HUD kill_list;
+	HUD feed;
 	int index;
-	for(index = 0; index < KILL_INFO_MAX && index < g_hud_info.Length; index++)
+	for(index = 0; index < HUD_FEED_MAX && index < g_hud_info_left.Length; index++)
 	{
-		g_hud_info.GetString(index, kill_list.info, sizeof(kill_list.info));
-		kill_list.slot = index + KILL_HUD_BASE;
-		kill_list.pos  = g_HUDpos[kill_list.slot];
-		kill_list.Place(g_iHUDFlags_Normal);
+		g_hud_info_left.GetString(index, feed.info, sizeof(feed.info));
+		feed.slot = LEFT_FEED_BASE + index;
+		feed.pos  = g_LeftHUDPos[index];
+		feed.Place(g_iHUDFlags_Left_Normal);
 	}
 
-	while(index < KILL_INFO_MAX)
+	while(index < HUD_FEED_MAX)
 	{
-		RemoveHUD(index + KILL_HUD_BASE);
+		RemoveHUD(index + LEFT_FEED_BASE);
 		index++;
 	}
 
 	return Plugin_Continue;
 }
 
-Action Timer_UpdatePersonalStatsHud(Handle timer)
-{
-	for (int client = 1; client <= MaxClients; client++)
+Action Timer_KillHUDDecrease(Handle timer) {
+	if( g_hud_kill_right.Length == 0 )
 	{
-		if (!IsClient(client) || GetClientTeam(client) != TEAM_SURVIVOR) {
-			continue;
-		}
-
-		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 255, 255, 255, 255);
-		ShowSyncHudText(client, g_hStatsHudSync, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
+		g_hKillHudDecreaseTimer = null;
+		return Plugin_Stop;
 	}
+
+	g_hud_kill_right.Erase(0);
+
+	HUD feed;
+	int index;
+	for(index = 0; index < HUD_FEED_MAX && index < g_hud_kill_right.Length; index++)
+	{
+		g_hud_kill_right.GetString(index, feed.info, sizeof(feed.info));
+		feed.slot = RIGHT_KILL_BASE + index;
+		feed.pos  = g_RightKillHUDPos[index];
+		feed.Place(g_iHUDFlags_Right_Normal);
+	}
+
+	while(index < HUD_FEED_MAX)
+	{
+		RemoveHUD(index + RIGHT_KILL_BASE);
+		index++;
+	}
+
+	return Plugin_Continue;
+}
+
+Action Timer_UpdatePlayerCountHUD(Handle timer)
+{
+	UpdatePlayerCountHUD();
 	return Plugin_Continue;
 }
 
@@ -599,12 +578,17 @@ void RemoveHUD(int slot) {
 	GameRules_SetPropString("m_szScriptedHUDStringSet", "", true, slot);
 }
 
-void ResetAllStats()
+void UpdatePlayerCountHUD()
 {
+	int playerCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		g_iCIKills[i] = 0;
-		g_iSIKills[i] = 0;
-		g_iTotalFF[i] = 0;
+		if (IsClient(i) && !IsFakeClient(i)) {
+			playerCount++;
+		}
 	}
+
+	FormatEx(output, sizeof(output), "Players: %d/%d", playerCount, MaxClients);
+	HUDSetLayout(PLAYERCOUNT_SLOT, g_iHUDFlags_PlayerCount, output);
+	HUDPlace(PLAYERCOUNT_SLOT, PLAYERCOUNT_X, PLAYERCOUNT_Y, PLAYERCOUNT_W, PLAYERCOUNT_H);
 }

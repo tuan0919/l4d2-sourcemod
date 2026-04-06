@@ -226,7 +226,7 @@ Action Timer_ForceInfectedAssault( Handle timer )
 public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 {
 	if(!g_bCvarEnable) return;
-	if(!ShouldApplyHardMovement(actor)) return;
+	if(!ShouldApplyHardMovementByActor(actor)) return;
 
 	switch (name[0])
 	{
@@ -333,7 +333,6 @@ void player_spawn(Event event, char[] name, bool dontBroadcast) {
 	if(!g_bCvarEnable) return;
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if(!ShouldApplyHardMovement(client)) return;
 	if( IsBotInfected(client) ) {
 		int botInfected = client;
 		// Process for SI class
@@ -438,6 +437,17 @@ bool ShouldApplyHardMovement(int client)
 	}
 
 	return L4D2_IsEliteSI(client);
+}
+
+bool ShouldApplyHardMovementByActor(int actor)
+{
+	if (actor > 0 && actor <= MaxClients && IsClientInGame(actor)) {
+		return ShouldApplyHardMovement(actor);
+	}
+
+	// Some action forwards may provide non-client actors.
+	// Keep original behaviour in that case to avoid disabling HardSI logic unexpectedly.
+	return true;
 }
 
 // Other----------

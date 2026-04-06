@@ -129,6 +129,9 @@ static float g_HUDpos[][] = {
 static int g_iHUDFlags_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
 static char output[256];
+static char g_sLastEliteKiller[64];
+static char g_sLastEliteVictim[32];
+static float g_fEliteKillSuppressUntil;
 
 enum struct HUD
 {
@@ -183,6 +186,12 @@ public void OnLibraryRemoved(const char[] name)
 public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
+		if (GetGameTime() <= g_fEliteKillSuppressUntil
+			&& StrEqual(attacker_name, g_sLastEliteKiller, false)
+			&& (StrEqual(victim_name, g_sLastEliteVictim, false) || StrContains(victim_name, g_sLastEliteVictim, false) != -1)) {
+			return;
+		}
+
 		if (isSelf) {
 			FormatEx(output, sizeof(output), "%s suicide", attacker_name);
 			DisplayHUD(output);
@@ -397,6 +406,9 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 	FormatEx(output, sizeof(output), "%N killed Elite %s", attacker, SI_CLASS_NAMES[zClass]);
 	DisplayHUD(output);
+	GetClientName(attacker, g_sLastEliteKiller, sizeof(g_sLastEliteKiller));
+	strcopy(g_sLastEliteVictim, sizeof(g_sLastEliteVictim), SI_CLASS_NAMES[zClass]);
+	g_fEliteKillSuppressUntil = GetGameTime() + 0.35;
 }
 
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {

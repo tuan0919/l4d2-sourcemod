@@ -601,6 +601,11 @@ public void OnEntityDestroyed(int entity)
 		{
 			for(int client = 1; client <= MaxClients; client++)
 			{
+				if(g_alClientThrowable[client] == null)
+				{
+					g_alClientThrowable[client] = new ArrayList();
+				}
+
 				if( (index = g_alClientThrowable[client].FindValue(ref)) != -1)
 				{
 					g_alClientThrowable[client].Erase(index);
@@ -613,6 +618,11 @@ public void OnEntityDestroyed(int entity)
 		{
 			for(int client = 1; client <= MaxClients; client++)
 			{
+				if(g_alClientGrenade[client] == null)
+				{
+					g_alClientGrenade[client] = new ArrayList();
+				}
+
 				if( (index = g_alClientGrenade[client].FindValue(ref)) != -1)
 				{
 					g_alClientGrenade[client].Erase(index);
@@ -1829,6 +1839,11 @@ bool HasAccess(int client, char[] sAcclvl)
 
 void AddWitchAttack(int witchid, int client)
 {
+	if(g_alClientAttackedByWitch[client] == null)
+	{
+		g_alClientAttackedByWitch[client] = new ArrayList();
+	}
+
 	int ref = EntIndexToEntRef(witchid);
 	if(g_alClientAttackedByWitch[client].FindValue(ref) == -1)
 	{
@@ -1841,6 +1856,11 @@ void RemoveWitchAttack(int witchid)
 	int index, ref = EntIndexToEntRef(witchid);
 	for (int client = 1; client <= MaxClients; client++) 
 	{
+		if(g_alClientAttackedByWitch[client] == null)
+		{
+			g_alClientAttackedByWitch[client] = new ArrayList();
+		}
+
 		if ( (index = g_alClientAttackedByWitch[client].FindValue(ref)) != -1 ) 
 		{
 			g_alClientAttackedByWitch[client].Erase(index);
@@ -1902,6 +1922,11 @@ void OnNextFrame(int entRef)
 
 		if( client > 0 && client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == 2)
 		{
+			if(g_alClientThrowable[client] == null)
+			{
+				g_alClientThrowable[client] = new ArrayList();
+			}
+
 			g_alClientThrowable[client].Push(entRef);
 		}
 	}
@@ -1911,6 +1936,11 @@ void OnNextFrame(int entRef)
 
 		if( client > 0 && client <= MaxClients && IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == 2)
 		{
+			if(g_alClientGrenade[client] == null)
+			{
+				g_alClientGrenade[client] = new ArrayList();
+			}
+
 			g_alClientGrenade[client].Push(entRef);
 		}
 	}

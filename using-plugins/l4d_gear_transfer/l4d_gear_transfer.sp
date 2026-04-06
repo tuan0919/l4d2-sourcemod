@@ -429,7 +429,7 @@ float g_fDistGive, g_fDistGrab, g_fCvarStart, g_fTimerGive, g_fTimerGrab, g_fCva
 // Variables
 bool g_bCvarAllow, g_bMapStarted, g_bModeOffAuto, g_bRoundOver, g_bRoundIntro, g_bTranslation, g_bTranslationNew, g_bLeft4Dead2;
 
-GlobalForward g_hForwardGive, g_hForwardGrab, g_hForwardSwap;
+GlobalForward g_hForwardGive, g_hForwardGrab, g_hForwardSwap, g_hForwardGivenEvent;
 
 // Timer handles
 Handle g_hTimerGrab, g_hTimerGive;
@@ -444,6 +444,9 @@ float g_fReloadTime[MAXPLAYERS+1];		// When holding the reload key
 float g_fEquipTime[MAXPLAYERS+1];		// Equipped time, to prevent drop event firing on some servers
 int g_iClientItem[MAXPLAYERS+1][3];		// Store item entity index for each slot
 int g_iClientType[MAXPLAYERS+1][3];		// Store item type
+int g_iSyntheticGivenGiver[MAXPLAYERS+1];
+int g_iSyntheticGivenWeapon[MAXPLAYERS+1];
+float g_fSyntheticGivenTime[MAXPLAYERS+1];
 ArrayList g_ListMeds; // List of item entities from OnEntityCreated
 ArrayList g_ListNade;
 ArrayList g_ListPack;
@@ -617,6 +620,17 @@ forward void GearTransfer_OnWeaponGrab(int client, int target, int item);
  */
 forward void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int itemTaken);
 
+/**
+ * @brief Called whenever the game itself completes a pills/adrenaline give action.
+ *
+ * @param client		The client giving the item
+ * @param target		The client receiving the item
+ * @param weaponid	The weapon ID from the "weapon_given" event
+ *
+ * @noreturn
+ */
+forward void GearTransfer_OnWeaponGivenEvent(int client, int target, int weaponid);
+
 
 
 // ====================================================================================================
@@ -649,6 +663,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_hForwardGive = new GlobalForward("GearTransfer_OnWeaponGive",						ET_Event, Param_Cell, Param_Cell, Param_Cell);
 	g_hForwardGrab = new GlobalForward("GearTransfer_OnWeaponGrab",						ET_Event, Param_Cell, Param_Cell, Param_Cell);
 	g_hForwardSwap = new GlobalForward("GearTransfer_OnWeaponSwap",						ET_Event, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
+	g_hForwardGivenEvent = new GlobalForward("GearTransfer_OnWeaponGivenEvent",		ET_Event, Param_Cell, Param_Cell, Param_Cell);
 
 	return APLRes_Success;
 }
@@ -801,6 +816,10 @@ void ResetPlugin()
 			g_iClientItem[i][x] = 0;
 			g_iClientType[i][x] = 0;
 		}
+
+		g_iSyntheticGivenGiver[i] = 0;
+		g_iSyntheticGivenWeapon[i] = 0;
+		g_fSyntheticGivenTime[i] = 0.0;
 
 		if( !g_bLeft4Dead2 )
 			SDKUnhook(i, SDKHook_WeaponEquip, OnWeaponDrop);
@@ -1253,6 +1272,18 @@ void Event_WeaponGiven(Event event, const char[] name, bool dontBroadcast)
 	if( weapon == 15 || weapon == 23 )
 	{
 		int client = GetClientOfUserId(event.GetInt("userid"));
+		if( !client ) return;
+
+		bool synthetic = IsSyntheticWeaponGiven(giver, client, weapon);
+
+		if( synthetic == false )
+		{
+			Call_StartForward(g_hForwardGivenEvent);
+			Call_PushCell(giver);
+			Call_PushCell(client);
+			Call_PushCell(weapon);
+			Call_Finish();
+		}
 
 		if( g_iCvarNotify & NOTIFY_EVENT && g_iCvarNotifies & NOTIFY_GIVE && g_fNextTransfer[client] < GetGameTime() )
 		{
@@ -2409,6 +2440,26 @@ void FireEventsFootlocker(int client, int target, int type, bool spawner)
 	}
 }
 
+void RememberSyntheticWeaponGiven(int client, int target, int weaponid)
+{
+	g_iSyntheticGivenGiver[target] = client;
+	g_iSyntheticGivenWeapon[target] = weaponid;
+	g_fSyntheticGivenTime[target] = GetGameTime() + 0.3;
+}
+
+bool IsSyntheticWeaponGiven(int client, int target, int weaponid)
+{
+	if( g_iSyntheticGivenGiver[target] == client && g_iSyntheticGivenWeapon[target] == weaponid && g_fSyntheticGivenTime[target] >= GetGameTime() )
+	{
+		g_iSyntheticGivenGiver[target] = 0;
+		g_iSyntheticGivenWeapon[target] = 0;
+		g_fSyntheticGivenTime[target] = 0.0;
+		return true;
+	}
+
+	return false;
+}
+
 void FireEventsGeneral(int client, int target, int weapon, int type)
 {
 	int weaponid;
@@ -2436,6 +2487,8 @@ void FireEventsGeneral(int client, int target, int weapon, int type)
 			case TYPE_PILLS:	weaponid = 12;		// weapon_pain_pills
 		}
 	}
+
+	RememberSyntheticWeaponGiven(client, target, weaponid);
 
 	Event hEvent = CreateEvent("weapon_given");
 	if( hEvent )

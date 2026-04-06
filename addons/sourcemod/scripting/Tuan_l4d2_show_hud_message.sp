@@ -134,6 +134,7 @@ static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
 static float g_fEliteKillSuppressUntil;
+#define HUD_GEAR_NAME_VISIBLE 14
 
 enum struct HUD
 {
@@ -333,12 +334,57 @@ void HUDSetLayout(int slot, int flags, const char[] dataval, any ...) {
 	GameRules_SetPropString("m_szScriptedHUDStringSet", str, true, slot);
 }
 
+void GetShortHudClientName(int client, char[] buffer, int maxlen) {
+	char name[MAX_NAME_LENGTH];
+	GetClientName(client, name, sizeof(name));
+
+	if (strlen(name) > HUD_GEAR_NAME_VISIBLE) {
+		char short_name[HUD_GEAR_NAME_VISIBLE + 1];
+		strcopy(short_name, sizeof(short_name), name);
+		short_name[HUD_GEAR_NAME_VISIBLE] = '\0';
+		FormatEx(buffer, maxlen, "[%s...]", short_name);
+	} else {
+		FormatEx(buffer, maxlen, "[%s]", name);
+	}
+}
+
+void GetGearTransferWeaponNameById(int weaponid, char[] buffer, int maxlen) {
+	switch (weaponid) {
+		case 23: strcopy(buffer, maxlen, "adrenaline");
+		case 15: strcopy(buffer, maxlen, "pain pills");
+		default: FormatEx(buffer, maxlen, "weapon #%d", weaponid);
+	}
+}
+
+void FormatGearTransferGiveMessage(int client, int target, const char[] weapon_name, char[] buffer, int maxlen) {
+	char giver_name[32];
+	char receiver_name[32];
+	GetShortHudClientName(client, giver_name, sizeof(giver_name));
+	GetShortHudClientName(target, receiver_name, sizeof(receiver_name));
+	FormatEx(buffer, maxlen, "%s give %s to %s", giver_name, weapon_name, receiver_name);
+}
+
 public void GearTransfer_OnWeaponGive(int client, int target, int item) {
+	if (!IsClient(client) || !IsClient(target)) {
+		return;
+	}
+
 	L4D2WeaponId weaponId = L4D2_GetWeaponId(item);
 	char weapon_name[64];
 	L4D2_GetWeaponNameByWeaponId(weaponId, weapon_name, sizeof(weapon_name));
 	mapWeaponName.GetString(weapon_name, weapon_name, sizeof(weapon_name));
-	FormatEx(output, sizeof(output), "%N give %s to %N", client, weapon_name, target);
+	FormatGearTransferGiveMessage(client, target, weapon_name, output, sizeof(output));
+	DisplayInfoHUD(output);
+}
+
+public void GearTransfer_OnWeaponGivenEvent(int client, int target, int weaponid) {
+	if (!IsClient(client) || !IsClient(target)) {
+		return;
+	}
+
+	char weapon_name[64];
+	GetGearTransferWeaponNameById(weaponid, weapon_name, sizeof(weapon_name));
+	FormatGearTransferGiveMessage(client, target, weapon_name, output, sizeof(output));
 	DisplayInfoHUD(output);
 }
 

@@ -53,6 +53,11 @@ public Plugin myinfo = {
 #define HUD_WIDTH	0.7
 #define HUD_SLOT	4
 #define HUD_POSITION_X 0.0
+#define STATS_HUD_CHANNEL 5
+#define STATS_HUD_INTERVAL 0.5
+#define STATS_HUD_X 0.74
+#define STATS_HUD_Y 0.05
+#define STATS_HUD_HOLD 0.55
 #define CLASSNAME_INFECTED            "Infected"
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
@@ -149,6 +154,9 @@ ArrayList g_hud_info;
 Handle g_hHudDecreaseTimer;
 StringMap mapWeaponName;
 bool g_bEliteNativeAvailable;
+int g_iCIKills[MAXPLAYERS + 1];
+int g_iSIKills[MAXPLAYERS + 1];
+int g_iTotalFF[MAXPLAYERS + 1];
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -166,6 +174,10 @@ public void OnPluginStart() {
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+	HookEvent("player_death", Event_PlayerDeath_Stats, EventHookMode_Post);
+	HookEvent("player_hurt", Event_PlayerHurt_Stats, EventHookMode_Post);
+
+	CreateTimer(STATS_HUD_INTERVAL, Timer_UpdatePersonalStatsHud, _, TIMER_REPEAT);
 }
 
 public void OnAllPluginsLoaded()
@@ -289,13 +301,14 @@ public void OnMapStart() {
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
-	for (int slot = KILL_HUD_BASE; slot < MAX_HUD_NUMBER; slot++)
+	for (int slot = KILL_HUD_BASE; slot < KILL_HUD_BASE + KILL_INFO_MAX; slot++)
 		RemoveHUD(slot);
 
 	delete g_hud_info;
 	g_hud_info = new ArrayList(ByteCountToCells(128));
 
 	delete g_hHudDecreaseTimer;
+	ResetAllStats();
 }
 
 public void OnMapEnd() {
@@ -303,6 +316,17 @@ public void OnMapEnd() {
 	g_hud_info = new ArrayList(ByteCountToCells(128));
 
 	delete g_hHudDecreaseTimer;
+	ResetAllStats();
+}
+
+public void OnClientDisconnect(int client)
+{
+	if (client > 0 && client <= MaxClients)
+	{
+		g_iCIKills[client] = 0;
+		g_iSIKills[client] = 0;
+		g_iTotalFF[client] = 0;
+	}
 }
 
 
@@ -411,6 +435,47 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	g_fEliteKillSuppressUntil = GetGameTime() + 0.35;
 }
 
+void Event_PlayerDeath_Stats(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (!IsClient(attacker) || GetClientTeam(attacker) != TEAM_SURVIVOR) {
+		return;
+	}
+
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (IsClient(victim))
+	{
+		if (GetClientTeam(victim) == TEAM_INFECTED) {
+			g_iSIKills[attacker]++;
+		}
+		return;
+	}
+
+	char victimName[32];
+	event.GetString("victimname", victimName, sizeof(victimName));
+	if (StrEqual(victimName, CLASSNAME_INFECTED, false)) {
+		g_iCIKills[attacker]++;
+	}
+}
+
+void Event_PlayerHurt_Stats(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (!IsClient(attacker) || !IsClient(victim) || attacker == victim) {
+		return;
+	}
+
+	if (GetClientTeam(attacker) != TEAM_SURVIVOR || GetClientTeam(victim) != TEAM_SURVIVOR) {
+		return;
+	}
+
+	int damage = event.GetInt("dmg_health");
+	if (damage > 0) {
+		g_iTotalFF[attacker] += damage;
+	}
+}
+
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
 	switch (object_type) {
 		case TYPE_GASCAN:
@@ -494,6 +559,20 @@ Action Timer_KillHUDDecrease(Handle timer) {
 	return Plugin_Continue;
 }
 
+Action Timer_UpdatePersonalStatsHud(Handle timer)
+{
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (!IsClient(client) || GetClientTeam(client) != TEAM_SURVIVOR) {
+			continue;
+		}
+
+		SetHudTextParams(STATS_HUD_X, STATS_HUD_Y, STATS_HUD_HOLD, 200, 255, 200, 255);
+		ShowHudText(client, STATS_HUD_CHANNEL, "CI: %d\nSI: %d\nFF: %d", g_iCIKills[client], g_iSIKills[client], g_iTotalFF[client]);
+	}
+	return Plugin_Continue;
+}
+
 void HUDPlace(int slot, float x, float y, float width, float height) {
 	GameRules_SetPropFloat("m_fScriptedHUDPosX", x, slot, true);
 	GameRules_SetPropFloat("m_fScriptedHUDPosY", y, slot, true);
@@ -510,4 +589,14 @@ void RemoveHUD(int slot) {
 	GameRules_SetPropFloat("m_fScriptedHUDWidth", 0.0, slot, true);
 	GameRules_SetPropFloat("m_fScriptedHUDHeight", 0.0, slot, true);
 	GameRules_SetPropString("m_szScriptedHUDStringSet", "", true, slot);
+}
+
+void ResetAllStats()
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		g_iCIKills[i] = 0;
+		g_iSIKills[i] = 0;
+		g_iTotalFF[i] = 0;
+	}
 }

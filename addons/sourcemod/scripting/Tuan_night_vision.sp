@@ -35,7 +35,7 @@ public Plugin myinfo =
 	url = "https://steamcommunity.com/id/Strikeraot/"
 };
 
-int g_iPlayerLight[MAXPLAYERS + 1];
+int g_iPlayerLight[MAXPLAYERS + 1] = {INVALID_ENT_REFERENCE, ...};
 float g_fLastFlashlightPress[MAXPLAYERS + 1];
 bool g_bNightVisionEnabled[MAXPLAYERS + 1];
 
@@ -210,8 +210,13 @@ void RemoveClientNightVision(int client)
 		return;
 	}
 
+	if (g_iPlayerLight[client] == INVALID_ENT_REFERENCE)
+	{
+		return;
+	}
+
 	int entity = EntRefToEntIndex(g_iPlayerLight[client]);
-	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
+	if (entity > MaxClients && IsValidEntity(entity))
 	{
 		RemoveEntity(entity);
 	}

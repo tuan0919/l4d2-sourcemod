@@ -1096,9 +1096,9 @@ public void OnPluginStart()
 	h_IncludingDead = 					CreateConVar("l4d_infectedbots_calculate_including_dead", 				"0", 		"If 1, including dead players when count the number of survivors.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hDisposeCowards = 				CreateConVar("l4d_infectedbots_dispose_cowards", 			            "1", 		"If 1, Automatically suicide infected bots if they are stuck and not fighting survivors.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvarReloadSettings = 			CreateConVar("l4d_infectedbots_read_data", 								"", 		"Which xxxx.cfg file should this plugin read for settings in data/l4dinfectedbots folder (Ex: \"custom_tanks\" = reads 'custom_tanks.cfg')\nEmpty=By default, reads xxxx.cfg (xxxx = gamemode or mutation name).", FCVAR_NOTIFY);
-	g_hCvarCurrentAliveSurvivor = 		CreateConVar("l4d_infectedbots_current_alive_survivor", 					"0", 		"Current survivor count used by l4dinfectedbots status/announce.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	g_hCvarCurrentMaxSI = 				CreateConVar("l4d_infectedbots_current_si_limit", 						"0", 		"Current max special infected limit used by l4dinfectedbots status/announce.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	g_hCvarCurrentTankHP = 				CreateConVar("l4d_infectedbots_current_tank_hp", 						"0", 		"Current tank health used by l4dinfectedbots status/announce.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	g_hCvarCurrentAliveSurvivor = 		CreateConVar("l4d_infectedbots_current_alive_survivor", 					"0", 		"Current survivor count used by l4dinfectedbots status/announce.", FCVAR_DONTRECORD);
+	g_hCvarCurrentMaxSI = 				CreateConVar("l4d_infectedbots_current_si_limit", 						"0", 		"Current max special infected limit used by l4dinfectedbots status/announce.", FCVAR_DONTRECORD);
+	g_hCvarCurrentTankHP = 				CreateConVar("l4d_infectedbots_current_tank_hp", 						"0", 		"Current tank health used by l4dinfectedbots status/announce.", FCVAR_DONTRECORD);
 
 	g_hCvarMPGameMode = FindConVar("mp_gamemode");
 	g_hCvarMPGameMode.GetString(g_sCvarMPGameMode, sizeof(g_sCvarMPGameMode));

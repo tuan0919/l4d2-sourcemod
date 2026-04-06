@@ -62,7 +62,7 @@ public Plugin myinfo = {
 #define HUD_TIMEOUT	5.0
 #define PLAYERCOUNT_INTERVAL 1.0
 #define PLAYERCOUNT_X 0.22
-#define PLAYERCOUNT_Y 0.47
+#define PLAYERCOUNT_Y 0.03
 #define PLAYERCOUNT_W 0.56
 #define PLAYERCOUNT_H 0.05
 #define CLASSNAME_WITCH               "witch"

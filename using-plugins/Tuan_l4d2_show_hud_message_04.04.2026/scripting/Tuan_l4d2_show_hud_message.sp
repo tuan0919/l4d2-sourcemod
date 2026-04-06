@@ -61,10 +61,10 @@ public Plugin myinfo = {
 #define L4D2_ZOMBIECLASS_TANK		8
 #define HUD_TIMEOUT	5.0
 #define PLAYERCOUNT_INTERVAL 1.0
-#define PLAYERCOUNT_X 0.72
-#define PLAYERCOUNT_Y 0.03
-#define PLAYERCOUNT_W 0.28
-#define PLAYERCOUNT_H 0.04
+#define PLAYERCOUNT_X 0.22
+#define PLAYERCOUNT_Y 0.47
+#define PLAYERCOUNT_W 0.56
+#define PLAYERCOUNT_H 0.05
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
 #define TEAM_INFECTED		3
@@ -138,11 +138,16 @@ static int g_iHUDFlags_Left_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_F
 static int g_iHUDFlags_Left_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
 static int g_iHUDFlags_Right_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
-static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_CENTER | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
 static float g_fEliteKillSuppressUntil;
+ConVar g_hCvarMaxSpecials;
+ConVar g_hCvarTankHealth;
+ConVar g_hCvarInfBotsCurrentAliveSurvivor;
+ConVar g_hCvarInfBotsCurrentSILimit;
+ConVar g_hCvarInfBotsCurrentTankHP;
 #define HUD_NAME_VISIBLE 14
 
 enum struct HUD
@@ -174,6 +179,11 @@ public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	g_hud_info_left = new ArrayList(ByteCountToCells(128));
 	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
+	g_hCvarInfBotsCurrentAliveSurvivor = FindConVar("l4d_infectedbots_current_alive_survivor");
+	g_hCvarInfBotsCurrentSILimit = FindConVar("l4d_infectedbots_current_si_limit");
+	g_hCvarInfBotsCurrentTankHP = FindConVar("l4d_infectedbots_current_tank_hp");
+	g_hCvarMaxSpecials = FindConVar("z_max_player_zombies");
+	g_hCvarTankHealth = FindConVar("z_tank_health");
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
@@ -723,15 +733,34 @@ void RemoveHUD(int slot) {
 
 void UpdatePlayerCountHUD()
 {
-	int playerCount = 0;
+	int aliveSurvivorCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (IsClient(i) && !IsFakeClient(i)) {
-			playerCount++;
+		if (IsClient(i) && GetClientTeam(i) == TEAM_SURVIVOR && IsPlayerAlive(i)) {
+			aliveSurvivorCount++;
 		}
 	}
 
-	FormatEx(output, sizeof(output), "Players: %d/%d", playerCount, MaxClients);
+	// Prefer l4dinfectedbots exported runtime status for 1:1 sync with its announce values.
+	if (g_hCvarInfBotsCurrentAliveSurvivor != null) {
+		aliveSurvivorCount = g_hCvarInfBotsCurrentAliveSurvivor.IntValue;
+	}
+
+	int maxSpecials = 0;
+	if (g_hCvarInfBotsCurrentSILimit != null) {
+		maxSpecials = g_hCvarInfBotsCurrentSILimit.IntValue;
+	} else if (g_hCvarMaxSpecials != null) {
+		maxSpecials = g_hCvarMaxSpecials.IntValue;
+	}
+
+	int tankHealth = 0;
+	if (g_hCvarInfBotsCurrentTankHP != null) {
+		tankHealth = g_hCvarInfBotsCurrentTankHP.IntValue;
+	} else if (g_hCvarTankHealth != null) {
+		tankHealth = g_hCvarTankHealth.IntValue;
+	}
+
+	FormatEx(output, sizeof(output), "Alive Survivor: %d | SI limit: %d | Tank HP: %d", aliveSurvivorCount, maxSpecials, tankHealth);
 	HUDSetLayout(PLAYERCOUNT_SLOT, g_iHUDFlags_PlayerCount, output);
 	HUDPlace(PLAYERCOUNT_SLOT, PLAYERCOUNT_X, PLAYERCOUNT_Y, PLAYERCOUNT_W, PLAYERCOUNT_H);
 }

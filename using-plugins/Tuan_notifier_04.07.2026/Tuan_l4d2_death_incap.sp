@@ -77,6 +77,28 @@ GlobalForward g_OnClientIncapOther;
 GlobalForward g_OnClientKillOther;
 GlobalForward g_OnClientSelfIncap;
 GlobalForward g_OnClientSuicide;
+ConVar g_hDIEnable;
+ConVar g_hDINotifyIncapOther;
+ConVar g_hDINotifyKillOther;
+ConVar g_hDINotifyKilledByUnknown;
+ConVar g_hDINotifyIncappedByUnknown;
+bool g_bDIEnable;
+bool g_bDINotifyIncapOther;
+bool g_bDINotifyKillOther;
+bool g_bDINotifyKilledByUnknown;
+bool g_bDINotifyIncappedByUnknown;
+
+void DI_GetCvars() {
+	g_bDIEnable = g_hDIEnable.BoolValue;
+	g_bDINotifyIncapOther = g_hDINotifyIncapOther.BoolValue;
+	g_bDINotifyKillOther = g_hDINotifyKillOther.BoolValue;
+	g_bDINotifyKilledByUnknown = g_hDINotifyKilledByUnknown.BoolValue;
+	g_bDINotifyIncappedByUnknown = g_hDINotifyIncappedByUnknown.BoolValue;
+}
+
+void DI_OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
+	DI_GetCvars();
+}
 
 public void OnPluginStart() {
 	mapNetClassToName = new StringMap();
@@ -91,9 +113,22 @@ public void OnPluginStart() {
 	g_OnClientKillOther = CreateGlobalForward("Tuan_OnClient_KillOther", ET_Event, Param_String, Param_String, Param_String);
 	g_OnClientSuicide = CreateGlobalForward("Tuan_OnClient_KilledByUnknown", ET_Event, Param_String, Param_String);
 	g_OnClientSelfIncap = CreateGlobalForward("Tuan_OnClient_IncappedByUnknown", ET_Event, Param_String, Param_String);
+	g_hDIEnable = CreateConVar("tuan_notifier_di_enable", "1", "Enable death/incap notifier forwards.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hDINotifyIncapOther = CreateConVar("tuan_notifier_di_notify_incap_other", "1", "Notify Tuan_OnClient_IncapOther.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hDINotifyKillOther = CreateConVar("tuan_notifier_di_notify_kill_other", "1", "Notify Tuan_OnClient_KillOther.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hDINotifyKilledByUnknown = CreateConVar("tuan_notifier_di_notify_killed_by_unknown", "1", "Notify Tuan_OnClient_KilledByUnknown.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hDINotifyIncappedByUnknown = CreateConVar("tuan_notifier_di_notify_incapped_by_unknown", "1", "Notify Tuan_OnClient_IncappedByUnknown.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hDIEnable.AddChangeHook(DI_OnConVarChanged);
+	g_hDINotifyIncapOther.AddChangeHook(DI_OnConVarChanged);
+	g_hDINotifyKillOther.AddChangeHook(DI_OnConVarChanged);
+	g_hDINotifyKilledByUnknown.AddChangeHook(DI_OnConVarChanged);
+	g_hDINotifyIncappedByUnknown.AddChangeHook(DI_OnConVarChanged);
+	DI_GetCvars();
+	AutoExecConfig(true, "tuan_notifier_unified_death_incap");
 }
 
 void FireEventOnClientIncapOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
+	if (!g_bDIEnable || !g_bDINotifyIncapOther) return;
 	Call_StartForward(g_OnClientIncapOther);
 	Call_PushString(attacker_name);
 	Call_PushString(victim_name);
@@ -102,6 +137,7 @@ void FireEventOnClientIncapOther(char[] attacker_name, char[] victim_name, char[
 }
 
 void FireEventOnClientKillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
+	if (!g_bDIEnable || !g_bDINotifyKillOther) return;
 	Call_StartForward(g_OnClientKillOther);
 	Call_PushString(attacker_name);
 	Call_PushString(victim_name);
@@ -110,6 +146,7 @@ void FireEventOnClientKillOther(char[] attacker_name, char[] victim_name, char[]
 }
 
 void FireEventOnClientKilledByUnknown(char[] victim_name, char[] weapon_name) {
+	if (!g_bDIEnable || !g_bDINotifyKilledByUnknown) return;
 	Call_StartForward(g_OnClientSuicide);
 	Call_PushString(victim_name);
 	Call_PushString(weapon_name);
@@ -117,6 +154,7 @@ void FireEventOnClientKilledByUnknown(char[] victim_name, char[] weapon_name) {
 }
 
 void FireEventOnClientIncappedByUnknown(char[] victim_name, char[] weapon_name) {
+	if (!g_bDIEnable || !g_bDINotifyIncappedByUnknown) return;
 	Call_StartForward(g_OnClientSelfIncap);
 	Call_PushString(victim_name);
 	Call_PushString(weapon_name);

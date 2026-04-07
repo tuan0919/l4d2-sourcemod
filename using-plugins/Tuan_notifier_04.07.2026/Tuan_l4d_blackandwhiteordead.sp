@@ -23,6 +23,26 @@ bool g_bPlayerBW[MAXPLAYERS+1] = { false, ... };
 GlobalForward g_OnClientHealedBnW;
 GlobalForward g_OnClientGoBnW;
 GlobalForward g_OnClientRevivedOther;
+ConVar g_hBWEnable;
+ConVar g_hBWNotifyHealedOther;
+ConVar g_hBWNotifyGoBnW;
+ConVar g_hBWNotifyRevivedOther;
+bool g_bBWEnable;
+bool g_bBWNotifyHealedOther;
+bool g_bBWNotifyGoBnW;
+bool g_bBWNotifyRevivedOther;
+
+void BW_GetCvars() {
+	g_bBWEnable = g_hBWEnable.BoolValue;
+	g_bBWNotifyHealedOther = g_hBWNotifyHealedOther.BoolValue;
+	g_bBWNotifyGoBnW = g_hBWNotifyGoBnW.BoolValue;
+	g_bBWNotifyRevivedOther = g_hBWNotifyRevivedOther.BoolValue;
+}
+
+void BW_OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue) {
+	BW_GetCvars();
+}
+
 public Plugin myinfo = 
 {
 	name = "[L4D] Black and White Notifier",
@@ -40,9 +60,20 @@ public void OnPluginStart()
 	g_OnClientHealedBnW = CreateGlobalForward("Tuan_OnClient_HealedOther", ET_Event, Param_Cell, Param_Cell);
 	g_OnClientGoBnW = CreateGlobalForward("Tuan_OnClient_GoBnW", ET_Event, Param_Cell);
 	g_OnClientRevivedOther = CreateGlobalForward("Tuan_OnClient_RevivedOther", ET_Event, Param_Cell, Param_Cell);
+	g_hBWEnable = CreateConVar("tuan_notifier_bw_enable", "1", "Enable black&white notifier forwards.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hBWNotifyHealedOther = CreateConVar("tuan_notifier_bw_notify_healed_other", "1", "Notify Tuan_OnClient_HealedOther.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hBWNotifyGoBnW = CreateConVar("tuan_notifier_bw_notify_go_bnw", "1", "Notify Tuan_OnClient_GoBnW.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hBWNotifyRevivedOther = CreateConVar("tuan_notifier_bw_notify_revived_other", "1", "Notify Tuan_OnClient_RevivedOther.\n0=OFF, 1=ON.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hBWEnable.AddChangeHook(BW_OnConVarChanged);
+	g_hBWNotifyHealedOther.AddChangeHook(BW_OnConVarChanged);
+	g_hBWNotifyGoBnW.AddChangeHook(BW_OnConVarChanged);
+	g_hBWNotifyRevivedOther.AddChangeHook(BW_OnConVarChanged);
+	BW_GetCvars();
+	AutoExecConfig(true, "tuan_notifier_unified_blackwhite");
 }
 
 void FireClientHealedOtherEvent(int client, int victim) {
+	if (!g_bBWEnable || !g_bBWNotifyHealedOther) return;
     Call_StartForward(g_OnClientHealedBnW);
     Call_PushCell(client);
 	Call_PushCell(victim);
@@ -50,12 +81,14 @@ void FireClientHealedOtherEvent(int client, int victim) {
 }
 
 void FireClientGoBnW(int client) {
+	if (!g_bBWEnable || !g_bBWNotifyGoBnW) return;
     Call_StartForward(g_OnClientGoBnW);
     Call_PushCell(client);
     Call_Finish();
 }
 
 void FireClientRevivedOther(int client, int target) {
+	if (!g_bBWEnable || !g_bBWNotifyRevivedOther) return;
     Call_StartForward(g_OnClientRevivedOther);
     Call_PushCell(client);
 	Call_PushCell(target);

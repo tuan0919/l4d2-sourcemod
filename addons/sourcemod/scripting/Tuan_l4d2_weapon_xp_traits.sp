@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.1.0"
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
 #define ZC_TANK 8
@@ -14,17 +14,22 @@
 #define TRAIT_FIRE 2
 #define TRAIT_EXPLOSIVE 3
 
+#define TRAITBIT_LASER      (1 << 0)
+#define TRAITBIT_FIRE       (1 << 1)
+#define TRAITBIT_EXPLOSIVE  (1 << 2)
+
 #define UPGRADE_INCENDIARY (1 << 0)
 #define UPGRADE_EXPLOSIVE  (1 << 1)
 #define UPGRADE_LASER      (1 << 2)
 
 #define MAX_WEAPON_ENTS 2048
+#define MAX_LEVEL 3
 
 public Plugin myinfo =
 {
     name = "[L4D2] Weapon XP Traits",
     author = "Codex",
-    description = "Primary weapon XP + trait unlock with persistence",
+    description = "Primary weapon XP + traits with persistence",
     version = PLUGIN_VERSION,
     url = ""
 };
@@ -36,25 +41,26 @@ ConVar g_hXpWitch;
 ConVar g_hXpTank;
 ConVar g_hReqBase;
 ConVar g_hReqStep;
-ConVar g_hTraitAmmo;
-ConVar g_hGlowR;
-ConVar g_hGlowG;
-ConVar g_hGlowB;
+ConVar g_hToggleCooldown;
 
 int g_iWeaponXP[MAX_WEAPON_ENTS + 1];
 int g_iWeaponLevel[MAX_WEAPON_ENTS + 1];
 int g_iWeaponPending[MAX_WEAPON_ENTS + 1];
-int g_iWeaponTrait[MAX_WEAPON_ENTS + 1];
+int g_iWeaponTraitMask[MAX_WEAPON_ENTS + 1];
+int g_iWeaponActiveAmmoTrait[MAX_WEAPON_ENTS + 1];
 
 int g_iLastPrimaryRef[MAXPLAYERS + 1];
 bool g_bNeedRestore[MAXPLAYERS + 1];
 bool g_bMenuMuted[MAXPLAYERS + 1];
+bool g_bShoveUseHeld[MAXPLAYERS + 1];
+float g_fNextToggleTime[MAXPLAYERS + 1];
 
 bool g_bHasSavedData[MAXPLAYERS + 1];
 int g_iSavedXP[MAXPLAYERS + 1];
 int g_iSavedLevel[MAXPLAYERS + 1];
 int g_iSavedPending[MAXPLAYERS + 1];
-int g_iSavedTrait[MAXPLAYERS + 1];
+int g_iSavedTraitMask[MAXPLAYERS + 1];
+int g_iSavedActiveAmmoTrait[MAXPLAYERS + 1];
 char g_sSavedClass[MAXPLAYERS + 1][64];
 
 public void OnPluginStart()
@@ -66,10 +72,7 @@ public void OnPluginStart()
     g_hXpTank = CreateConVar("l4d2_wxp_xp_tank", "10", "XP per Tank hit.", FCVAR_NOTIFY, true, 0.0);
     g_hReqBase = CreateConVar("l4d2_wxp_req_base", "15", "XP required for level 1.", FCVAR_NOTIFY, true, 1.0);
     g_hReqStep = CreateConVar("l4d2_wxp_req_step", "10", "Additional XP required per next level.", FCVAR_NOTIFY, true, 0.0);
-    g_hTraitAmmo = CreateConVar("l4d2_wxp_trait_ammo", "90", "Special ammo amount maintained for fire/explosive traits.", FCVAR_NOTIFY, true, 1.0);
-    g_hGlowR = CreateConVar("l4d2_wxp_glow_r", "40", "Glow R for dropped upgraded weapons.", FCVAR_NOTIFY, true, 0.0, true, 255.0);
-    g_hGlowG = CreateConVar("l4d2_wxp_glow_g", "170", "Glow G for dropped upgraded weapons.", FCVAR_NOTIFY, true, 0.0, true, 255.0);
-    g_hGlowB = CreateConVar("l4d2_wxp_glow_b", "255", "Glow B for dropped upgraded weapons.", FCVAR_NOTIFY, true, 0.0, true, 255.0);
+    g_hToggleCooldown = CreateConVar("l4d2_wxp_toggle_cooldown", "0.35", "Cooldown for shove+use trait toggle.", FCVAR_NOTIFY, true, 0.1);
 
     AutoExecConfig(true, "Tuan_l4d2_weapon_xp_traits");
 
@@ -84,7 +87,7 @@ public void OnPluginStart()
     HookEvent("mission_lost", Event_SaveAll, EventHookMode_PostNoCopy);
     HookEvent("finale_vehicle_leaving", Event_SaveAll, EventHookMode_PostNoCopy);
 
-    CreateTimer(0.5, Timer_PollWeapons, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(0.25, Timer_PollWeapons, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(20.0, Timer_AutoSave, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
@@ -93,6 +96,8 @@ public void OnMapStart()
     for (int i = 1; i <= MaxClients; i++)
     {
         g_iLastPrimaryRef[i] = INVALID_ENT_REFERENCE;
+        g_bShoveUseHeld[i] = false;
+        g_fNextToggleTime[i] = 0.0;
         if (IsClientInGame(i))
         {
             g_bNeedRestore[i] = true;
@@ -111,6 +116,8 @@ public void OnClientDisconnect(int client)
     SaveClientState(client);
     g_iLastPrimaryRef[client] = INVALID_ENT_REFERENCE;
     g_bNeedRestore[client] = false;
+    g_bShoveUseHeld[client] = false;
+    g_fNextToggleTime[client] = 0.0;
 }
 
 public void OnEntityDestroyed(int entity)
@@ -120,10 +127,7 @@ public void OnEntityDestroyed(int entity)
         return;
     }
 
-    g_iWeaponXP[entity] = 0;
-    g_iWeaponLevel[entity] = 0;
-    g_iWeaponPending[entity] = 0;
-    g_iWeaponTrait[entity] = TRAIT_NONE;
+    ResetWeaponData(entity);
 }
 
 public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
@@ -220,9 +224,15 @@ public Action Event_WeaponDrop(Event event, const char[] name, bool dontBroadcas
         return Plugin_Continue;
     }
 
-    if (g_iWeaponTrait[weapon] != TRAIT_NONE)
+    if (g_iWeaponLevel[weapon] <= 0)
     {
-        SetWeaponGlow(weapon, true);
+        // Level 0 dropped guns must restart XP grind from zero.
+        ResetWeaponData(weapon);
+        SetWeaponGlowByLevel(weapon, 0);
+    }
+    else
+    {
+        SetWeaponGlowByLevel(weapon, g_iWeaponLevel[weapon]);
     }
 
     return Plugin_Continue;
@@ -260,6 +270,44 @@ public Action Timer_PollWeapons(Handle timer)
     return Plugin_Continue;
 }
 
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
+{
+    if (!g_hEnable.BoolValue || !IsSurvivorClient(client, true))
+    {
+        return Plugin_Continue;
+    }
+
+    bool combo = ((buttons & IN_USE) != 0) && ((buttons & IN_ATTACK2) != 0);
+    if (!combo)
+    {
+        g_bShoveUseHeld[client] = false;
+        return Plugin_Continue;
+    }
+
+    if (g_bShoveUseHeld[client])
+    {
+        return Plugin_Continue;
+    }
+
+    float now = GetGameTime();
+    if (now < g_fNextToggleTime[client])
+    {
+        return Plugin_Continue;
+    }
+
+    g_bShoveUseHeld[client] = true;
+    g_fNextToggleTime[client] = now + g_hToggleCooldown.FloatValue;
+
+    int primary = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEdict(primary) || !IsPrimaryWeaponEntity(primary) || g_iWeaponLevel[primary] <= 0)
+    {
+        return Plugin_Continue;
+    }
+
+    ToggleAmmoTrait(client, primary);
+    return Plugin_Continue;
+}
+
 void HandleClientPrimaryChanged(int client, int weapon)
 {
     if (!IsValidEdict(weapon) || !IsPrimaryWeaponEntity(weapon))
@@ -267,7 +315,7 @@ void HandleClientPrimaryChanged(int client, int weapon)
         return;
     }
 
-    SetWeaponGlow(weapon, false);
+    SetWeaponGlowByLevel(weapon, 0);
 
     if (g_bNeedRestore[client] && g_bHasSavedData[client])
     {
@@ -277,13 +325,20 @@ void HandleClientPrimaryChanged(int client, int weapon)
         if (StrEqual(g_sSavedClass[client], "") || StrEqual(classname, g_sSavedClass[client]))
         {
             g_iWeaponXP[weapon] = g_iSavedXP[client];
-            g_iWeaponLevel[weapon] = g_iSavedLevel[client];
+            g_iWeaponLevel[weapon] = ClampInt(g_iSavedLevel[client], 0, MAX_LEVEL);
             g_iWeaponPending[weapon] = g_iSavedPending[client];
-            g_iWeaponTrait[weapon] = g_iSavedTrait[client];
-            ApplyTraitToWeapon(weapon, g_iWeaponTrait[weapon]);
+            g_iWeaponTraitMask[weapon] = g_iSavedTraitMask[client];
+            g_iWeaponActiveAmmoTrait[weapon] = g_iSavedActiveAmmoTrait[client];
+            NormalizeWeaponProgress(weapon);
+            ApplyWeaponTraits(weapon);
         }
 
         g_bNeedRestore[client] = false;
+    }
+
+    if (g_iWeaponLevel[weapon] >= 1)
+    {
+        AnnounceWeaponInfo(client, weapon);
     }
 
     if (g_iWeaponPending[weapon] > 0 && !g_bMenuMuted[client])
@@ -305,26 +360,37 @@ void AwardXpForShot(int client, int amount)
         return;
     }
 
+    if (g_iWeaponLevel[weapon] >= MAX_LEVEL)
+    {
+        return;
+    }
+
     g_iWeaponXP[weapon] += amount;
 
     bool leveled = false;
-    while (g_iWeaponXP[weapon] >= GetRequiredXpForLevel(g_iWeaponLevel[weapon] + 1))
+    while (g_iWeaponLevel[weapon] < MAX_LEVEL && g_iWeaponXP[weapon] >= GetRequiredXpForLevel(g_iWeaponLevel[weapon] + 1))
     {
         g_iWeaponLevel[weapon]++;
         g_iWeaponPending[weapon]++;
         leveled = true;
     }
 
+    NormalizeWeaponProgress(weapon);
+
     if (leveled)
     {
-        PrintToChat(client, "\x04[WeaponXP]\x01 %N's weapon reached level %d. Pending trait picks: %d.", client, g_iWeaponLevel[weapon], g_iWeaponPending[weapon]);
-        if (!g_bMenuMuted[client])
+        if (g_iWeaponLevel[weapon] >= MAX_LEVEL)
         {
-            ShowUpgradeMenu(client);
+            PrintToChat(client, "\x04[WeaponXP]\x01 Weapon reached MAX level 3.");
         }
         else
         {
-            PrintToChat(client, "\x04[WeaponXP]\x01 Upgrade panel is hidden. Use !up to open it again.");
+            PrintToChat(client, "\x04[WeaponXP]\x01 Weapon reached level %d. Pending picks: %d.", g_iWeaponLevel[weapon], g_iWeaponPending[weapon]);
+        }
+
+        if (!g_bMenuMuted[client] && g_iWeaponPending[weapon] > 0)
+        {
+            ShowUpgradeMenu(client);
         }
     }
 }
@@ -384,21 +450,46 @@ void ShowUpgradeMenu(int client)
         return;
     }
 
+    NormalizeWeaponProgress(weapon);
+
     if (g_iWeaponPending[weapon] <= 0)
     {
-        PrintToChat(client, "\x04[WeaponXP]\x01 No trait points available yet.");
+        PrintToChat(client, "\x04[WeaponXP]\x01 No trait points available.");
         return;
     }
 
     Menu menu = new Menu(MenuHandler_Upgrade);
     char title[192];
-    Format(title, sizeof(title), "Weapon Upgrade\nLevel: %d | Pending: %d\nChoose 1 trait", g_iWeaponLevel[weapon], g_iWeaponPending[weapon]);
+    Format(title, sizeof(title), "Weapon Upgrade\nLevel: %d/3 | Pending: %d\nTraits cannot duplicate", g_iWeaponLevel[weapon], g_iWeaponPending[weapon]);
     menu.SetTitle(title);
-    menu.AddItem("1", "Laser");
-    menu.AddItem("2", "Incendiary Ammo");
-    menu.AddItem("3", "Explosive Ammo");
+
+    AddTraitMenuItem(menu, weapon, TRAIT_LASER);
+    AddTraitMenuItem(menu, weapon, TRAIT_FIRE);
+    AddTraitMenuItem(menu, weapon, TRAIT_EXPLOSIVE);
+
     menu.ExitButton = true;
     menu.Display(client, 20);
+}
+
+void AddTraitMenuItem(Menu menu, int weapon, int trait)
+{
+    char info[8];
+    IntToString(trait, info, sizeof(info));
+
+    char name[48];
+    GetTraitName(trait, name, sizeof(name));
+
+    int bit = TraitToBit(trait);
+    if ((g_iWeaponTraitMask[weapon] & bit) != 0)
+    {
+        char text[64];
+        Format(text, sizeof(text), "%s (Taken)", name);
+        menu.AddItem(info, text, ITEMDRAW_DISABLED);
+    }
+    else
+    {
+        menu.AddItem(info, name);
+    }
 }
 
 public int MenuHandler_Upgrade(Menu menu, MenuAction action, int client, int item)
@@ -412,7 +503,7 @@ public int MenuHandler_Upgrade(Menu menu, MenuAction action, int client, int ite
         if (client > 0 && IsClientInGame(client) && item == MenuCancel_Exit)
         {
             g_bMenuMuted[client] = true;
-            PrintToChat(client, "\x04[WeaponXP]\x01 Upgrade menu hidden. Type !up to open again.");
+            PrintToChat(client, "\x04[WeaponXP]\x01 Upgrade menu hidden. Use !up to open again.");
         }
     }
     else if (action == MenuAction_Select)
@@ -429,6 +520,7 @@ public int MenuHandler_Upgrade(Menu menu, MenuAction action, int client, int ite
             return 0;
         }
 
+        NormalizeWeaponProgress(weapon);
         if (g_iWeaponPending[weapon] <= 0)
         {
             PrintToChat(client, "\x04[WeaponXP]\x01 No pending trait point.");
@@ -438,18 +530,31 @@ public int MenuHandler_Upgrade(Menu menu, MenuAction action, int client, int ite
         char choice[8];
         menu.GetItem(item, choice, sizeof(choice));
         int trait = StringToInt(choice);
+        int bit = TraitToBit(trait);
 
-        g_iWeaponTrait[weapon] = trait;
+        if ((g_iWeaponTraitMask[weapon] & bit) != 0)
+        {
+            PrintToChat(client, "\x04[WeaponXP]\x01 This trait is already taken for this weapon.");
+            return 0;
+        }
+
+        g_iWeaponTraitMask[weapon] |= bit;
         g_iWeaponPending[weapon]--;
         if (g_iWeaponPending[weapon] < 0)
         {
             g_iWeaponPending[weapon] = 0;
         }
 
-        ApplyTraitToWeapon(weapon, trait);
+        if (trait == TRAIT_FIRE || trait == TRAIT_EXPLOSIVE)
+        {
+            g_iWeaponActiveAmmoTrait[weapon] = trait;
+        }
+
+        ApplyWeaponTraits(weapon);
+
         char traitName[32];
         GetTraitName(trait, traitName, sizeof(traitName));
-        PrintToChat(client, "\x04[WeaponXP]\x01 Trait applied to this weapon: %s", traitName);
+        PrintToChat(client, "\x04[WeaponXP]\x01 Trait applied: %s", traitName);
 
         if (g_iWeaponPending[weapon] > 0 && !g_bMenuMuted[client])
         {
@@ -460,7 +565,45 @@ public int MenuHandler_Upgrade(Menu menu, MenuAction action, int client, int ite
     return 0;
 }
 
-void ApplyTraitToWeapon(int weapon, int trait)
+void ToggleAmmoTrait(int client, int weapon)
+{
+    bool hasFire = HasTrait(weapon, TRAIT_FIRE);
+    bool hasExplosive = HasTrait(weapon, TRAIT_EXPLOSIVE);
+
+    if (!hasFire && !hasExplosive)
+    {
+        PrintToChat(client, "\x04[WeaponXP]\x01 This weapon has no ammo trait to toggle.");
+        return;
+    }
+
+    if (hasFire && hasExplosive)
+    {
+        if (g_iWeaponActiveAmmoTrait[weapon] == TRAIT_FIRE)
+        {
+            g_iWeaponActiveAmmoTrait[weapon] = TRAIT_EXPLOSIVE;
+        }
+        else
+        {
+            g_iWeaponActiveAmmoTrait[weapon] = TRAIT_FIRE;
+        }
+    }
+    else if (hasFire)
+    {
+        g_iWeaponActiveAmmoTrait[weapon] = TRAIT_FIRE;
+    }
+    else
+    {
+        g_iWeaponActiveAmmoTrait[weapon] = TRAIT_EXPLOSIVE;
+    }
+
+    ApplyWeaponTraits(weapon);
+
+    char traitName[32];
+    GetTraitName(g_iWeaponActiveAmmoTrait[weapon], traitName, sizeof(traitName));
+    PrintToChat(client, "\x04[WeaponXP]\x01 Ammo trait switched to %s", traitName);
+}
+
+void ApplyWeaponTraits(int weapon)
 {
     if (!IsValidEdict(weapon) || !IsPrimaryWeaponEntity(weapon))
     {
@@ -470,27 +613,23 @@ void ApplyTraitToWeapon(int weapon, int trait)
     int bits = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
     bits &= ~(UPGRADE_INCENDIARY | UPGRADE_EXPLOSIVE | UPGRADE_LASER);
 
-    switch (trait)
+    if (HasTrait(weapon, TRAIT_LASER))
     {
-        case TRAIT_LASER:
-        {
-            bits |= UPGRADE_LASER;
-            SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", 0);
-        }
-        case TRAIT_FIRE:
-        {
-            bits |= UPGRADE_INCENDIARY;
-            SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", g_hTraitAmmo.IntValue);
-        }
-        case TRAIT_EXPLOSIVE:
-        {
-            bits |= UPGRADE_EXPLOSIVE;
-            SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", g_hTraitAmmo.IntValue);
-        }
-        default:
-        {
-            SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", 0);
-        }
+        bits |= UPGRADE_LASER;
+    }
+
+    int active = g_iWeaponActiveAmmoTrait[weapon];
+    if (active == TRAIT_FIRE && HasTrait(weapon, TRAIT_FIRE))
+    {
+        bits |= UPGRADE_INCENDIARY;
+    }
+    else if (active == TRAIT_EXPLOSIVE && HasTrait(weapon, TRAIT_EXPLOSIVE))
+    {
+        bits |= UPGRADE_EXPLOSIVE;
+    }
+    else
+    {
+        g_iWeaponActiveAmmoTrait[weapon] = TRAIT_NONE;
     }
 
     SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
@@ -498,27 +637,31 @@ void ApplyTraitToWeapon(int weapon, int trait)
 
 void MaintainTraitAmmo(int weapon)
 {
-    int trait = g_iWeaponTrait[weapon];
-    if (trait != TRAIT_FIRE && trait != TRAIT_EXPLOSIVE)
+    int active = g_iWeaponActiveAmmoTrait[weapon];
+    if (active != TRAIT_FIRE && active != TRAIT_EXPLOSIVE)
     {
         return;
     }
 
-    int current = GetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded");
-    if (current <= 0)
+    int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
+    if (clip <= 0)
     {
-        SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", g_hTraitAmmo.IntValue);
+        clip = 1;
     }
+
+    // Keep upgraded ammo in sync with clip so players still feel normal ammo flow.
+    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip);
+    ApplyWeaponTraits(weapon);
 }
 
-void SetWeaponGlow(int weapon, bool state)
+void SetWeaponGlowByLevel(int weapon, int level)
 {
     if (!IsValidEdict(weapon) || !IsPrimaryWeaponEntity(weapon))
     {
         return;
     }
 
-    if (!state)
+    if (level <= 0)
     {
         SetEntProp(weapon, Prop_Send, "m_iGlowType", 0);
         SetEntProp(weapon, Prop_Send, "m_glowColorOverride", 0);
@@ -526,14 +669,36 @@ void SetWeaponGlow(int weapon, bool state)
         return;
     }
 
-    int r = g_hGlowR.IntValue;
-    int g = g_hGlowG.IntValue;
-    int b = g_hGlowB.IntValue;
-    int color = (r & 0xFF) | ((g & 0xFF) << 8) | ((b & 0xFF) << 16);
+    int r;
+    int g;
+    int b;
 
+    switch (level)
+    {
+        case 1:
+        {
+            r = 0;
+            g = 190;
+            b = 255;
+        }
+        case 2:
+        {
+            r = 168;
+            g = 64;
+            b = 255;
+        }
+        default:
+        {
+            r = 255;
+            g = 60;
+            b = 60;
+        }
+    }
+
+    int color = (r & 0xFF) | ((g & 0xFF) << 8) | ((b & 0xFF) << 16);
     SetEntProp(weapon, Prop_Send, "m_iGlowType", 3);
     SetEntProp(weapon, Prop_Send, "m_glowColorOverride", color);
-    SetEntProp(weapon, Prop_Send, "m_nGlowRange", 650);
+    SetEntProp(weapon, Prop_Send, "m_nGlowRange", 700);
 }
 
 void SaveAllClients()
@@ -561,7 +726,7 @@ void SaveClientState(int client)
     if (!IsValidEdict(weapon) || !IsPrimaryWeaponEntity(weapon))
     {
         g_bHasSavedData[client] = false;
-        WriteClientToKv(steamId, false, 0, 0, 0, 0, "");
+        WriteClientToKv(steamId, false, 0, 0, 0, 0, TRAIT_NONE, "");
         return;
     }
 
@@ -572,10 +737,11 @@ void SaveClientState(int client)
     g_iSavedXP[client] = g_iWeaponXP[weapon];
     g_iSavedLevel[client] = g_iWeaponLevel[weapon];
     g_iSavedPending[client] = g_iWeaponPending[weapon];
-    g_iSavedTrait[client] = g_iWeaponTrait[weapon];
+    g_iSavedTraitMask[client] = g_iWeaponTraitMask[weapon];
+    g_iSavedActiveAmmoTrait[client] = g_iWeaponActiveAmmoTrait[weapon];
     strcopy(g_sSavedClass[client], sizeof(g_sSavedClass[]), classname);
 
-    WriteClientToKv(steamId, true, g_iSavedXP[client], g_iSavedLevel[client], g_iSavedPending[client], g_iSavedTrait[client], classname);
+    WriteClientToKv(steamId, true, g_iSavedXP[client], g_iSavedLevel[client], g_iSavedPending[client], g_iSavedTraitMask[client], g_iSavedActiveAmmoTrait[client], classname);
 }
 
 void LoadClientSave(int client)
@@ -584,7 +750,8 @@ void LoadClientSave(int client)
     g_iSavedXP[client] = 0;
     g_iSavedLevel[client] = 0;
     g_iSavedPending[client] = 0;
-    g_iSavedTrait[client] = TRAIT_NONE;
+    g_iSavedTraitMask[client] = 0;
+    g_iSavedActiveAmmoTrait[client] = TRAIT_NONE;
     g_sSavedClass[client][0] = '\0';
 
     if (!IsValidEntityClient(client) || IsFakeClient(client))
@@ -618,13 +785,14 @@ void LoadClientSave(int client)
     g_iSavedXP[client] = kv.GetNum("xp", 0);
     g_iSavedLevel[client] = kv.GetNum("level", 0);
     g_iSavedPending[client] = kv.GetNum("pending", 0);
-    g_iSavedTrait[client] = kv.GetNum("trait", TRAIT_NONE);
+    g_iSavedTraitMask[client] = kv.GetNum("trait_mask", 0);
+    g_iSavedActiveAmmoTrait[client] = kv.GetNum("active_trait", TRAIT_NONE);
     kv.GetString("weapon", g_sSavedClass[client], sizeof(g_sSavedClass[]), "");
 
     delete kv;
 }
 
-void WriteClientToKv(const char[] steamId, bool hasData, int xp, int level, int pending, int trait, const char[] weaponClass)
+void WriteClientToKv(const char[] steamId, bool hasData, int xp, int level, int pending, int traitMask, int activeTrait, const char[] weaponClass)
 {
     char path[PLATFORM_MAX_PATH];
     BuildPath(Path_SM, path, sizeof(path), "data/tuan_weapon_xp_traits.txt");
@@ -644,7 +812,8 @@ void WriteClientToKv(const char[] steamId, bool hasData, int xp, int level, int 
         kv.SetNum("xp", xp);
         kv.SetNum("level", level);
         kv.SetNum("pending", pending);
-        kv.SetNum("trait", trait);
+        kv.SetNum("trait_mask", traitMask);
+        kv.SetNum("active_trait", activeTrait);
         kv.SetString("weapon", weaponClass);
         kv.GoBack();
     }
@@ -652,6 +821,123 @@ void WriteClientToKv(const char[] steamId, bool hasData, int xp, int level, int 
     kv.Rewind();
     kv.ExportToFile(path);
     delete kv;
+}
+
+void ResetWeaponData(int weapon)
+{
+    g_iWeaponXP[weapon] = 0;
+    g_iWeaponLevel[weapon] = 0;
+    g_iWeaponPending[weapon] = 0;
+    g_iWeaponTraitMask[weapon] = 0;
+    g_iWeaponActiveAmmoTrait[weapon] = TRAIT_NONE;
+}
+
+void NormalizeWeaponProgress(int weapon)
+{
+    g_iWeaponLevel[weapon] = ClampInt(g_iWeaponLevel[weapon], 0, MAX_LEVEL);
+
+    int unlocked = CountUnlockedTraits(g_iWeaponTraitMask[weapon]);
+    int maxPending = g_iWeaponLevel[weapon] - unlocked;
+    if (maxPending < 0)
+    {
+        maxPending = 0;
+    }
+
+    g_iWeaponPending[weapon] = ClampInt(g_iWeaponPending[weapon], 0, maxPending);
+
+    if (g_iWeaponLevel[weapon] >= MAX_LEVEL)
+    {
+        int cap = GetRequiredXpForLevel(MAX_LEVEL);
+        if (g_iWeaponXP[weapon] > cap)
+        {
+            g_iWeaponXP[weapon] = cap;
+        }
+    }
+
+    if (g_iWeaponActiveAmmoTrait[weapon] == TRAIT_FIRE && !HasTrait(weapon, TRAIT_FIRE))
+    {
+        g_iWeaponActiveAmmoTrait[weapon] = TRAIT_NONE;
+    }
+    if (g_iWeaponActiveAmmoTrait[weapon] == TRAIT_EXPLOSIVE && !HasTrait(weapon, TRAIT_EXPLOSIVE))
+    {
+        g_iWeaponActiveAmmoTrait[weapon] = TRAIT_NONE;
+    }
+}
+
+void AnnounceWeaponInfo(int client, int weapon)
+{
+    char traits[96];
+    BuildTraitList(weapon, traits, sizeof(traits));
+
+    char active[24];
+    GetTraitName(g_iWeaponActiveAmmoTrait[weapon], active, sizeof(active));
+
+    PrintToChat(client, "\x04[WeaponXP]\x01 Picked upgraded weapon | Lv:%d | Traits:%s | Active:%s", g_iWeaponLevel[weapon], traits, active);
+}
+
+void BuildTraitList(int weapon, char[] buffer, int maxlen)
+{
+    buffer[0] = '\0';
+
+    bool first = true;
+    for (int trait = TRAIT_LASER; trait <= TRAIT_EXPLOSIVE; trait++)
+    {
+        if (HasTrait(weapon, trait))
+        {
+            char name[24];
+            GetTraitName(trait, name, sizeof(name));
+            if (!first)
+            {
+                StrCat(buffer, maxlen, ", ");
+            }
+            StrCat(buffer, maxlen, name);
+            first = false;
+        }
+    }
+
+    if (first)
+    {
+        strcopy(buffer, maxlen, "None");
+    }
+}
+
+bool HasTrait(int weapon, int trait)
+{
+    int bit = TraitToBit(trait);
+    return (bit != 0 && (g_iWeaponTraitMask[weapon] & bit) != 0);
+}
+
+int CountUnlockedTraits(int mask)
+{
+    int count;
+    if ((mask & TRAITBIT_LASER) != 0) count++;
+    if ((mask & TRAITBIT_FIRE) != 0) count++;
+    if ((mask & TRAITBIT_EXPLOSIVE) != 0) count++;
+    return count;
+}
+
+int TraitToBit(int trait)
+{
+    switch (trait)
+    {
+        case TRAIT_LASER: return TRAITBIT_LASER;
+        case TRAIT_FIRE: return TRAITBIT_FIRE;
+        case TRAIT_EXPLOSIVE: return TRAITBIT_EXPLOSIVE;
+    }
+    return 0;
+}
+
+int ClampInt(int value, int minVal, int maxVal)
+{
+    if (value < minVal)
+    {
+        return minVal;
+    }
+    if (value > maxVal)
+    {
+        return maxVal;
+    }
+    return value;
 }
 
 bool IsSurvivorClient(int client, bool mustAlive)

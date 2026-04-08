@@ -129,15 +129,17 @@ public void OnPluginStart()
 
 void LateLoad()
 {
-	if(g_bL4D2Version && L4D_HasAnySurvivorLeftSafeArea())
+	if(g_bL4D2Version && g_bCvarEnable && g_fCvarAssaultReminderInterval > 0.0 && L4D_HasAnySurvivorLeftSafeArea())
 	{
-		CreateTimer( g_fCvarAssaultReminderInterval, Timer_ForceInfectedAssault, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE );
+		ResetForceInfectedAssaultTimer(true);
+		g_hForceInfectedAssaultTimer = CreateTimer( g_fCvarAssaultReminderInterval, Timer_ForceInfectedAssault, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE );
 	}
 }
 
 public void OnPluginEnd() 
 {
 	g_bPluginEnd = true;
+	ResetForceInfectedAssaultTimer(true);
 	// Unload modules
 	Smoker_OnModuleEnd();
 	Boomer_OnModuleEnd();
@@ -200,16 +202,38 @@ public void OnConfigsExecuted()
 ***********************************************************************************************************************************************************************************/
 
 Handle g_hForceInfectedAssaultTimer;
+
+void ResetForceInfectedAssaultTimer(bool closeHandle)
+{
+	if (g_hForceInfectedAssaultTimer == null)
+	{
+		return;
+	}
+
+	if (closeHandle && IsValidHandle(g_hForceInfectedAssaultTimer))
+	{
+		delete g_hForceInfectedAssaultTimer;
+	}
+
+	g_hForceInfectedAssaultTimer = null;
+}
+
 public void L4D_OnFirstSurvivorLeftSafeArea_Post(int client) 
 {	
 	if(!g_bL4D2Version || !g_bCvarEnable) return;
+	if(g_fCvarAssaultReminderInterval <= 0.0) return;
 
-	delete g_hForceInfectedAssaultTimer;
+	ResetForceInfectedAssaultTimer(true);
 	g_hForceInfectedAssaultTimer = CreateTimer( g_fCvarAssaultReminderInterval, Timer_ForceInfectedAssault, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE );
 }
 
 Action Timer_ForceInfectedAssault( Handle timer ) 
 {
+	if (timer != g_hForceInfectedAssaultTimer)
+	{
+		return Plugin_Stop;
+	}
+
 	if(g_fCvarAssaultReminderInterval <= 0)
 	{
 		g_hForceInfectedAssaultTimer = null;
@@ -219,6 +243,13 @@ Action Timer_ForceInfectedAssault( Handle timer )
 	CheatServerCommand("nb_assault");
 
 	return Plugin_Continue;
+}
+
+public void OnMapEnd()
+{
+	// TIMER_FLAG_NO_MAPCHANGE timers are auto-closed on map change,
+	// so only clear our stored reference here.
+	ResetForceInfectedAssaultTimer(false);
 }
 
 // Actions API--------------

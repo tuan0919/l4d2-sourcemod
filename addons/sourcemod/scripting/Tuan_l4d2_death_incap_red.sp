@@ -239,17 +239,31 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     }
 
     int victim = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidSurvivor(victim))
-    {
-        return;
-    }
-
     int attackerClient = GetClientOfUserId(event.GetInt("attacker"));
     int attackerEnt = event.GetInt("attackerentid");
     int dmgType = event.GetInt("type");
 
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
+
+    if (IsInGameClient(victim) && GetClientTeam(victim) == 3 && IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 2 && attackerClient != victim)
+    {
+        char attackerName[64];
+        char victimSiName[64];
+        char cause[64];
+        char line[128];
+        GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
+        GetSpecialInfectedName(victim, victimSiName, sizeof(victimSiName));
+        ResolveSurvivorKillSICause(attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
+        Format(line, sizeof(line), "%s killed %s", attackerName, victimSiName);
+        PrintBlueAllWithOliveCause(attackerClient, line, cause);
+        return;
+    }
+
+    if (!IsValidSurvivor(victim))
+    {
+        return;
+    }
 
     bool bleedingOut = IsBleedingOutDeath(victim, attackerClient, attackerEnt, weapon, dmgType);
 
@@ -847,6 +861,16 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             strcopy(cause, maxlen, "molotov");
             return true;
         }
+        if (IsFireworkSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "firework crate");
+            return true;
+        }
+        if (IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "fuel barrel");
+            return true;
+        }
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "gascan");
@@ -872,6 +896,16 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
         if (IsPipeBombSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "pipebomb");
+            return true;
+        }
+        if (IsFireworkSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "firework crate");
+            return true;
+        }
+        if (IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "fuel barrel");
             return true;
         }
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
@@ -910,6 +944,110 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
     }
 
     return false;
+}
+
+void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
+{
+    char baseWeapon[64];
+    bool hasBaseWeapon = false;
+
+    if (FormatWeaponName(eventWeapon, baseWeapon, sizeof(baseWeapon)))
+    {
+        hasBaseWeapon = true;
+    }
+    else
+    {
+        int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
+        if (IsValidEdict(active))
+        {
+            char cls[64];
+            GetEntityClassname(active, cls, sizeof(cls));
+            if (FormatWeaponName(cls, baseWeapon, sizeof(baseWeapon)))
+            {
+                hasBaseWeapon = true;
+            }
+        }
+    }
+
+    if (hasBaseWeapon && StrEqual(baseWeapon, "Pistol", false) && IsDualPistolContext(0, attackerClient))
+    {
+        strcopy(baseWeapon, sizeof(baseWeapon), "Dual Pistols");
+    }
+
+    bool fire = IsFireCause(eventWeapon, dmgType) || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame");
+    bool explosive = IsExplosiveCause(eventWeapon, dmgType) || EntityClassMatches(attackerEnt, "pipe_bomb_projectile") || EntityClassMatches(attackerEnt, "grenade_launcher_projectile");
+
+    if (fire)
+    {
+        if (StrContains(eventWeapon, "molotov", false) != -1 || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"))
+        {
+            strcopy(cause, maxlen, "molotov");
+            return;
+        }
+        if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
+        {
+            strcopy(cause, maxlen, "firework crate");
+            return;
+        }
+        if (EntityClassMatches(attackerEnt, "fuel_barrel"))
+        {
+            strcopy(cause, maxlen, "fuel barrel");
+            return;
+        }
+        if (EntityIsGascan(attackerEnt))
+        {
+            strcopy(cause, maxlen, "gascan");
+            return;
+        }
+        if (hasBaseWeapon && !IsGenericFireLabel(baseWeapon))
+        {
+            Format(cause, maxlen, "%s + fire bullet", baseWeapon);
+            return;
+        }
+
+        strcopy(cause, maxlen, "fire");
+        return;
+    }
+
+    if (explosive)
+    {
+        if (StrContains(eventWeapon, "pipe", false) != -1 || EntityClassMatches(attackerEnt, "pipe_bomb_projectile"))
+        {
+            strcopy(cause, maxlen, "pipebomb");
+            return;
+        }
+        if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
+        {
+            strcopy(cause, maxlen, "firework crate");
+            return;
+        }
+        if (EntityClassMatches(attackerEnt, "fuel_barrel"))
+        {
+            strcopy(cause, maxlen, "fuel barrel");
+            return;
+        }
+        if (EntityIsGascan(attackerEnt))
+        {
+            strcopy(cause, maxlen, "gascan");
+            return;
+        }
+        if (hasBaseWeapon)
+        {
+            Format(cause, maxlen, "%s + explosive bullet", baseWeapon);
+            return;
+        }
+
+        strcopy(cause, maxlen, "explosive");
+        return;
+    }
+
+    if (hasBaseWeapon)
+    {
+        strcopy(cause, maxlen, baseWeapon);
+        return;
+    }
+
+    strcopy(cause, maxlen, "physical");
 }
 
 bool GetBestWeaponLabel(int victim, const char[] eventWeapon, char[] outLabel, int maxlen)
@@ -1035,6 +1173,46 @@ bool IsGascanSource(int victim, int attackerEnt, const char[] eventWeapon)
     }
 
     return EntityIsGascan(g_iLastInflictor[victim]) || EntityIsGascan(g_iLastWeapon[victim]);
+}
+
+bool IsFireworkSource(int victim, int attackerEnt, const char[] eventWeapon)
+{
+    if (StrContains(eventWeapon, "firework", false) != -1 || StrContains(eventWeapon, "fire_cracker", false) != -1)
+    {
+        return true;
+    }
+
+    if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework") || EntityIsFireworkCrate(attackerEnt))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "fire_cracker_blast") || EntityClassMatches(g_iLastInflictor[victim], "firework") || EntityIsFireworkCrate(g_iLastInflictor[victim]) || EntityIsFireworkCrate(g_iLastWeapon[victim]);
+}
+
+bool IsFuelBarrelSource(int victim, int attackerEnt, const char[] eventWeapon)
+{
+    if (StrContains(eventWeapon, "fuel", false) != -1 || StrContains(eventWeapon, "barrel", false) != -1)
+    {
+        return true;
+    }
+
+    if (EntityClassMatches(attackerEnt, "fuel_barrel") || EntityIsFuelBarrel(attackerEnt))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "fuel_barrel") || EntityClassMatches(g_iLastWeapon[victim], "fuel_barrel") || EntityIsFuelBarrel(g_iLastInflictor[victim]) || EntityIsFuelBarrel(g_iLastWeapon[victim]);
 }
 
 bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
@@ -1180,7 +1358,33 @@ void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] ca
             continue;
         }
 
-        CPrintToChatEx(i, author, "{teamcolor}%s ({olive}%s{default})", messageWithoutCause, cause);
+        CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+    }
+}
+
+void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause, const char[] cause)
+{
+    int author = blueAuthor;
+    if (!IsInGameClient(author) || GetClientTeam(author) != 2)
+    {
+        author = 0;
+    }
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsFakeClient(i))
+        {
+            continue;
+        }
+
+        if (author > 0)
+        {
+            CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+        }
+        else
+        {
+            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+        }
     }
 }
 
@@ -1341,6 +1545,58 @@ bool EntityIsGascan(int entity)
     if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
     {
         if (StrContains(model, "gascan", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool EntityIsFireworkCrate(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (StrContains(cls, "firework", false) != -1 || StrContains(cls, "fire_cracker", false) != -1)
+    {
+        return true;
+    }
+
+    char model[PLATFORM_MAX_PATH];
+    if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
+    {
+        if (StrContains(model, "firework", false) != -1 || StrContains(model, "fire_cracker", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool EntityIsFuelBarrel(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (StrContains(cls, "fuel_barrel", false) != -1)
+    {
+        return true;
+    }
+
+    char model[PLATFORM_MAX_PATH];
+    if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
+    {
+        if (StrContains(model, "fuel_barrel", false) != -1)
         {
             return true;
         }

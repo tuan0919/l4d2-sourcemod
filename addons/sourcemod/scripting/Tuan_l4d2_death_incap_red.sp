@@ -420,6 +420,14 @@ public void Frame_MarkFireEntitySource(any entityRef)
     HazardType source = FindBestFireSource(origin, sourceOwner);
     if (source == Hazard_None)
     {
+        if (TryInferHazardFromLinkedFireEntity(entity, source, sourceOwner))
+        {
+            // linked-entity inference found direct source (gascan/fuel/...)
+        }
+    }
+
+    if (source == Hazard_None)
+    {
         int owner = ResolveProjectileOwner(entity);
         if (WasRecentMolotovThrow(owner, 20.0))
         {
@@ -2001,7 +2009,7 @@ void AppendCauseToken(char[] cause, int maxlen, const char[] token)
     }
 
     char merged[256];
-    Format(merged, sizeof(merged), "%s + %s", cause, token);
+    Format(merged, sizeof(merged), "%s/%s", cause, token);
     strcopy(cause, maxlen, merged);
 }
 
@@ -2422,10 +2430,61 @@ bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sou
         {
             source = view_as<HazardType>(g_iFireEntSourceType[inflictor]);
             sourceOwner = g_iFireEntOwner[inflictor];
+            if (source == Hazard_None)
+            {
+                TryInferHazardFromLinkedFireEntity(inflictor, source, sourceOwner);
+            }
         }
     }
 
+    if (source == Hazard_None && victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
+    {
+        float victimPos[3];
+        GetClientEyePosition(victim, victimPos);
+        source = FindBestFireSource(victimPos, sourceOwner);
+    }
+
     return source != Hazard_None;
+}
+
+bool TryInferHazardFromLinkedFireEntity(int fireEnt, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
+
+    if (!IsValidEdict(fireEnt))
+    {
+        return false;
+    }
+
+    int links[4];
+    links[0] = GetLinkedEntity(fireEnt, "m_hOwnerEntity");
+    links[1] = GetLinkedEntity(fireEnt, "m_hMoveParent");
+    links[2] = GetLinkedEntity(fireEnt, "m_hEffectEntity");
+    links[3] = GetLinkedEntity(fireEnt, "m_hInflictor");
+
+    for (int i = 0; i < sizeof(links); i++)
+    {
+        int ent = links[i];
+        if (!IsValidEdict(ent))
+        {
+            continue;
+        }
+
+        HazardType t = GetHazardType(ent);
+        if (t != Hazard_None)
+        {
+            source = t;
+            sourceOwner = ResolveDamageOwnerClient(GetLinkedEntity(ent, "m_hOwnerEntity"), GetLinkedEntity(ent, "m_hPhysicsAttacker"));
+            if (sourceOwner == 0)
+            {
+                sourceOwner = ResolveProjectileOwner(ent);
+            }
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool HazardTypeToLabel(HazardType type, char[] outLabel, int maxlen)

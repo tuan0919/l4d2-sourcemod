@@ -14,8 +14,11 @@ native int L4D2_IsEliteSI(int client);
 #define SNAPSHOT_VALID_WINDOW 1.5
 #define INCAP_ANNOUNCE_DELAY 0.45
 #define INCAP_KILL_SUPPRESS_WINDOW 1.20
-#define HAZARD_CONTEXT_WINDOW 8.0
+#define HAZARD_CONTEXT_WINDOW 4.0
 #define MAX_TRACKED_EDICTS 2048
+#define MAX_SOURCE_EVENTS 128
+#define FIRE_SOURCE_MATCH_WINDOW 6.0
+#define FIRE_SOURCE_MAX_DIST 350.0
 
 enum AttackerKind
 {
@@ -28,6 +31,7 @@ enum AttackerKind
 enum HazardType
 {
     Hazard_None = 0,
+    Hazard_Molotov,
     Hazard_Gascan,
     Hazard_Firework,
     Hazard_FuelBarrel,
@@ -63,6 +67,21 @@ char g_sPendingWeapon[MAXPLAYERS + 1][64];
 
 bool g_bHasEliteNative;
 bool g_bHazardHooked[MAX_TRACKED_EDICTS + 1];
+int g_iHazardEntType[MAX_TRACKED_EDICTS + 1];
+int g_iHazardLastOwner[MAX_TRACKED_EDICTS + 1];
+float g_fHazardLastHitTime[MAX_TRACKED_EDICTS + 1];
+float g_vHazardLastPos[MAX_TRACKED_EDICTS + 1][3];
+bool g_bMolotovProjectile[MAX_TRACKED_EDICTS + 1];
+int g_iMolotovOwner[MAX_TRACKED_EDICTS + 1];
+float g_vMolotovLastPos[MAX_TRACKED_EDICTS + 1][3];
+int g_iFireEntSourceType[MAX_TRACKED_EDICTS + 1];
+int g_iFireEntOwner[MAX_TRACKED_EDICTS + 1];
+float g_fFireEntMarkTime[MAX_TRACKED_EDICTS + 1];
+int g_iSourceType[MAX_SOURCE_EVENTS];
+int g_iSourceOwner[MAX_SOURCE_EVENTS];
+float g_fSourceTime[MAX_SOURCE_EVENTS];
+float g_vSourcePos[MAX_SOURCE_EVENTS][3];
+int g_iSourceWrite;
 
 public Plugin myinfo =
 {
@@ -151,7 +170,32 @@ public void OnMapStart()
     for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
     {
         g_bHazardHooked[i] = false;
+        g_iHazardEntType[i] = view_as<int>(Hazard_None);
+        g_iHazardLastOwner[i] = 0;
+        g_fHazardLastHitTime[i] = 0.0;
+        g_vHazardLastPos[i][0] = 0.0;
+        g_vHazardLastPos[i][1] = 0.0;
+        g_vHazardLastPos[i][2] = 0.0;
+        g_bMolotovProjectile[i] = false;
+        g_iMolotovOwner[i] = 0;
+        g_vMolotovLastPos[i][0] = 0.0;
+        g_vMolotovLastPos[i][1] = 0.0;
+        g_vMolotovLastPos[i][2] = 0.0;
+        g_iFireEntSourceType[i] = view_as<int>(Hazard_None);
+        g_iFireEntOwner[i] = 0;
+        g_fFireEntMarkTime[i] = 0.0;
     }
+
+    for (int i = 0; i < MAX_SOURCE_EVENTS; i++)
+    {
+        g_iSourceType[i] = view_as<int>(Hazard_None);
+        g_iSourceOwner[i] = 0;
+        g_fSourceTime[i] = 0.0;
+        g_vSourcePos[i][0] = 0.0;
+        g_vSourcePos[i][1] = 0.0;
+        g_vSourcePos[i][2] = 0.0;
+    }
+    g_iSourceWrite = 0;
 
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
@@ -181,6 +225,24 @@ public void OnClientDisconnect(int client)
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
+    if (entity <= MaxClients || entity > MAX_TRACKED_EDICTS)
+    {
+        return;
+    }
+
+    if (StrContains(classname, "molotov_projectile", false) != -1)
+    {
+        g_bMolotovProjectile[entity] = true;
+        RequestFrame(Frame_InitMolotovProjectile, EntIndexToEntRef(entity));
+        return;
+    }
+
+    if (StrContains(classname, "inferno", false) != -1 || StrContains(classname, "entityflame", false) != -1)
+    {
+        RequestFrame(Frame_MarkFireEntitySource, EntIndexToEntRef(entity));
+        return;
+    }
+
     if (!ClassnameLooksHazard(classname))
     {
         return;
@@ -194,6 +256,36 @@ public void OnEntityDestroyed(int entity)
     if (entity > 0 && entity <= MAX_TRACKED_EDICTS)
     {
         g_bHazardHooked[entity] = false;
+
+        if (g_iHazardEntType[entity] != view_as<int>(Hazard_None))
+        {
+            int owner = 0;
+            if ((GetGameTime() - g_fHazardLastHitTime[entity]) <= 3.0)
+            {
+                owner = g_iHazardLastOwner[entity];
+            }
+            AddSourceEvent(view_as<HazardType>(g_iHazardEntType[entity]), g_vHazardLastPos[entity], owner);
+        }
+
+        if (g_bMolotovProjectile[entity])
+        {
+            AddSourceEvent(Hazard_Molotov, g_vMolotovLastPos[entity], g_iMolotovOwner[entity]);
+        }
+
+        g_iHazardEntType[entity] = view_as<int>(Hazard_None);
+        g_iHazardLastOwner[entity] = 0;
+        g_fHazardLastHitTime[entity] = 0.0;
+        g_vHazardLastPos[entity][0] = 0.0;
+        g_vHazardLastPos[entity][1] = 0.0;
+        g_vHazardLastPos[entity][2] = 0.0;
+        g_bMolotovProjectile[entity] = false;
+        g_iMolotovOwner[entity] = 0;
+        g_vMolotovLastPos[entity][0] = 0.0;
+        g_vMolotovLastPos[entity][1] = 0.0;
+        g_vMolotovLastPos[entity][2] = 0.0;
+        g_iFireEntSourceType[entity] = view_as<int>(Hazard_None);
+        g_iFireEntOwner[entity] = 0;
+        g_fFireEntMarkTime[entity] = 0.0;
     }
 }
 
@@ -250,6 +342,46 @@ public void Frame_DelayedHookHazard(any entityRef)
     TryHookHazardEntity(entity);
 }
 
+public void Frame_InitMolotovProjectile(any entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity == INVALID_ENT_REFERENCE || entity <= 0 || entity > MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    {
+        return;
+    }
+
+    g_iMolotovOwner[entity] = ResolveProjectileOwner(entity);
+    GetEntityAbsPos(entity, g_vMolotovLastPos[entity]);
+}
+
+public void Frame_MarkFireEntitySource(any entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity == INVALID_ENT_REFERENCE || entity <= 0 || entity > MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    {
+        return;
+    }
+
+    float origin[3];
+    GetEntityAbsPos(entity, origin);
+
+    int sourceOwner = 0;
+    HazardType source = FindBestFireSource(origin, sourceOwner);
+    if (source == Hazard_None)
+    {
+        int owner = ResolveProjectileOwner(entity);
+        if (WasRecentMolotovThrow(owner, 20.0))
+        {
+            source = Hazard_Molotov;
+            sourceOwner = owner;
+        }
+    }
+
+    g_iFireEntSourceType[entity] = view_as<int>(source);
+    g_iFireEntOwner[entity] = sourceOwner;
+    g_fFireEntMarkTime[entity] = GetGameTime();
+}
+
 public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, float damage, int damagetype)
 {
     if (damage <= 0.0)
@@ -269,6 +401,16 @@ public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, floa
         return;
     }
 
+    float pos[3];
+    GetEntityAbsPos(entity, pos);
+    g_iHazardEntType[entity] = view_as<int>(hazard);
+    g_iHazardLastOwner[entity] = owner;
+    g_fHazardLastHitTime[entity] = GetGameTime();
+    g_vHazardLastPos[entity][0] = pos[0];
+    g_vHazardLastPos[entity][1] = pos[1];
+    g_vHazardLastPos[entity][2] = pos[2];
+
+    AddSourceEvent(hazard, pos, owner);
     g_iLastHazardType[owner] = view_as<int>(hazard);
     g_fLastHazardTime[owner] = GetGameTime();
     g_iLastHazardEntityRef[owner] = EntIndexToEntRef(entity);
@@ -344,7 +486,13 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
     event.GetString("weapon", weapon, sizeof(weapon));
     if (StrContains(weapon, "molotov", false) != -1)
     {
+        float pos[3];
+        GetClientEyePosition(client, pos);
+        AddSourceEvent(Hazard_Molotov, pos, client);
         g_fLastMolotovThrow[client] = GetGameTime();
+        g_iLastHazardType[client] = view_as<int>(Hazard_None);
+        g_fLastHazardTime[client] = 0.0;
+        g_iLastHazardEntityRef[client] = INVALID_ENT_REFERENCE;
     }
 }
 
@@ -973,6 +1121,10 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 
     if (fire)
     {
+        if (TryCauseFromFireEntitySource(victim, attackerEnt, cause, maxlen))
+        {
+            return true;
+        }
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "gascan");
@@ -988,7 +1140,7 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             strcopy(cause, maxlen, "fuel barrel");
             return true;
         }
-        if (IsMolotovSource(victim, attackerEnt, eventWeapon))
+        if (IsMolotovSource(victim, attackerClient, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "molotov");
             return true;
@@ -1109,6 +1261,10 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
 
     if (fire)
     {
+        if (TryCauseFromFireEntitySource(0, attackerEnt, cause, maxlen))
+        {
+            return;
+        }
         if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
         {
             strcopy(cause, maxlen, "gascan");
@@ -1238,7 +1394,7 @@ bool IsExplosiveFromEntities(int victim, int attackerEnt)
     return EntityClassMatches(g_iLastInflictor[victim], "pipe_bomb_projectile") || EntityClassMatches(g_iLastInflictor[victim], "grenade_launcher_projectile");
 }
 
-bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
+bool IsMolotovSource(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon)
 {
     if (IsGascanSource(victim, attackerEnt, eventWeapon))
     {
@@ -1260,6 +1416,21 @@ bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
         return true;
     }
 
+    bool infernoLike = (
+        StrContains(eventWeapon, "inferno", false) != -1 ||
+        StrContains(eventWeapon, "entityflame", false) != -1 ||
+        EntityClassMatches(attackerEnt, "inferno") ||
+        EntityClassMatches(attackerEnt, "entityflame")
+    );
+
+    if (infernoLike)
+    {
+        if (WasRecentMolotovThrow(attackerClient, 20.0) || WasRecentMolotovThrow(victim, 20.0))
+        {
+            return true;
+        }
+    }
+
     if (!HasRecentSnapshot(victim))
     {
         return false;
@@ -1268,6 +1439,15 @@ bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
     if (EntityIsMolotovProjectile(g_iLastInflictor[victim]) || EntityIsMolotovProjectile(g_iLastWeapon[victim]))
     {
         return true;
+    }
+
+    if (infernoLike)
+    {
+        int snapAttacker = g_iLastAttacker[victim];
+        if (WasRecentMolotovThrow(snapAttacker, 20.0))
+        {
+            return true;
+        }
     }
 
     return false;
@@ -1682,6 +1862,7 @@ void TryHookHazardEntity(int entity)
         return;
     }
 
+    g_iHazardEntType[entity] = view_as<int>(GetHazardType(entity));
     SDKHook(entity, SDKHook_OnTakeDamagePost, OnHazardTakeDamagePost);
     g_bHazardHooked[entity] = true;
 }
@@ -1749,6 +1930,144 @@ int ResolveDamageOwnerClient(int attacker, int inflictor)
     }
 
     return 0;
+}
+
+void AddSourceEvent(HazardType type, const float pos[3], int owner)
+{
+    if (type == Hazard_None)
+    {
+        return;
+    }
+
+    int idx = g_iSourceWrite;
+    g_iSourceType[idx] = view_as<int>(type);
+    g_iSourceOwner[idx] = owner;
+    g_fSourceTime[idx] = GetGameTime();
+    g_vSourcePos[idx][0] = pos[0];
+    g_vSourcePos[idx][1] = pos[1];
+    g_vSourcePos[idx][2] = pos[2];
+    g_iSourceWrite = (g_iSourceWrite + 1) % MAX_SOURCE_EVENTS;
+
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2 && type != Hazard_Molotov)
+    {
+        g_iLastHazardType[owner] = view_as<int>(type);
+        g_fLastHazardTime[owner] = GetGameTime();
+    }
+}
+
+HazardType FindBestFireSource(const float firePos[3], int &owner)
+{
+    float now = GetGameTime();
+    float bestScore = 999999.0;
+    HazardType bestType = Hazard_None;
+    int bestOwner = 0;
+
+    for (int i = 0; i < MAX_SOURCE_EVENTS; i++)
+    {
+        HazardType type = view_as<HazardType>(g_iSourceType[i]);
+        if (type == Hazard_None)
+        {
+            continue;
+        }
+
+        float age = now - g_fSourceTime[i];
+        if (age < 0.0 || age > FIRE_SOURCE_MATCH_WINDOW)
+        {
+            continue;
+        }
+
+        float dist = GetVectorDistance(firePos, g_vSourcePos[i]);
+        if (dist > FIRE_SOURCE_MAX_DIST)
+        {
+            continue;
+        }
+
+        float score = dist + (age * 90.0);
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestType = type;
+            bestOwner = g_iSourceOwner[i];
+        }
+    }
+
+    owner = bestOwner;
+    return bestType;
+}
+
+bool TryCauseFromFireEntitySource(int victim, int attackerEnt, char[] cause, int maxlen)
+{
+    HazardType source = Hazard_None;
+    int sourceOwner = 0;
+
+    if (attackerEnt > 0 && attackerEnt <= MAX_TRACKED_EDICTS && IsValidEdict(attackerEnt))
+    {
+        source = view_as<HazardType>(g_iFireEntSourceType[attackerEnt]);
+        sourceOwner = g_iFireEntOwner[attackerEnt];
+    }
+
+    if (source == Hazard_None && victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
+    {
+        int inflictor = g_iLastInflictor[victim];
+        if (inflictor > 0 && inflictor <= MAX_TRACKED_EDICTS && IsValidEdict(inflictor))
+        {
+            source = view_as<HazardType>(g_iFireEntSourceType[inflictor]);
+            sourceOwner = g_iFireEntOwner[inflictor];
+        }
+    }
+
+    if (source == Hazard_None)
+    {
+        return false;
+    }
+
+    switch (source)
+    {
+        case Hazard_Molotov: strcopy(cause, maxlen, "molotov");
+        case Hazard_Gascan: strcopy(cause, maxlen, "gascan");
+        case Hazard_Firework: strcopy(cause, maxlen, "firework crate");
+        case Hazard_FuelBarrel: strcopy(cause, maxlen, "fuel barrel");
+        case Hazard_PropaneTank: strcopy(cause, maxlen, "propane tank");
+        case Hazard_OxygenTank: strcopy(cause, maxlen, "oxygen tank");
+        default: return false;
+    }
+
+    if (source == Hazard_Gascan && WasRecentMolotovThrow(sourceOwner, 20.0))
+    {
+        strcopy(cause, maxlen, "molotov");
+    }
+
+    return true;
+}
+
+int ResolveProjectileOwner(int entity)
+{
+    int owner = GetLinkedEntity(entity, "m_hThrower");
+    if (IsInGameClient(owner))
+    {
+        return owner;
+    }
+
+    owner = GetLinkedEntity(entity, "m_hOwnerEntity");
+    if (IsInGameClient(owner))
+    {
+        return owner;
+    }
+
+    return 0;
+}
+
+void GetEntityAbsPos(int entity, float outPos[3])
+{
+    outPos[0] = 0.0;
+    outPos[1] = 0.0;
+    outPos[2] = 0.0;
+    if (!IsValidEdict(entity))
+    {
+        return;
+    }
+
+    GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", outPos);
 }
 
 bool TryCauseFromHazardContext(int attackerClient, char[] cause, int maxlen)

@@ -189,7 +189,7 @@ void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] 
     AttackerKind kind = ResolveAttacker(victim, attackerClient, attackerEnt, dmgType, eventWeapon, attackerLabel, sizeof(attackerLabel), isSelf);
 
     char cause[64];
-    ResolveCause(victim, eventWeapon, dmgType, attackerClient, attackerEnt, cause, sizeof(cause));
+    ResolveCause(victim, eventWeapon, dmgType, attackerClient, attackerEnt, kind, cause, sizeof(cause));
 
     if (isSelf || kind == Attacker_Unknown)
     {
@@ -389,8 +389,19 @@ bool TryResolveFromEntity(int entity, char[] label, int maxlen)
     return false;
 }
 
-void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attackerClient, int attackerEnt, char[] cause, int maxlen)
+void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attackerClient, int attackerEnt, AttackerKind kind, char[] cause, int maxlen)
 {
+    if (kind == Attacker_CI)
+    {
+        strcopy(cause, maxlen, "physical");
+        return;
+    }
+
+    if (kind == Attacker_SI && ResolveSpecialInfectedCause(victim, attackerClient, attackerEnt, eventWeapon, dmgType, cause, maxlen))
+    {
+        return;
+    }
+
     if (IsFireCause(eventWeapon, dmgType))
     {
         strcopy(cause, maxlen, "fire");
@@ -534,7 +545,14 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
     TrimString(weapon);
     ToLowerCase(weapon);
 
-    if (StrEqual(weapon, "none") || StrEqual(weapon, "world") || StrEqual(weapon, "trigger_hurt"))
+    if (
+        StrEqual(weapon, "none") ||
+        StrEqual(weapon, "world") ||
+        StrEqual(weapon, "trigger_hurt") ||
+        StrEqual(weapon, "player") ||
+        StrEqual(weapon, "infected") ||
+        StrEqual(weapon, "entity")
+    )
     {
         return false;
     }
@@ -592,6 +610,83 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
     strcopy(output, maxlen, normalized);
     return true;
+}
+
+bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
+{
+    if (StrEqual(eventWeapon, "tank_rock", false))
+    {
+        strcopy(cause, maxlen, "Tank rock");
+        return true;
+    }
+
+    if (attackerClient > 0 && attackerClient <= MaxClients && IsClientInGame(attackerClient) && GetClientTeam(attackerClient) == 3)
+    {
+        int zclass = L4D2_GetPlayerZombieClass(attackerClient);
+        switch (zclass)
+        {
+            case L4D2ZombieClass_Hunter:
+            {
+                int pounce = GetEntPropEnt(victim, Prop_Send, "m_pounceAttacker");
+                strcopy(cause, maxlen, (pounce == attackerClient) ? "Hunter pounce" : "Hunter claws");
+                return true;
+            }
+            case L4D2ZombieClass_Smoker:
+            {
+                int tongue = GetEntPropEnt(victim, Prop_Send, "m_tongueOwner");
+                strcopy(cause, maxlen, (tongue == attackerClient) ? "Smoker choke" : "Smoker claws");
+                return true;
+            }
+            case L4D2ZombieClass_Jockey:
+            {
+                int jockey = GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker");
+                strcopy(cause, maxlen, (jockey == attackerClient) ? "Jockey ride" : "Jockey claws");
+                return true;
+            }
+            case L4D2ZombieClass_Charger:
+            {
+                int pummel = GetEntPropEnt(victim, Prop_Send, "m_pummelAttacker");
+                int carry = GetEntPropEnt(victim, Prop_Send, "m_carryAttacker");
+                strcopy(cause, maxlen, (pummel == attackerClient || carry == attackerClient) ? "Charger pump" : "Charger claws");
+                return true;
+            }
+            case L4D2ZombieClass_Spitter:
+            {
+                if ((dmgType & DMG_ACID) != 0 || StrContains(eventWeapon, "spit", false) != -1 || StrContains(eventWeapon, "insect_swarm", false) != -1)
+                {
+                    strcopy(cause, maxlen, "Spitter acid");
+                }
+                else
+                {
+                    strcopy(cause, maxlen, "Spitter claws");
+                }
+                return true;
+            }
+            case L4D2ZombieClass_Tank:
+            {
+                strcopy(cause, maxlen, StrEqual(eventWeapon, "tank_rock", false) ? "Tank rock" : "tank claws");
+                return true;
+            }
+        }
+    }
+
+    if (IsValidEdict(attackerEnt))
+    {
+        char cls[64];
+        GetEntityClassname(attackerEnt, cls, sizeof(cls));
+        if (StrEqual(cls, "insect_swarm") || StrEqual(cls, "spitter_projectile"))
+        {
+            strcopy(cause, maxlen, "Spitter acid");
+            return true;
+        }
+        if (StrEqual(cls, "tank_rock"))
+        {
+            strcopy(cause, maxlen, "Tank rock");
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void GetSpecialInfectedName(int client, char[] outName, int maxlen)

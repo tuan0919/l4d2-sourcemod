@@ -856,9 +856,9 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 
     if (fire)
     {
-        if (IsMolotovSource(victim, attackerEnt, eventWeapon))
+        if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "molotov");
+            strcopy(cause, maxlen, "gascan");
             return true;
         }
         if (IsFireworkSource(victim, attackerEnt, eventWeapon))
@@ -871,9 +871,9 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             strcopy(cause, maxlen, "fuel barrel");
             return true;
         }
-        if (IsGascanSource(victim, attackerEnt, eventWeapon))
+        if (IsMolotovSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "gascan");
+            strcopy(cause, maxlen, "molotov");
             return true;
         }
         if (hasBaseWeapon && IsGenericFireLabel(baseWeapon))
@@ -979,9 +979,9 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
 
     if (fire)
     {
-        if (StrContains(eventWeapon, "molotov", false) != -1 || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"))
+        if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
         {
-            strcopy(cause, maxlen, "molotov");
+            strcopy(cause, maxlen, "gascan");
             return;
         }
         if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
@@ -989,14 +989,14 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
             strcopy(cause, maxlen, "firework crate");
             return;
         }
-        if (EntityClassMatches(attackerEnt, "fuel_barrel"))
+        if (EntityClassMatches(attackerEnt, "fuel_barrel") || EntityIsFuelBarrel(attackerEnt))
         {
             strcopy(cause, maxlen, "fuel barrel");
             return;
         }
-        if (EntityIsGascan(attackerEnt))
+        if (StrContains(eventWeapon, "molotov", false) != -1 || EntityIsMolotovProjectile(attackerEnt))
         {
-            strcopy(cause, maxlen, "gascan");
+            strcopy(cause, maxlen, "molotov");
             return;
         }
         if (hasBaseWeapon && !IsGenericFireLabel(baseWeapon))
@@ -1102,12 +1102,22 @@ bool IsExplosiveFromEntities(int victim, int attackerEnt)
 
 bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
 {
+    if (IsGascanSource(victim, attackerEnt, eventWeapon))
+    {
+        return false;
+    }
+
+    if (IsFireworkSource(victim, attackerEnt, eventWeapon) || IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
+    {
+        return false;
+    }
+
     if (StrContains(eventWeapon, "molotov", false) != -1)
     {
         return true;
     }
 
-    if (EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"))
+    if (EntityIsMolotovProjectile(attackerEnt))
     {
         return true;
     }
@@ -1117,19 +1127,9 @@ bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
         return false;
     }
 
-    if (EntityClassMatches(g_iLastInflictor[victim], "inferno") || EntityClassMatches(g_iLastInflictor[victim], "entityflame"))
+    if (EntityIsMolotovProjectile(g_iLastInflictor[victim]) || EntityIsMolotovProjectile(g_iLastWeapon[victim]))
     {
         return true;
-    }
-
-    if (IsValidEdict(g_iLastWeapon[victim]))
-    {
-        char cls[64];
-        GetEntityClassname(g_iLastWeapon[victim], cls, sizeof(cls));
-        if (StrContains(cls, "inferno", false) != -1 || StrContains(cls, "entityflame", false) != -1 || StrContains(cls, "molotov", false) != -1)
-        {
-            return true;
-        }
     }
 
     return false;
@@ -1162,7 +1162,7 @@ bool IsGascanSource(int victim, int attackerEnt, const char[] eventWeapon)
         return true;
     }
 
-    if (EntityIsGascan(attackerEnt))
+    if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
     {
         return true;
     }
@@ -1172,7 +1172,7 @@ bool IsGascanSource(int victim, int attackerEnt, const char[] eventWeapon)
         return false;
     }
 
-    return EntityIsGascan(g_iLastInflictor[victim]) || EntityIsGascan(g_iLastWeapon[victim]);
+    return EntityIsGascan(g_iLastInflictor[victim]) || EntityIsGascan(g_iLastWeapon[victim]) || LinkedEntityIsGascan(g_iLastInflictor[victim]) || LinkedEntityIsGascan(g_iLastWeapon[victim]);
 }
 
 bool IsFireworkSource(int victim, int attackerEnt, const char[] eventWeapon)
@@ -1553,6 +1553,46 @@ bool EntityIsGascan(int entity)
     return false;
 }
 
+bool EntityIsMolotovProjectile(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    return StrContains(cls, "molotov", false) != -1;
+}
+
+bool LinkedEntityIsGascan(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    int owner = GetLinkedEntity(entity, "m_hOwnerEntity");
+    if (EntityIsGascan(owner))
+    {
+        return true;
+    }
+
+    int parent = GetLinkedEntity(entity, "m_hMoveParent");
+    if (EntityIsGascan(parent))
+    {
+        return true;
+    }
+
+    int effect = GetLinkedEntity(entity, "m_hEffectEntity");
+    if (EntityIsGascan(effect))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 bool EntityIsFireworkCrate(int entity)
 {
     if (!IsValidEdict(entity))
@@ -1667,6 +1707,26 @@ bool GetEntPropStringSafe(int entity, PropType type, const char[] prop, char[] b
     buffer[0] = '\0';
     GetEntPropString(entity, type, prop, buffer, maxlen);
     return true;
+}
+
+int GetLinkedEntity(int entity, const char[] prop)
+{
+    if (!IsValidEdict(entity))
+    {
+        return -1;
+    }
+
+    if (HasEntProp(entity, Prop_Data, prop))
+    {
+        return GetEntPropEnt(entity, Prop_Data, prop);
+    }
+
+    if (HasEntProp(entity, Prop_Send, prop))
+    {
+        return GetEntPropEnt(entity, Prop_Send, prop);
+    }
+
+    return -1;
 }
 
 void ToLowerCase(char[] text)

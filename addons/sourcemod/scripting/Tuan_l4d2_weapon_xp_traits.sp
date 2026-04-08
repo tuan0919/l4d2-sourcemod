@@ -77,7 +77,6 @@ public void OnPluginStart()
 
     HookEvent("infected_hurt", Event_InfectedHurt, EventHookMode_Post);
     HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Post);
-    HookEvent("witch_hurt", Event_WitchHurt, EventHookMode_Post);
     HookEvent("weapon_drop", Event_WeaponDrop, EventHookMode_Post);
     HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
     HookEvent("round_end", Event_SaveAll, EventHookMode_PostNoCopy);
@@ -166,6 +165,10 @@ public Action Event_InfectedHurt(Event event, const char[] name, bool dontBroadc
         {
             AwardXpForShot(attacker, g_hXpCI.IntValue);
         }
+        else if (StrEqual(classname, "witch", false))
+        {
+            AwardXpForShot(attacker, g_hXpWitch.IntValue);
+        }
     }
     return Plugin_Continue;
 }
@@ -200,18 +203,6 @@ public Action Event_PlayerHurt(Event event, const char[] name, bool dontBroadcas
         AwardXpForShot(attacker, g_hXpSI.IntValue);
     }
 
-    return Plugin_Continue;
-}
-
-public Action Event_WitchHurt(Event event, const char[] name, bool dontBroadcast)
-{
-    if (!g_hEnable.BoolValue)
-    {
-        return Plugin_Continue;
-    }
-
-    int attacker = GetClientOfUserId(event.GetInt("userid"));
-    AwardXpForShot(attacker, g_hXpWitch.IntValue);
     return Plugin_Continue;
 }
 

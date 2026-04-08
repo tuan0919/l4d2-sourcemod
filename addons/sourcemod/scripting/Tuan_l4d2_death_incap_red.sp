@@ -34,6 +34,7 @@ int g_iLastInflictor[MAXPLAYERS + 1];
 int g_iLastWeapon[MAXPLAYERS + 1];
 int g_iLastDmgType[MAXPLAYERS + 1];
 float g_fLastDmgTime[MAXPLAYERS + 1];
+float g_fLastMolotovThrow[MAXPLAYERS + 1];
 bool g_bIsIncappedState[MAXPLAYERS + 1];
 float g_fLastIncapTime[MAXPLAYERS + 1];
 
@@ -71,6 +72,7 @@ public void OnPluginStart()
     HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("player_incapacitated_start", Event_PlayerIncapStart, EventHookMode_Post);
     HookEvent("revive_success", Event_ReviveSuccess, EventHookMode_Post);
+    HookEvent("weapon_fire", Event_WeaponFire, EventHookMode_Post);
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -146,6 +148,7 @@ public void OnClientDisconnect(int client)
 
     ResetSnapshot(client);
     ClearPendingIncap(client);
+    g_fLastMolotovThrow[client] = 0.0;
     g_bIsIncappedState[client] = false;
     g_fLastIncapTime[client] = 0.0;
 }
@@ -228,6 +231,22 @@ void Event_ReviveSuccess(Event event, const char[] name, bool dontBroadcast)
     if (subject > 0 && subject <= MaxClients)
     {
         g_bIsIncappedState[subject] = false;
+    }
+}
+
+void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsInGameClient(client) || GetClientTeam(client) != 2)
+    {
+        return;
+    }
+
+    char weapon[64];
+    event.GetString("weapon", weapon, sizeof(weapon));
+    if (StrContains(weapon, "molotov", false) != -1)
+    {
+        g_fLastMolotovThrow[client] = GetGameTime();
     }
 }
 
@@ -874,6 +893,11 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
         if (IsMolotovSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "molotov");
+            return true;
+        }
+        if (IsLikelyGascanInferno(victim, attackerClient, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "gascan");
             return true;
         }
         if (hasBaseWeapon && IsGenericFireLabel(baseWeapon))
@@ -1652,6 +1676,48 @@ bool IsGenericFireLabel(const char[] label)
         StrEqual(label, "Entityflame", false) ||
         StrEqual(label, "Fire", false)
     );
+}
+
+bool WasRecentMolotovThrow(int client, float window)
+{
+    if (!IsInGameClient(client) || GetClientTeam(client) != 2)
+    {
+        return false;
+    }
+
+    float t = g_fLastMolotovThrow[client];
+    if (t <= 0.0)
+    {
+        return false;
+    }
+
+    return (GetGameTime() - t) <= window;
+}
+
+bool IsLikelyGascanInferno(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon)
+{
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
+    {
+        return false;
+    }
+
+    bool infernoLike = (StrContains(eventWeapon, "inferno", false) != -1 || StrContains(eventWeapon, "entityflame", false) != -1 || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"));
+    if (!infernoLike)
+    {
+        return false;
+    }
+
+    if (WasRecentMolotovThrow(attackerClient, 12.0))
+    {
+        return false;
+    }
+
+    if (IsFireworkSource(victim, attackerEnt, eventWeapon) || IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 void GetCleanClientName(int client, char[] outName, int maxlen)

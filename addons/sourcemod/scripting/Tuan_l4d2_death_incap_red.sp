@@ -61,6 +61,9 @@ float g_fLastFireAssistTime[MAXPLAYERS + 1];
 bool g_bFireAssistLocked[MAXPLAYERS + 1];
 bool g_bIsIncappedState[MAXPLAYERS + 1];
 float g_fLastIncapTime[MAXPLAYERS + 1];
+float g_fLastIncendiaryShot[MAXPLAYERS + 1];
+float g_fLastExplosiveShot[MAXPLAYERS + 1];
+char g_sLastSpecialBulletWeapon[MAXPLAYERS + 1][64];
 
 Handle g_hIncapTimer[MAXPLAYERS + 1];
 bool g_bPendingIncap[MAXPLAYERS + 1];
@@ -186,6 +189,9 @@ public void OnMapStart()
         g_iLastFireAssistOwner[i] = 0;
         g_fLastFireAssistTime[i] = 0.0;
         g_bFireAssistLocked[i] = false;
+        g_fLastIncendiaryShot[i] = 0.0;
+        g_fLastExplosiveShot[i] = 0.0;
+        g_sLastSpecialBulletWeapon[i][0] = '\0';
     }
 
     for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
@@ -246,6 +252,9 @@ public void OnClientDisconnect(int client)
     g_bFireAssistLocked[client] = false;
     g_bIsIncappedState[client] = false;
     g_fLastIncapTime[client] = 0.0;
+    g_fLastIncendiaryShot[client] = 0.0;
+    g_fLastExplosiveShot[client] = 0.0;
+    g_sLastSpecialBulletWeapon[client][0] = '\0';
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -565,6 +574,41 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
         g_iLastHazardType[client] = view_as<int>(Hazard_None);
         g_fLastHazardTime[client] = 0.0;
         g_iLastHazardEntityRef[client] = INVALID_ENT_REFERENCE;
+        return;
+    }
+
+    int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (!IsValidEdict(active) || !HasEntProp(active, Prop_Send, "m_upgradeBitVec"))
+    {
+        return;
+    }
+
+    int bits = GetEntProp(active, Prop_Send, "m_upgradeBitVec");
+    if ((bits & ((1 << 0) | (1 << 1))) == 0)
+    {
+        return;
+    }
+
+    char label[64];
+    if (!FormatWeaponName(weapon, label, sizeof(label)))
+    {
+        char cls[64];
+        GetEntityClassname(active, cls, sizeof(cls));
+        if (!FormatWeaponName(cls, label, sizeof(label)))
+        {
+            strcopy(label, sizeof(label), "Unknown");
+        }
+    }
+
+    strcopy(g_sLastSpecialBulletWeapon[client], sizeof(g_sLastSpecialBulletWeapon[]), label);
+    float now = GetGameTime();
+    if ((bits & (1 << 0)) != 0)
+    {
+        g_fLastIncendiaryShot[client] = now;
+    }
+    if ((bits & (1 << 1)) != 0)
+    {
+        g_fLastExplosiveShot[client] = now;
     }
 }
 
@@ -973,7 +1017,7 @@ void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attacke
         GetEntityClassname(attackerEnt, classname, sizeof(classname));
         if (StrEqual(classname, "infected") || StrEqual(classname, "witch"))
         {
-            strcopy(cause, maxlen, "physical");
+            strcopy(cause, maxlen, StrEqual(classname, "witch") ? "Witch claws" : "physical");
             return;
         }
     }
@@ -1106,7 +1150,14 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
     if (StrEqual(weapon, "melee"))
     {
-        return false;
+        strcopy(output, maxlen, "Melee");
+        return true;
+    }
+
+    if (StrEqual(weapon, "witch"))
+    {
+        strcopy(output, maxlen, "Witch claws");
+        return true;
     }
 
     if (StrEqual(weapon, "rifle_ak47"))
@@ -1268,6 +1319,11 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
             return true;
         }
+        if (TryResolveRecentSpecialBullet(attackerClient, true, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
+        {
+            BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
+            return true;
+        }
         if (hasBaseWeapon)
         {
             strcopy(cause, maxlen, baseWeapon);
@@ -1308,6 +1364,11 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             return true;
         }
         if (bulletExplosiveState)
+        {
+            BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
+            return true;
+        }
+        if (TryResolveRecentSpecialBullet(attackerClient, false, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
         {
             BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return true;
@@ -1439,6 +1500,11 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
             return;
         }
+        if (TryResolveRecentSpecialBullet(attackerClient, true, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
+        {
+            BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
+            return;
+        }
         if (hasBaseWeapon && !IsGenericFireLabel(baseWeapon))
         {
             strcopy(cause, maxlen, baseWeapon);
@@ -1479,6 +1545,11 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             return;
         }
         if (bulletExplosiveState)
+        {
+            BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
+            return;
+        }
+        if (TryResolveRecentSpecialBullet(attackerClient, false, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
         {
             BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return;
@@ -1820,7 +1891,7 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             {
                 int pummel = GetEntPropEnt(victim, Prop_Send, "m_pummelAttacker");
                 int carry = GetEntPropEnt(victim, Prop_Send, "m_carryAttacker");
-                strcopy(cause, maxlen, (pummel == attackerClient || carry == attackerClient) ? "Charger pump" : "Charger claws");
+                strcopy(cause, maxlen, (pummel == attackerClient || carry == attackerClient) ? "Charger pummel" : "Charger claws");
                 return true;
             }
             case L4D2ZombieClass_Spitter:
@@ -2065,6 +2136,45 @@ void AppendCauseToken(char[] cause, int maxlen, const char[] token)
     char merged[256];
     Format(merged, sizeof(merged), "%s/%s", cause, token);
     strcopy(cause, maxlen, merged);
+}
+
+bool TryResolveRecentSpecialBullet(int attackerClient, bool fireBullet, char[] baseWeapon, int maxlen, bool &hasBaseWeapon)
+{
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
+    {
+        return false;
+    }
+
+    float now = GetGameTime();
+    float t = fireBullet ? g_fLastIncendiaryShot[attackerClient] : g_fLastExplosiveShot[attackerClient];
+    if (t <= 0.0 || (now - t) > 6.0)
+    {
+        return false;
+    }
+
+    if (!hasBaseWeapon)
+    {
+        if (g_sLastSpecialBulletWeapon[attackerClient][0] != '\0')
+        {
+            strcopy(baseWeapon, maxlen, g_sLastSpecialBulletWeapon[attackerClient]);
+            hasBaseWeapon = true;
+        }
+        else
+        {
+            int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
+            if (IsValidEdict(active))
+            {
+                char cls[64];
+                GetEntityClassname(active, cls, sizeof(cls));
+                if (FormatWeaponName(cls, baseWeapon, maxlen))
+                {
+                    hasBaseWeapon = true;
+                }
+            }
+        }
+    }
+
+    return hasBaseWeapon && IsBulletWeaponLabel(baseWeapon);
 }
 
 void BuildPrimaryCause(const char[] baseWeapon, bool bulletState, bool fireBullet, const char[] primary, char[] cause, int maxlen)

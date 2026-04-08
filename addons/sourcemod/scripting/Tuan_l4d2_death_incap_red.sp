@@ -7,6 +7,8 @@
 #include <multicolors>
 #include <left4dhooks>
 
+native int L4D2_IsEliteSI(int client);
+
 #define PLUGIN_VERSION "1.0.0"
 #define ANCHOR_NAME "SI_RedAnchor"
 #define SNAPSHOT_VALID_WINDOW 1.5
@@ -32,6 +34,8 @@ int g_iLastInflictor[MAXPLAYERS + 1];
 int g_iLastWeapon[MAXPLAYERS + 1];
 int g_iLastDmgType[MAXPLAYERS + 1];
 float g_fLastDmgTime[MAXPLAYERS + 1];
+bool g_bIsIncappedState[MAXPLAYERS + 1];
+float g_fLastIncapTime[MAXPLAYERS + 1];
 
 Handle g_hIncapTimer[MAXPLAYERS + 1];
 bool g_bPendingIncap[MAXPLAYERS + 1];
@@ -40,6 +44,8 @@ int g_iPendingAttackerEnt[MAXPLAYERS + 1];
 int g_iPendingDmgType[MAXPLAYERS + 1];
 float g_fPendingIncapTime[MAXPLAYERS + 1];
 char g_sPendingWeapon[MAXPLAYERS + 1][64];
+
+bool g_bHasEliteNative;
 
 public Plugin myinfo =
 {
@@ -50,6 +56,12 @@ public Plugin myinfo =
     url = "https://github.com/alliedmodders/sourcemod"
 };
 
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+    MarkNativeAsOptional("L4D2_IsEliteSI");
+    return APLRes_Success;
+}
+
 public void OnPluginStart()
 {
     g_hEnable = CreateConVar("l4d2_redannounce_enable", "1", "Enable red death/incap announce plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -58,6 +70,7 @@ public void OnPluginStart()
 
     HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("player_incapacitated_start", Event_PlayerIncapStart, EventHookMode_Post);
+    HookEvent("revive_success", Event_ReviveSuccess, EventHookMode_Post);
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -69,6 +82,29 @@ public void OnPluginStart()
 
     g_hAnchorTimer = CreateTimer(5.0, Timer_MaintainAnchor, _, TIMER_REPEAT);
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
+
+    g_bHasEliteNative = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+}
+
+public void OnAllPluginsLoaded()
+{
+    g_bHasEliteNative = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+    if (StrEqual(name, "l4d2_elite_SI_reward"))
+    {
+        g_bHasEliteNative = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+    }
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+    if (StrEqual(name, "l4d2_elite_SI_reward"))
+    {
+        g_bHasEliteNative = false;
+    }
 }
 
 public void OnPluginEnd()
@@ -110,6 +146,8 @@ public void OnClientDisconnect(int client)
 
     ResetSnapshot(client);
     ClearPendingIncap(client);
+    g_bIsIncappedState[client] = false;
+    g_fLastIncapTime[client] = 0.0;
 }
 
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue)
@@ -171,6 +209,9 @@ void Event_PlayerIncapStart(Event event, const char[] name, bool dontBroadcast)
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
 
+    g_bIsIncappedState[victim] = true;
+    g_fLastIncapTime[victim] = GetGameTime();
+
     ClearPendingIncap(victim);
     g_bPendingIncap[victim] = true;
     g_iPendingAttackerClient[victim] = attackerClient;
@@ -179,6 +220,15 @@ void Event_PlayerIncapStart(Event event, const char[] name, bool dontBroadcast)
     g_fPendingIncapTime[victim] = GetGameTime();
     strcopy(g_sPendingWeapon[victim], sizeof(g_sPendingWeapon[]), weapon);
     g_hIncapTimer[victim] = CreateTimer(INCAP_ANNOUNCE_DELAY, Timer_AnnounceIncap, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void Event_ReviveSuccess(Event event, const char[] name, bool dontBroadcast)
+{
+    int subject = GetClientOfUserId(event.GetInt("subject"));
+    if (subject > 0 && subject <= MaxClients)
+    {
+        g_bIsIncappedState[subject] = false;
+    }
 }
 
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -201,12 +251,16 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
 
+    bool bleedingOut = IsBleedingOutDeath(victim, attackerClient, attackerEnt, weapon, dmgType);
+
     if (g_bPendingIncap[victim] && (GetGameTime() - g_fPendingIncapTime[victim]) <= INCAP_KILL_SUPPRESS_WINDOW)
     {
         ClearPendingIncap(victim);
     }
 
-    PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false);
+    g_bIsIncappedState[victim] = false;
+
+    PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false, bleedingOut);
 }
 
 public Action Timer_AnnounceIncap(Handle timer, int userid)
@@ -234,12 +288,12 @@ public Action Timer_AnnounceIncap(Handle timer, int userid)
         return Plugin_Stop;
     }
 
-    PrintOutcome(victim, g_iPendingAttackerClient[victim], g_iPendingAttackerEnt[victim], g_sPendingWeapon[victim], g_iPendingDmgType[victim], true);
+    PrintOutcome(victim, g_iPendingAttackerClient[victim], g_iPendingAttackerEnt[victim], g_sPendingWeapon[victim], g_iPendingDmgType[victim], true, false);
     ClearPendingIncap(victim);
     return Plugin_Stop;
 }
 
-void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, bool incap)
+void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, bool incap, bool bleedingOut = false)
 {
     char attackerLabel[64];
     bool isSelf = false;
@@ -249,39 +303,63 @@ void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] 
     char cause[64];
     ResolveCause(victim, eventWeapon, dmgType, attackerClient, attackerEnt, kind, cause, sizeof(cause));
 
+    if (!incap && bleedingOut)
+    {
+        char victimName[64];
+        char line[128];
+        GetCleanClientName(victim, victimName, sizeof(victimName));
+        Format(line, sizeof(line), "%s died", victimName);
+        PrintRedAllWithOliveCause(line, "bleeding out");
+        return;
+    }
+
     if (isSelf || kind == Attacker_Unknown)
     {
+        char victimName[64];
+        char line[128];
+        GetCleanClientName(victim, victimName, sizeof(victimName));
+
         if (incap)
         {
-            PrintRedAll("%N incapped himself (%s).", victim, cause);
+            Format(line, sizeof(line), "%s incapped himself", victimName);
+            PrintRedAllWithOliveCause(line, cause);
         }
         else
         {
-            PrintRedAll("%N suicided (%s).", victim, cause);
+            Format(line, sizeof(line), "%s suicided", victimName);
+            PrintRedAllWithOliveCause(line, cause);
         }
         return;
     }
+
+    char victimName[64];
+    char line[128];
+    GetCleanClientName(victim, victimName, sizeof(victimName));
 
     if (kind == Attacker_CI)
     {
         if (incap)
         {
-            PrintRedAll("Common Infected incapped %N (%s).", victim, cause);
+            Format(line, sizeof(line), "Common Infected incapped %s", victimName);
+            PrintRedAllWithOliveCause(line, cause);
         }
         else
         {
-            PrintRedAll("Common Infected killed %N (%s).", victim, cause);
+            Format(line, sizeof(line), "Common Infected killed %s", victimName);
+            PrintRedAllWithOliveCause(line, cause);
         }
         return;
     }
 
     if (incap)
     {
-        PrintRedAll("%s incapped %N (%s).", attackerLabel, victim, cause);
+        Format(line, sizeof(line), "%s incapped %s", attackerLabel, victimName);
+        PrintRedAllWithOliveCause(line, cause);
     }
     else
     {
-        PrintRedAll("%s killed %N (%s).", attackerLabel, victim, cause);
+        Format(line, sizeof(line), "%s killed %s", attackerLabel, victimName);
+        PrintRedAllWithOliveCause(line, cause);
     }
 }
 
@@ -294,14 +372,14 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
         if (attackerClient == victim)
         {
             isSelf = true;
-            GetClientName(attackerClient, attackerLabel, maxlen);
+            GetCleanClientName(attackerClient, attackerLabel, maxlen);
             return Attacker_Survivor;
         }
 
         int team = GetClientTeam(attackerClient);
         if (team == 2)
         {
-            GetClientName(attackerClient, attackerLabel, maxlen);
+            GetCleanClientName(attackerClient, attackerLabel, maxlen);
             return Attacker_Survivor;
         }
 
@@ -331,14 +409,14 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
             if (snapAttacker == victim)
             {
                 isSelf = true;
-                GetClientName(snapAttacker, attackerLabel, maxlen);
+                GetCleanClientName(snapAttacker, attackerLabel, maxlen);
                 return Attacker_Survivor;
             }
 
             int team2 = GetClientTeam(snapAttacker);
             if (team2 == 2)
             {
-                GetClientName(snapAttacker, attackerLabel, maxlen);
+                GetCleanClientName(snapAttacker, attackerLabel, maxlen);
                 return Attacker_Survivor;
             }
 
@@ -362,7 +440,7 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
     if (attackerClient <= 0 && ShouldTreatAsSelf(dmgType, eventWeapon))
     {
         isSelf = true;
-        GetClientName(victim, attackerLabel, maxlen);
+        GetCleanClientName(victim, attackerLabel, maxlen);
         return Attacker_Survivor;
     }
 
@@ -596,6 +674,31 @@ bool ShouldTreatAsSelf(int dmgType, const char[] weapon)
     return ((dmgType & DMG_FALL) != 0 || (dmgType & DMG_BURN) != 0 || (dmgType & DMG_BLAST) != 0 || StrContains(weapon, "world", false) != -1 || StrContains(weapon, "trigger_hurt", false) != -1);
 }
 
+bool IsBleedingOutDeath(int victim, int attackerClient, int attackerEnt, const char[] weapon, int dmgType)
+{
+    if (!g_bIsIncappedState[victim])
+    {
+        return false;
+    }
+
+    if ((GetGameTime() - g_fLastIncapTime[victim]) < 2.0)
+    {
+        return false;
+    }
+
+    if (attackerClient > 0 || attackerEnt > 0)
+    {
+        return false;
+    }
+
+    if (StrEqual(weapon, "world", false) || StrEqual(weapon, "none", false) || StrEqual(weapon, "player", false) || weapon[0] == '\0')
+    {
+        return true;
+    }
+
+    return ((dmgType & DMG_POISON) != 0 || (dmgType & DMG_DIRECT) != 0 || (dmgType & DMG_GENERIC) != 0);
+}
+
 bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 {
     if (inputWeapon[0] == '\0')
@@ -729,6 +832,10 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 {
     char baseWeapon[64];
     bool hasBaseWeapon = GetBestWeaponLabel(victim, eventWeapon, baseWeapon, sizeof(baseWeapon));
+    if (hasBaseWeapon && StrEqual(baseWeapon, "Pistol", false) && IsDualPistolContext(victim, attackerClient))
+    {
+        strcopy(baseWeapon, sizeof(baseWeapon), "Dual Pistols");
+    }
 
     bool fire = IsFireCause(eventWeapon, dmgType) || IsFireFromEntities(victim, attackerEnt);
     bool explosive = IsExplosiveCause(eventWeapon, dmgType) || IsExplosiveFromEntities(victim, attackerEnt);
@@ -743,6 +850,11 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "gascan");
+            return true;
+        }
+        if (hasBaseWeapon && IsGenericFireLabel(baseWeapon))
+        {
+            strcopy(cause, maxlen, "fire");
             return true;
         }
         if (hasBaseWeapon)
@@ -867,7 +979,22 @@ bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
         return false;
     }
 
-    return EntityClassMatches(g_iLastInflictor[victim], "inferno") || EntityClassMatches(g_iLastInflictor[victim], "entityflame");
+    if (EntityClassMatches(g_iLastInflictor[victim], "inferno") || EntityClassMatches(g_iLastInflictor[victim], "entityflame"))
+    {
+        return true;
+    }
+
+    if (IsValidEdict(g_iLastWeapon[victim]))
+    {
+        char cls[64];
+        GetEntityClassname(g_iLastWeapon[victim], cls, sizeof(cls));
+        if (StrContains(cls, "inferno", false) != -1 || StrContains(cls, "entityflame", false) != -1 || StrContains(cls, "molotov", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool IsPipeBombSource(int victim, int attackerEnt, const char[] eventWeapon)
@@ -989,17 +1116,28 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
 
 void GetSpecialInfectedName(int client, char[] outName, int maxlen)
 {
+    char baseName[32];
+
     int zclass = L4D2_GetPlayerZombieClass(client);
     switch (zclass)
     {
-        case L4D2ZombieClass_Smoker: strcopy(outName, maxlen, "Smoker");
-        case L4D2ZombieClass_Boomer: strcopy(outName, maxlen, "Boomer");
-        case L4D2ZombieClass_Hunter: strcopy(outName, maxlen, "Hunter");
-        case L4D2ZombieClass_Spitter: strcopy(outName, maxlen, "Spitter");
-        case L4D2ZombieClass_Jockey: strcopy(outName, maxlen, "Jockey");
-        case L4D2ZombieClass_Charger: strcopy(outName, maxlen, "Charger");
-        case L4D2ZombieClass_Tank: strcopy(outName, maxlen, "Tank");
-        default: strcopy(outName, maxlen, "Special Infected");
+        case L4D2ZombieClass_Smoker: strcopy(baseName, sizeof(baseName), "Smoker");
+        case L4D2ZombieClass_Boomer: strcopy(baseName, sizeof(baseName), "Boomer");
+        case L4D2ZombieClass_Hunter: strcopy(baseName, sizeof(baseName), "Hunter");
+        case L4D2ZombieClass_Spitter: strcopy(baseName, sizeof(baseName), "Spitter");
+        case L4D2ZombieClass_Jockey: strcopy(baseName, sizeof(baseName), "Jockey");
+        case L4D2ZombieClass_Charger: strcopy(baseName, sizeof(baseName), "Charger");
+        case L4D2ZombieClass_Tank: strcopy(baseName, sizeof(baseName), "Tank");
+        default: strcopy(baseName, sizeof(baseName), "Special Infected");
+    }
+
+    if (IsEliteSI(client))
+    {
+        Format(outName, maxlen, "Elite %s", baseName);
+    }
+    else
+    {
+        strcopy(outName, maxlen, baseName);
     }
 }
 
@@ -1023,6 +1161,26 @@ void PrintRedAll(const char[] fmt, any ...)
         }
 
         CPrintToChatEx(i, author, "{teamcolor}%s{default}", msg);
+    }
+}
+
+void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] cause)
+{
+    int author = EnsureAnchorClient();
+    if (author <= 0 || author > MaxClients || !IsClientInGame(author) || GetClientTeam(author) != 3)
+    {
+        PrintToChatAll("%s (%s)", messageWithoutCause, cause);
+        return;
+    }
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsFakeClient(i))
+        {
+            continue;
+        }
+
+        CPrintToChatEx(i, author, "{teamcolor}%s ({olive}%s{default})", messageWithoutCause, cause);
     }
 }
 
@@ -1070,6 +1228,52 @@ bool IsValidSurvivor(int client)
 bool IsInGameClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
+}
+
+bool IsEliteSI(int client)
+{
+    if (!g_bHasEliteNative || !IsInGameClient(client) || GetClientTeam(client) != 3)
+    {
+        return false;
+    }
+
+    return L4D2_IsEliteSI(client) != 0;
+}
+
+bool IsDualPistolContext(int victim, int attackerClient)
+{
+    if (IsDualPistolEntity(g_iLastWeapon[victim]))
+    {
+        return true;
+    }
+
+    if (IsInGameClient(attackerClient))
+    {
+        int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
+        if (IsDualPistolEntity(active))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsDualPistolEntity(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (!StrEqual(cls, "weapon_pistol", false))
+    {
+        return false;
+    }
+
+    return GetEntProp(entity, Prop_Send, "m_isDualWielding") > 0;
 }
 
 bool HasRecentSnapshot(int victim)
@@ -1143,6 +1347,58 @@ bool EntityIsGascan(int entity)
     }
 
     return false;
+}
+
+bool IsGenericFireLabel(const char[] label)
+{
+    return (
+        StrEqual(label, "Inferno", false) ||
+        StrEqual(label, "Entityflame", false) ||
+        StrEqual(label, "Fire", false)
+    );
+}
+
+void GetCleanClientName(int client, char[] outName, int maxlen)
+{
+    GetClientName(client, outName, maxlen);
+    TrimString(outName);
+
+    if (outName[0] != '(')
+    {
+        return;
+    }
+
+    int close = FindCharInString(outName, ')');
+    if (close <= 1 || close >= strlen(outName) - 1)
+    {
+        return;
+    }
+
+    bool allDigits = true;
+    for (int i = 1; i < close; i++)
+    {
+        if (!IsCharNumeric(outName[i]))
+        {
+            allDigits = false;
+            break;
+        }
+    }
+
+    if (!allDigits)
+    {
+        return;
+    }
+
+    int start = close + 1;
+    while (start < strlen(outName) && outName[start] == ' ')
+    {
+        start++;
+    }
+
+    if (start < strlen(outName))
+    {
+        strcopy(outName, maxlen, outName[start]);
+    }
 }
 
 bool GetEntPropStringSafe(int entity, PropType type, const char[] prop, char[] buffer, int maxlen)

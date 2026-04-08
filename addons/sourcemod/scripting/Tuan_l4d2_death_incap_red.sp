@@ -44,6 +44,7 @@ bool g_bEnable;
 
 int g_iAnchorUserId;
 Handle g_hAnchorTimer;
+Handle g_hBurnWatchTimer;
 
 int g_iLastAttacker[MAXPLAYERS + 1];
 int g_iLastInflictor[MAXPLAYERS + 1];
@@ -57,6 +58,7 @@ int g_iLastHazardEntityRef[MAXPLAYERS + 1];
 int g_iLastFireAssistType[MAXPLAYERS + 1];
 int g_iLastFireAssistOwner[MAXPLAYERS + 1];
 float g_fLastFireAssistTime[MAXPLAYERS + 1];
+bool g_bFireAssistLocked[MAXPLAYERS + 1];
 bool g_bIsIncappedState[MAXPLAYERS + 1];
 float g_fLastIncapTime[MAXPLAYERS + 1];
 
@@ -111,6 +113,7 @@ public void OnPluginStart()
     HookEvent("player_incapacitated_start", Event_PlayerIncapStart, EventHookMode_Post);
     HookEvent("revive_success", Event_ReviveSuccess, EventHookMode_Post);
     HookEvent("weapon_fire", Event_WeaponFire, EventHookMode_Post);
+    HookEvent("witch_killed", Event_WitchKilled, EventHookMode_Post);
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -121,6 +124,7 @@ public void OnPluginStart()
     }
 
     g_hAnchorTimer = CreateTimer(5.0, Timer_MaintainAnchor, _, TIMER_REPEAT);
+    g_hBurnWatchTimer = CreateTimer(0.25, Timer_WatchBurnState, _, TIMER_REPEAT);
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 
@@ -161,6 +165,12 @@ public void OnPluginEnd()
         g_hAnchorTimer = null;
     }
 
+    if (g_hBurnWatchTimer != null)
+    {
+        delete g_hBurnWatchTimer;
+        g_hBurnWatchTimer = null;
+    }
+
     int anchor = GetClientOfUserId(g_iAnchorUserId);
     if (anchor > 0 && anchor <= MaxClients && IsClientInGame(anchor) && IsFakeClient(anchor))
     {
@@ -175,6 +185,7 @@ public void OnMapStart()
         g_iLastFireAssistType[i] = view_as<int>(Hazard_None);
         g_iLastFireAssistOwner[i] = 0;
         g_fLastFireAssistTime[i] = 0.0;
+        g_bFireAssistLocked[i] = false;
     }
 
     for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
@@ -232,6 +243,7 @@ public void OnClientDisconnect(int client)
     g_iLastFireAssistType[client] = view_as<int>(Hazard_None);
     g_iLastFireAssistOwner[client] = 0;
     g_fLastFireAssistTime[client] = 0.0;
+    g_bFireAssistLocked[client] = false;
     g_bIsIncappedState[client] = false;
     g_fLastIncapTime[client] = 0.0;
 }
@@ -322,6 +334,32 @@ public Action Timer_MaintainAnchor(Handle timer)
     {
         EnsureAnchorClient();
     }
+    return Plugin_Continue;
+}
+
+public Action Timer_WatchBurnState(Handle timer)
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsTrackableVictim(client))
+        {
+            continue;
+        }
+
+        if (!g_bFireAssistLocked[client])
+        {
+            continue;
+        }
+
+        if (!IsClientCurrentlyOnFire(client))
+        {
+            g_bFireAssistLocked[client] = false;
+            g_iLastFireAssistType[client] = view_as<int>(Hazard_None);
+            g_iLastFireAssistOwner[client] = 0;
+            g_fLastFireAssistTime[client] = 0.0;
+        }
+    }
+
     return Plugin_Continue;
 }
 
@@ -446,11 +484,12 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     {
         HazardType fireType = Hazard_None;
         int fireOwner = 0;
-        if (GetFireSourceMeta(victim, inflictor, fireType, fireOwner) && fireType != Hazard_None)
+        if (!g_bFireAssistLocked[victim] && GetFireSourceMeta(victim, inflictor, fireType, fireOwner) && fireType != Hazard_None)
         {
             g_iLastFireAssistType[victim] = view_as<int>(fireType);
             g_iLastFireAssistOwner[victim] = fireOwner;
             g_fLastFireAssistTime[victim] = GetGameTime();
+            g_bFireAssistLocked[victim] = true;
         }
     }
 
@@ -568,6 +607,28 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     g_bIsIncappedState[victim] = false;
 
     PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false, bleedingOut);
+}
+
+void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast)
+{
+    if (!g_bEnable)
+    {
+        return;
+    }
+
+    int attackerClient = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
+    {
+        return;
+    }
+
+    char attackerName[64];
+    char cause[192];
+    char line[128];
+    GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
+    ResolveWitchKillCause(attackerClient, cause, sizeof(cause));
+    Format(line, sizeof(line), "%s killed Witch", attackerName);
+    PrintBlueAllWithOliveCause(attackerClient, line, cause);
 }
 
 public Action Timer_AnnounceIncap(Handle timer, int userid)
@@ -1289,6 +1350,14 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
 
     if (fire)
     {
+        HazardType assistType = Hazard_None;
+        if (GetRecentFireAssist(victim, attackerClient, assistType))
+        {
+            if (HazardTypeToLabel(assistType, cause, maxlen))
+            {
+                return;
+            }
+        }
         if (TryCauseFromFireEntitySource(victim, attackerEnt, cause, maxlen))
         {
             return;
@@ -1383,6 +1452,35 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
     strcopy(cause, maxlen, "physical");
 }
 
+void ResolveWitchKillCause(int attackerClient, char[] cause, int maxlen)
+{
+    char weapon[64];
+    int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
+    if (IsValidEdict(active))
+    {
+        char cls[64];
+        GetEntityClassname(active, cls, sizeof(cls));
+        if (FormatWeaponName(cls, weapon, sizeof(weapon)))
+        {
+            strcopy(cause, maxlen, weapon);
+            return;
+        }
+    }
+
+    if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+    {
+        return;
+    }
+
+    if (WasRecentMolotovThrow(attackerClient, 20.0))
+    {
+        strcopy(cause, maxlen, "molotov");
+        return;
+    }
+
+    strcopy(cause, maxlen, "physical");
+}
+
 void ApplySurvivorKillQualifiers(int attackerClient, int victimClient, const char[] eventWeapon, int dmgType, bool headshot, bool wallbang, char[] cause, int maxlen)
 {
     if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
@@ -1435,6 +1533,16 @@ void ApplySurvivorKillQualifiers(int attackerClient, int victimClient, const cha
     if (IsSniperLikeRange(attackerClient, victimClient, eventWeapon, dmgType))
     {
         AppendCauseToken(cause, maxlen, "snip");
+    }
+
+    if (IsVictimStaggered(victimClient))
+    {
+        AppendCauseToken(cause, maxlen, "stagger");
+    }
+
+    if (IsClientAdrenalineActive(victimClient))
+    {
+        AppendCauseToken(cause, maxlen, "adrenaline");
     }
 }
 
@@ -1865,7 +1973,7 @@ bool GetRecentFireAssist(int victimClient, int attackerClient, HazardType &type)
         return false;
     }
 
-    if ((GetGameTime() - g_fLastFireAssistTime[victimClient]) > 12.0)
+    if (!g_bFireAssistLocked[victimClient])
     {
         return false;
     }
@@ -1956,6 +2064,74 @@ bool IsSniperLikeRange(int attackerClient, int victimClient, const char[] eventW
     GetClientEyePosition(victimClient, vPos);
 
     return GetVectorDistance(aPos, vPos) >= 1200.0;
+}
+
+bool IsVictimStaggered(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_staggerTimer"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_staggerTimer") > 0.0;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_staggerDist"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_staggerDist") > 0.0;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_staggerStart"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_staggerStart") > 0.0;
+    }
+
+    return false;
+}
+
+bool IsClientAdrenalineActive(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_bAdrenalineActive"))
+    {
+        if (GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0)
+        {
+            return true;
+        }
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_flAdrenalineTime"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_flAdrenalineTime") > GetGameTime();
+    }
+
+    return false;
+}
+
+bool IsClientCurrentlyOnFire(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_bIsBurning"))
+    {
+        return GetEntProp(client, Prop_Send, "m_bIsBurning") != 0;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_flFlameBurnTime"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_flFlameBurnTime") > GetGameTime();
+    }
+
+    return false;
 }
 
 bool IsInGameClient(int client)

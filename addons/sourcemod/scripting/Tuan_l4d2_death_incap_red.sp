@@ -1215,40 +1215,47 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 
     bool fire = IsFireCause(eventWeapon, dmgType) || IsFireFromEntities(victim, attackerEnt);
     bool explosive = IsExplosiveCause(eventWeapon, dmgType) || IsExplosiveFromEntities(victim, attackerEnt);
+    bool bulletFireState = (hasBaseWeapon && ShouldUseBulletState(baseWeapon, eventWeapon, attackerEnt));
+    bool bulletExplosiveState = (hasBaseWeapon && ShouldUseBulletState(baseWeapon, eventWeapon, attackerEnt));
 
     if (fire)
     {
+        char primary[64];
         if (TryCauseFromFireEntitySource(victim, attackerEnt, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
             return true;
         }
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "gascan");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "gascan", cause, maxlen);
             return true;
         }
         if (IsFireworkSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "firework crate");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "firework crate", cause, maxlen);
             return true;
         }
         if (IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "fuel barrel");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "fuel barrel", cause, maxlen);
             return true;
         }
         if (IsMolotovSource(victim, attackerClient, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "molotov");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
             return true;
         }
         if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
             return true;
         }
         if (IsLikelyGascanInferno(victim, attackerClient, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "gascan");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "gascan", cause, maxlen);
             return true;
         }
         if (hasBaseWeapon && IsGenericFireLabel(baseWeapon))
@@ -1256,9 +1263,14 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             strcopy(cause, maxlen, "fire");
             return true;
         }
+        if (bulletFireState)
+        {
+            BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
+            return true;
+        }
         if (hasBaseWeapon)
         {
-            Format(cause, maxlen, "%s + fire bullet", baseWeapon);
+            strcopy(cause, maxlen, baseWeapon);
             return true;
         }
 
@@ -1268,33 +1280,41 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 
     if (explosive)
     {
+        char primary[64];
         if (IsPipeBombSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "pipebomb");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "pipebomb", cause, maxlen);
             return true;
         }
         if (IsFireworkSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "firework crate");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "firework crate", cause, maxlen);
             return true;
         }
         if (IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "fuel barrel");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "fuel barrel", cause, maxlen);
             return true;
         }
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
-            strcopy(cause, maxlen, "gascan");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "gascan", cause, maxlen);
             return true;
         }
         if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, primary, cause, maxlen);
+            return true;
+        }
+        if (bulletExplosiveState)
+        {
+            BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return true;
         }
         if (hasBaseWeapon)
         {
-            Format(cause, maxlen, "%s + explosive bullet", baseWeapon);
+            strcopy(cause, maxlen, baseWeapon);
             return true;
         }
 
@@ -1355,19 +1375,26 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
 
     bool fire = IsFireCause(eventWeapon, dmgType) || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame");
     bool explosive = IsExplosiveCause(eventWeapon, dmgType) || EntityClassMatches(attackerEnt, "pipe_bomb_projectile") || EntityClassMatches(attackerEnt, "grenade_launcher_projectile");
+    bool bulletFireState = (hasBaseWeapon && ShouldUseBulletState(baseWeapon, eventWeapon, attackerEnt));
+    bool bulletExplosiveState = (hasBaseWeapon && ShouldUseBulletState(baseWeapon, eventWeapon, attackerEnt));
 
     if (fire)
     {
+        char primary[64];
         HazardType assistType = Hazard_None;
         if (GetRecentFireAssist(victim, attackerClient, assistType))
         {
             if (HazardTypeToLabel(assistType, cause, maxlen))
             {
+                strcopy(primary, sizeof(primary), cause);
+                BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
                 return;
             }
         }
         if (TryCauseFromFireEntitySource(victim, attackerEnt, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
             return;
         }
         bool infernoLike = (
@@ -1378,36 +1405,43 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
         );
         if (infernoLike && WasRecentMolotovThrow(attackerClient, 20.0))
         {
-            strcopy(cause, maxlen, "molotov");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
             return;
         }
         if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
         {
-            strcopy(cause, maxlen, "gascan");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "gascan", cause, maxlen);
             return;
         }
         if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
         {
-            strcopy(cause, maxlen, "firework crate");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "firework crate", cause, maxlen);
             return;
         }
         if (EntityClassMatches(attackerEnt, "fuel_barrel") || EntityIsFuelBarrel(attackerEnt))
         {
-            strcopy(cause, maxlen, "fuel barrel");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "fuel barrel", cause, maxlen);
             return;
         }
         if (StrContains(eventWeapon, "molotov", false) != -1 || EntityIsMolotovProjectile(attackerEnt))
         {
-            strcopy(cause, maxlen, "molotov");
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
             return;
         }
         if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
+            return;
+        }
+        if (bulletFireState)
+        {
+            BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
             return;
         }
         if (hasBaseWeapon && !IsGenericFireLabel(baseWeapon))
         {
-            Format(cause, maxlen, "%s + fire bullet", baseWeapon);
+            strcopy(cause, maxlen, baseWeapon);
             return;
         }
 
@@ -1417,33 +1451,41 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
 
     if (explosive)
     {
+        char primary[64];
         if (StrContains(eventWeapon, "pipe", false) != -1 || EntityClassMatches(attackerEnt, "pipe_bomb_projectile"))
         {
-            strcopy(cause, maxlen, "pipebomb");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "pipebomb", cause, maxlen);
             return;
         }
         if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
         {
-            strcopy(cause, maxlen, "firework crate");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "firework crate", cause, maxlen);
             return;
         }
         if (EntityClassMatches(attackerEnt, "fuel_barrel"))
         {
-            strcopy(cause, maxlen, "fuel barrel");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "fuel barrel", cause, maxlen);
             return;
         }
         if (EntityIsGascan(attackerEnt))
         {
-            strcopy(cause, maxlen, "gascan");
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "gascan", cause, maxlen);
             return;
         }
         if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
+            strcopy(primary, sizeof(primary), cause);
+            BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, primary, cause, maxlen);
+            return;
+        }
+        if (bulletExplosiveState)
+        {
+            BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return;
         }
         if (hasBaseWeapon)
         {
-            Format(cause, maxlen, "%s + explosive bullet", baseWeapon);
+            strcopy(cause, maxlen, baseWeapon);
             return;
         }
 
@@ -1872,6 +1914,9 @@ void PrintRedAll(const char[] fmt, any ...)
 
 void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] cause)
 {
+    char coloredCause[512];
+    FormatCauseForChatColors(cause, coloredCause, sizeof(coloredCause));
+
     int author = EnsureAnchorClient();
     if (author <= 0 || author > MaxClients || !IsClientInGame(author) || GetClientTeam(author) != 3)
     {
@@ -1886,12 +1931,15 @@ void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] ca
             continue;
         }
 
-        CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+        CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
     }
 }
 
 void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause, const char[] cause)
 {
+    char coloredCause[512];
+    FormatCauseForChatColors(cause, coloredCause, sizeof(coloredCause));
+
     int author = blueAuthor;
     if (!IsInGameClient(author) || GetClientTeam(author) != 2)
     {
@@ -1907,13 +1955,19 @@ void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause
 
         if (author > 0)
         {
-            CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+            CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
         }
         else
         {
-            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
         }
     }
+}
+
+void FormatCauseForChatColors(const char[] cause, char[] outCause, int maxlen)
+{
+    strcopy(outCause, maxlen, cause);
+    ReplaceString(outCause, maxlen, "/", "{default}/{olive}", false);
 }
 
 int EnsureAnchorClient()
@@ -2011,6 +2065,77 @@ void AppendCauseToken(char[] cause, int maxlen, const char[] token)
     char merged[256];
     Format(merged, sizeof(merged), "%s/%s", cause, token);
     strcopy(cause, maxlen, merged);
+}
+
+void BuildPrimaryCause(const char[] baseWeapon, bool bulletState, bool fireBullet, const char[] primary, char[] cause, int maxlen)
+{
+    cause[0] = '\0';
+
+    if (bulletState && baseWeapon[0] != '\0')
+    {
+        strcopy(cause, maxlen, baseWeapon);
+        AppendCauseToken(cause, maxlen, fireBullet ? "fire bullet" : "explosive bullet");
+    }
+
+    if (primary[0] != '\0')
+    {
+        AppendCauseToken(cause, maxlen, primary);
+    }
+}
+
+bool ShouldUseBulletState(const char[] baseWeapon, const char[] eventWeapon, int attackerEnt)
+{
+    if (!IsBulletWeaponLabel(baseWeapon))
+    {
+        return false;
+    }
+
+    if (IsGrenadeLauncherContext(baseWeapon, eventWeapon, attackerEnt))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool IsGrenadeLauncherContext(const char[] baseWeapon, const char[] eventWeapon, int attackerEnt)
+{
+    if (StrContains(baseWeapon, "Grenade Launcher", false) != -1)
+    {
+        return true;
+    }
+
+    if (StrContains(eventWeapon, "grenade_launcher", false) != -1 || StrContains(eventWeapon, "grenade launcher", false) != -1)
+    {
+        return true;
+    }
+
+    return EntityClassMatches(attackerEnt, "grenade_launcher_projectile");
+}
+
+bool IsBulletWeaponLabel(const char[] label)
+{
+    if (label[0] == '\0')
+    {
+        return false;
+    }
+
+    if (StrEqual(label, "molotov", false) || StrEqual(label, "pipebomb", false) || StrEqual(label, "gascan", false))
+    {
+        return false;
+    }
+
+    if (IsGenericFireLabel(label) || StrEqual(label, "fire", false) || StrEqual(label, "explosive", false))
+    {
+        return false;
+    }
+
+    if (StrContains(label, "Launcher", false) != -1 || StrContains(label, "Melee", false) != -1 || StrContains(label, "Chainsaw", false) != -1 || StrContains(label, "Knife", false) != -1)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool IsClientDucking(int client)

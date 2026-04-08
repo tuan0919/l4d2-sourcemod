@@ -1265,6 +1265,17 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
         {
             return;
         }
+        bool infernoLike = (
+            StrContains(eventWeapon, "inferno", false) != -1 ||
+            StrContains(eventWeapon, "entityflame", false) != -1 ||
+            EntityClassMatches(attackerEnt, "inferno") ||
+            EntityClassMatches(attackerEnt, "entityflame")
+        );
+        if (infernoLike && WasRecentMolotovThrow(attackerClient, 20.0))
+        {
+            strcopy(cause, maxlen, "molotov");
+            return;
+        }
         if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
         {
             strcopy(cause, maxlen, "gascan");

@@ -10,6 +10,8 @@
 #define PLUGIN_VERSION "1.0.0"
 #define ANCHOR_NAME "SI_RedAnchor"
 #define SNAPSHOT_VALID_WINDOW 1.5
+#define INCAP_ANNOUNCE_DELAY 0.45
+#define INCAP_KILL_SUPPRESS_WINDOW 1.20
 
 enum AttackerKind
 {
@@ -30,6 +32,14 @@ int g_iLastInflictor[MAXPLAYERS + 1];
 int g_iLastWeapon[MAXPLAYERS + 1];
 int g_iLastDmgType[MAXPLAYERS + 1];
 float g_fLastDmgTime[MAXPLAYERS + 1];
+
+Handle g_hIncapTimer[MAXPLAYERS + 1];
+bool g_bPendingIncap[MAXPLAYERS + 1];
+int g_iPendingAttackerClient[MAXPLAYERS + 1];
+int g_iPendingAttackerEnt[MAXPLAYERS + 1];
+int g_iPendingDmgType[MAXPLAYERS + 1];
+float g_fPendingIncapTime[MAXPLAYERS + 1];
+char g_sPendingWeapon[MAXPLAYERS + 1][64];
 
 public Plugin myinfo =
 {
@@ -63,6 +73,11 @@ public void OnPluginStart()
 
 public void OnPluginEnd()
 {
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        ClearPendingIncap(i);
+    }
+
     if (g_hAnchorTimer != null)
     {
         delete g_hAnchorTimer;
@@ -94,6 +109,7 @@ public void OnClientDisconnect(int client)
     }
 
     ResetSnapshot(client);
+    ClearPendingIncap(client);
 }
 
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue)
@@ -155,7 +171,14 @@ void Event_PlayerIncapStart(Event event, const char[] name, bool dontBroadcast)
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
 
-    PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, true);
+    ClearPendingIncap(victim);
+    g_bPendingIncap[victim] = true;
+    g_iPendingAttackerClient[victim] = attackerClient;
+    g_iPendingAttackerEnt[victim] = attackerEnt;
+    g_iPendingDmgType[victim] = dmgType;
+    g_fPendingIncapTime[victim] = GetGameTime();
+    strcopy(g_sPendingWeapon[victim], sizeof(g_sPendingWeapon[]), weapon);
+    g_hIncapTimer[victim] = CreateTimer(INCAP_ANNOUNCE_DELAY, Timer_AnnounceIncap, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 }
 
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -178,7 +201,42 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
 
+    if (g_bPendingIncap[victim] && (GetGameTime() - g_fPendingIncapTime[victim]) <= INCAP_KILL_SUPPRESS_WINDOW)
+    {
+        ClearPendingIncap(victim);
+    }
+
     PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false);
+}
+
+public Action Timer_AnnounceIncap(Handle timer, int userid)
+{
+    int victim = GetClientOfUserId(userid);
+    if (!IsValidSurvivor(victim))
+    {
+        if (victim > 0 && victim <= MaxClients)
+        {
+            ClearPendingIncap(victim);
+        }
+        return Plugin_Stop;
+    }
+
+    if (g_hIncapTimer[victim] != timer || !g_bPendingIncap[victim])
+    {
+        return Plugin_Stop;
+    }
+
+    g_hIncapTimer[victim] = null;
+
+    if (!IsPlayerAlive(victim))
+    {
+        ClearPendingIncap(victim);
+        return Plugin_Stop;
+    }
+
+    PrintOutcome(victim, g_iPendingAttackerClient[victim], g_iPendingAttackerEnt[victim], g_sPendingWeapon[victim], g_iPendingDmgType[victim], true);
+    ClearPendingIncap(victim);
+    return Plugin_Stop;
 }
 
 void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, bool incap)
@@ -195,11 +253,11 @@ void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] 
     {
         if (incap)
         {
-            PrintRedAll("[%N] has incapacitated himself (%s).", victim, cause);
+            PrintRedAll("%N incapped himself (%s).", victim, cause);
         }
         else
         {
-            PrintRedAll("[%N] has suicide (%s).", victim, cause);
+            PrintRedAll("%N suicided (%s).", victim, cause);
         }
         return;
     }
@@ -208,22 +266,22 @@ void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] 
     {
         if (incap)
         {
-            PrintRedAll("Common Infected has incapacitated [%N] (%s).", victim, cause);
+            PrintRedAll("Common Infected incapped %N (%s).", victim, cause);
         }
         else
         {
-            PrintRedAll("Common Infected has killed [%N] (%s).", victim, cause);
+            PrintRedAll("Common Infected killed %N (%s).", victim, cause);
         }
         return;
     }
 
     if (incap)
     {
-        PrintRedAll("%s has incapacitated [%N] (%s).", attackerLabel, victim, cause);
+        PrintRedAll("%s incapped %N (%s).", attackerLabel, victim, cause);
     }
     else
     {
-        PrintRedAll("%s has killed [%N] (%s).", attackerLabel, victim, cause);
+        PrintRedAll("%s killed %N (%s).", attackerLabel, victim, cause);
     }
 }
 
@@ -236,14 +294,14 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
         if (attackerClient == victim)
         {
             isSelf = true;
-            Format(attackerLabel, maxlen, "[%N]", victim);
+            GetClientName(attackerClient, attackerLabel, maxlen);
             return Attacker_Survivor;
         }
 
         int team = GetClientTeam(attackerClient);
         if (team == 2)
         {
-            Format(attackerLabel, maxlen, "[%N]", attackerClient);
+            GetClientName(attackerClient, attackerLabel, maxlen);
             return Attacker_Survivor;
         }
 
@@ -273,14 +331,14 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
             if (snapAttacker == victim)
             {
                 isSelf = true;
-                Format(attackerLabel, maxlen, "[%N]", victim);
+                GetClientName(snapAttacker, attackerLabel, maxlen);
                 return Attacker_Survivor;
             }
 
             int team2 = GetClientTeam(snapAttacker);
             if (team2 == 2)
             {
-                Format(attackerLabel, maxlen, "[%N]", snapAttacker);
+                GetClientName(snapAttacker, attackerLabel, maxlen);
                 return Attacker_Survivor;
             }
 
@@ -304,7 +362,7 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
     if (attackerClient <= 0 && ShouldTreatAsSelf(dmgType, eventWeapon))
     {
         isSelf = true;
-        Format(attackerLabel, maxlen, "[%N]", victim);
+        GetClientName(victim, attackerLabel, maxlen);
         return Attacker_Survivor;
     }
 
@@ -398,6 +456,11 @@ void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attacke
     }
 
     if (kind == Attacker_SI && ResolveSpecialInfectedCause(victim, attackerClient, attackerEnt, eventWeapon, dmgType, cause, maxlen))
+    {
+        return;
+    }
+
+    if (kind == Attacker_Survivor && ResolveSurvivorCause(victim, attackerClient, attackerEnt, eventWeapon, dmgType, cause, maxlen))
     {
         return;
     }
@@ -572,9 +635,59 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
         strcopy(output, maxlen, "AK-47");
         return true;
     }
+    if (StrEqual(weapon, "smg"))
+    {
+        strcopy(output, maxlen, "SMG");
+        return true;
+    }
+    if (StrEqual(weapon, "smg_silenced"))
+    {
+        strcopy(output, maxlen, "Silenced SMG");
+        return true;
+    }
+    if (StrEqual(weapon, "smg_mp5"))
+    {
+        strcopy(output, maxlen, "MP5");
+        return true;
+    }
+    if (StrEqual(weapon, "rifle"))
+    {
+        strcopy(output, maxlen, "M16");
+        return true;
+    }
+    if (StrEqual(weapon, "rifle_desert"))
+    {
+        strcopy(output, maxlen, "SCAR");
+        return true;
+    }
+    if (StrEqual(weapon, "rifle_sg552"))
+    {
+        strcopy(output, maxlen, "SG552");
+        return true;
+    }
+    if (StrEqual(weapon, "rifle_m60"))
+    {
+        strcopy(output, maxlen, "M60");
+        return true;
+    }
+    if (StrEqual(weapon, "molotov"))
+    {
+        strcopy(output, maxlen, "molotov");
+        return true;
+    }
+    if (StrEqual(weapon, "pipe_bomb"))
+    {
+        strcopy(output, maxlen, "pipebomb");
+        return true;
+    }
+    if (StrEqual(weapon, "gascan"))
+    {
+        strcopy(output, maxlen, "gascan");
+        return true;
+    }
     if (StrEqual(weapon, "tank_claw"))
     {
-        strcopy(output, maxlen, "tank claws");
+        strcopy(output, maxlen, "Tank claws");
         return true;
     }
     if (StrEqual(weapon, "tank_rock"))
@@ -612,6 +725,191 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
     return true;
 }
 
+bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
+{
+    char baseWeapon[64];
+    bool hasBaseWeapon = GetBestWeaponLabel(victim, eventWeapon, baseWeapon, sizeof(baseWeapon));
+
+    bool fire = IsFireCause(eventWeapon, dmgType) || IsFireFromEntities(victim, attackerEnt);
+    bool explosive = IsExplosiveCause(eventWeapon, dmgType) || IsExplosiveFromEntities(victim, attackerEnt);
+
+    if (fire)
+    {
+        if (IsMolotovSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "molotov");
+            return true;
+        }
+        if (IsGascanSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "gascan");
+            return true;
+        }
+        if (hasBaseWeapon)
+        {
+            Format(cause, maxlen, "%s + fire bullet", baseWeapon);
+            return true;
+        }
+
+        strcopy(cause, maxlen, "fire");
+        return true;
+    }
+
+    if (explosive)
+    {
+        if (IsPipeBombSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "pipebomb");
+            return true;
+        }
+        if (IsGascanSource(victim, attackerEnt, eventWeapon))
+        {
+            strcopy(cause, maxlen, "gascan");
+            return true;
+        }
+        if (hasBaseWeapon)
+        {
+            Format(cause, maxlen, "%s + explosive bullet", baseWeapon);
+            return true;
+        }
+
+        strcopy(cause, maxlen, "explosive");
+        return true;
+    }
+
+    if (hasBaseWeapon)
+    {
+        strcopy(cause, maxlen, baseWeapon);
+        return true;
+    }
+
+    if (IsInGameClient(attackerClient))
+    {
+        int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
+        if (IsValidEdict(active))
+        {
+            char cls[64];
+            GetEntityClassname(active, cls, sizeof(cls));
+            if (FormatWeaponName(cls, cause, maxlen))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool GetBestWeaponLabel(int victim, const char[] eventWeapon, char[] outLabel, int maxlen)
+{
+    if (FormatWeaponName(eventWeapon, outLabel, maxlen))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    if (TryCauseFromSnapshotWeapon(victim, outLabel, maxlen))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool IsFireFromEntities(int victim, int attackerEnt)
+{
+    if (EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "inferno") || EntityClassMatches(g_iLastInflictor[victim], "entityflame");
+}
+
+bool IsExplosiveFromEntities(int victim, int attackerEnt)
+{
+    if (EntityClassMatches(attackerEnt, "pipe_bomb_projectile") || EntityClassMatches(attackerEnt, "grenade_launcher_projectile"))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "pipe_bomb_projectile") || EntityClassMatches(g_iLastInflictor[victim], "grenade_launcher_projectile");
+}
+
+bool IsMolotovSource(int victim, int attackerEnt, const char[] eventWeapon)
+{
+    if (StrContains(eventWeapon, "molotov", false) != -1)
+    {
+        return true;
+    }
+
+    if (EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "inferno") || EntityClassMatches(g_iLastInflictor[victim], "entityflame");
+}
+
+bool IsPipeBombSource(int victim, int attackerEnt, const char[] eventWeapon)
+{
+    if (StrContains(eventWeapon, "pipe", false) != -1)
+    {
+        return true;
+    }
+
+    if (EntityClassMatches(attackerEnt, "pipe_bomb_projectile"))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityClassMatches(g_iLastInflictor[victim], "pipe_bomb_projectile");
+}
+
+bool IsGascanSource(int victim, int attackerEnt, const char[] eventWeapon)
+{
+    if (StrContains(eventWeapon, "gascan", false) != -1)
+    {
+        return true;
+    }
+
+    if (EntityIsGascan(attackerEnt))
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    return EntityIsGascan(g_iLastInflictor[victim]) || EntityIsGascan(g_iLastWeapon[victim]);
+}
+
 bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
 {
     if (StrEqual(eventWeapon, "tank_rock", false))
@@ -620,7 +918,7 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
         return true;
     }
 
-    if (attackerClient > 0 && attackerClient <= MaxClients && IsClientInGame(attackerClient) && GetClientTeam(attackerClient) == 3)
+    if (IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 3)
     {
         int zclass = L4D2_GetPlayerZombieClass(attackerClient);
         switch (zclass)
@@ -664,7 +962,7 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             }
             case L4D2ZombieClass_Tank:
             {
-                strcopy(cause, maxlen, StrEqual(eventWeapon, "tank_rock", false) ? "Tank rock" : "tank claws");
+                strcopy(cause, maxlen, StrEqual(eventWeapon, "tank_rock", false) ? "Tank rock" : "Tank claws");
                 return true;
             }
         }
@@ -786,6 +1084,65 @@ void ResetSnapshot(int client)
     g_iLastWeapon[client] = 0;
     g_iLastDmgType[client] = 0;
     g_fLastDmgTime[client] = 0.0;
+}
+
+void ClearPendingIncap(int client)
+{
+    if (client <= 0 || client > MaxClients)
+    {
+        return;
+    }
+
+    if (g_hIncapTimer[client] != null)
+    {
+        delete g_hIncapTimer[client];
+        g_hIncapTimer[client] = null;
+    }
+
+    g_bPendingIncap[client] = false;
+    g_iPendingAttackerClient[client] = 0;
+    g_iPendingAttackerEnt[client] = 0;
+    g_iPendingDmgType[client] = 0;
+    g_fPendingIncapTime[client] = 0.0;
+    g_sPendingWeapon[client][0] = '\0';
+}
+
+bool EntityClassMatches(int entity, const char[] needle)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    return StrContains(cls, needle, false) != -1;
+}
+
+bool EntityIsGascan(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (StrContains(cls, "gascan", false) != -1)
+    {
+        return true;
+    }
+
+    char model[PLATFORM_MAX_PATH];
+    if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
+    {
+        if (StrContains(model, "gascan", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool GetEntPropStringSafe(int entity, PropType type, const char[] prop, char[] buffer, int maxlen)

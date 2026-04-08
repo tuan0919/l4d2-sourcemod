@@ -14,6 +14,8 @@ native int L4D2_IsEliteSI(int client);
 #define SNAPSHOT_VALID_WINDOW 1.5
 #define INCAP_ANNOUNCE_DELAY 0.45
 #define INCAP_KILL_SUPPRESS_WINDOW 1.20
+#define HAZARD_CONTEXT_WINDOW 8.0
+#define MAX_TRACKED_EDICTS 2048
 
 enum AttackerKind
 {
@@ -21,6 +23,16 @@ enum AttackerKind
     Attacker_Survivor,
     Attacker_SI,
     Attacker_CI
+}
+
+enum HazardType
+{
+    Hazard_None = 0,
+    Hazard_Gascan,
+    Hazard_Firework,
+    Hazard_FuelBarrel,
+    Hazard_PropaneTank,
+    Hazard_OxygenTank
 }
 
 ConVar g_hEnable;
@@ -35,6 +47,9 @@ int g_iLastWeapon[MAXPLAYERS + 1];
 int g_iLastDmgType[MAXPLAYERS + 1];
 float g_fLastDmgTime[MAXPLAYERS + 1];
 float g_fLastMolotovThrow[MAXPLAYERS + 1];
+int g_iLastHazardType[MAXPLAYERS + 1];
+float g_fLastHazardTime[MAXPLAYERS + 1];
+int g_iLastHazardEntityRef[MAXPLAYERS + 1];
 bool g_bIsIncappedState[MAXPLAYERS + 1];
 float g_fLastIncapTime[MAXPLAYERS + 1];
 
@@ -47,6 +62,7 @@ float g_fPendingIncapTime[MAXPLAYERS + 1];
 char g_sPendingWeapon[MAXPLAYERS + 1][64];
 
 bool g_bHasEliteNative;
+bool g_bHazardHooked[MAX_TRACKED_EDICTS + 1];
 
 public Plugin myinfo =
 {
@@ -84,6 +100,7 @@ public void OnPluginStart()
 
     g_hAnchorTimer = CreateTimer(5.0, Timer_MaintainAnchor, _, TIMER_REPEAT);
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 
     g_bHasEliteNative = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
 }
@@ -131,7 +148,13 @@ public void OnPluginEnd()
 
 public void OnMapStart()
 {
+    for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
+    {
+        g_bHazardHooked[i] = false;
+    }
+
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
+    CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void OnClientPutInServer(int client)
@@ -149,8 +172,29 @@ public void OnClientDisconnect(int client)
     ResetSnapshot(client);
     ClearPendingIncap(client);
     g_fLastMolotovThrow[client] = 0.0;
+    g_iLastHazardType[client] = view_as<int>(Hazard_None);
+    g_fLastHazardTime[client] = 0.0;
+    g_iLastHazardEntityRef[client] = INVALID_ENT_REFERENCE;
     g_bIsIncappedState[client] = false;
     g_fLastIncapTime[client] = 0.0;
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+    if (!ClassnameLooksHazard(classname))
+    {
+        return;
+    }
+
+    RequestFrame(Frame_DelayedHookHazard, EntIndexToEntRef(entity));
+}
+
+public void OnEntityDestroyed(int entity)
+{
+    if (entity > 0 && entity <= MAX_TRACKED_EDICTS)
+    {
+        g_bHazardHooked[entity] = false;
+    }
 }
 
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue)
@@ -174,6 +218,60 @@ public Action Timer_MaintainAnchor(Handle timer)
         EnsureAnchorClient();
     }
     return Plugin_Continue;
+}
+
+public Action Timer_HookExistingHazards(Handle timer)
+{
+    int maxEntities = GetMaxEntities();
+    if (maxEntities > (MAX_TRACKED_EDICTS + 1))
+    {
+        maxEntities = MAX_TRACKED_EDICTS + 1;
+    }
+
+    for (int ent = MaxClients + 1; ent < maxEntities; ent++)
+    {
+        if (IsValidEdict(ent))
+        {
+            TryHookHazardEntity(ent);
+        }
+    }
+
+    return Plugin_Stop;
+}
+
+public void Frame_DelayedHookHazard(any entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity == INVALID_ENT_REFERENCE || entity <= 0)
+    {
+        return;
+    }
+
+    TryHookHazardEntity(entity);
+}
+
+public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, float damage, int damagetype)
+{
+    if (damage <= 0.0)
+    {
+        return;
+    }
+
+    HazardType hazard = GetHazardType(entity);
+    if (hazard == Hazard_None)
+    {
+        return;
+    }
+
+    int owner = ResolveDamageOwnerClient(attacker, inflictor);
+    if (!IsInGameClient(owner) || GetClientTeam(owner) != 2)
+    {
+        return;
+    }
+
+    g_iLastHazardType[owner] = view_as<int>(hazard);
+    g_fLastHazardTime[owner] = GetGameTime();
+    g_iLastHazardEntityRef[owner] = EntIndexToEntRef(entity);
 }
 
 public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
@@ -895,6 +993,10 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
             strcopy(cause, maxlen, "molotov");
             return true;
         }
+        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        {
+            return true;
+        }
         if (IsLikelyGascanInferno(victim, attackerClient, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "gascan");
@@ -935,6 +1037,10 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
         if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
             strcopy(cause, maxlen, "gascan");
+            return true;
+        }
+        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        {
             return true;
         }
         if (hasBaseWeapon)
@@ -1023,6 +1129,10 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
             strcopy(cause, maxlen, "molotov");
             return;
         }
+        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        {
+            return;
+        }
         if (hasBaseWeapon && !IsGenericFireLabel(baseWeapon))
         {
             Format(cause, maxlen, "%s + fire bullet", baseWeapon);
@@ -1053,6 +1163,10 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
         if (EntityIsGascan(attackerEnt))
         {
             strcopy(cause, maxlen, "gascan");
+            return;
+        }
+        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        {
             return;
         }
         if (hasBaseWeapon)
@@ -1551,6 +1665,137 @@ bool EntityClassMatches(int entity, const char[] needle)
     return StrContains(cls, needle, false) != -1;
 }
 
+void TryHookHazardEntity(int entity)
+{
+    if (entity <= MaxClients || entity > MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    {
+        return;
+    }
+
+    if (g_bHazardHooked[entity])
+    {
+        return;
+    }
+
+    if (GetHazardType(entity) == Hazard_None)
+    {
+        return;
+    }
+
+    SDKHook(entity, SDKHook_OnTakeDamagePost, OnHazardTakeDamagePost);
+    g_bHazardHooked[entity] = true;
+}
+
+bool ClassnameLooksHazard(const char[] classname)
+{
+    return (
+        StrContains(classname, "gascan", false) != -1 ||
+        StrContains(classname, "firework", false) != -1 ||
+        StrContains(classname, "fire_cracker", false) != -1 ||
+        StrContains(classname, "fuel_barrel", false) != -1 ||
+        StrContains(classname, "propan", false) != -1 ||
+        StrContains(classname, "oxygen", false) != -1
+    );
+}
+
+HazardType GetHazardType(int entity)
+{
+    if (EntityIsGascan(entity))
+    {
+        return Hazard_Gascan;
+    }
+    if (EntityIsFireworkCrate(entity))
+    {
+        return Hazard_Firework;
+    }
+    if (EntityIsFuelBarrel(entity))
+    {
+        return Hazard_FuelBarrel;
+    }
+    if (EntityIsPropaneTank(entity))
+    {
+        return Hazard_PropaneTank;
+    }
+    if (EntityIsOxygenTank(entity))
+    {
+        return Hazard_OxygenTank;
+    }
+
+    return Hazard_None;
+}
+
+int ResolveDamageOwnerClient(int attacker, int inflictor)
+{
+    if (IsInGameClient(attacker) && GetClientTeam(attacker) == 2)
+    {
+        return attacker;
+    }
+
+    if (IsInGameClient(inflictor) && GetClientTeam(inflictor) == 2)
+    {
+        return inflictor;
+    }
+
+    int owner = GetLinkedEntity(inflictor, "m_hOwnerEntity");
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    owner = GetLinkedEntity(attacker, "m_hOwnerEntity");
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    return 0;
+}
+
+bool TryCauseFromHazardContext(int attackerClient, char[] cause, int maxlen)
+{
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
+    {
+        return false;
+    }
+
+    float t = g_fLastHazardTime[attackerClient];
+    if (t <= 0.0 || (GetGameTime() - t) > HAZARD_CONTEXT_WINDOW)
+    {
+        return false;
+    }
+
+    switch (view_as<HazardType>(g_iLastHazardType[attackerClient]))
+    {
+        case Hazard_Gascan:
+        {
+            strcopy(cause, maxlen, "gascan");
+            return true;
+        }
+        case Hazard_Firework:
+        {
+            strcopy(cause, maxlen, "firework crate");
+            return true;
+        }
+        case Hazard_FuelBarrel:
+        {
+            strcopy(cause, maxlen, "fuel barrel");
+            return true;
+        }
+        case Hazard_PropaneTank:
+        {
+            strcopy(cause, maxlen, "propane tank");
+            return true;
+        }
+        case Hazard_OxygenTank:
+        {
+            strcopy(cause, maxlen, "oxygen tank");
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool EntityIsGascan(int entity)
 {
     if (!IsValidEdict(entity))
@@ -1661,6 +1906,58 @@ bool EntityIsFuelBarrel(int entity)
     if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
     {
         if (StrContains(model, "fuel_barrel", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool EntityIsPropaneTank(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (StrContains(cls, "propan", false) != -1)
+    {
+        return true;
+    }
+
+    char model[PLATFORM_MAX_PATH];
+    if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
+    {
+        if (StrContains(model, "propanecanister", false) != -1 || StrContains(model, "propanetank", false) != -1)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool EntityIsOxygenTank(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(entity, cls, sizeof(cls));
+    if (StrContains(cls, "oxygen", false) != -1 || StrContains(cls, "oxygentank", false) != -1)
+    {
+        return true;
+    }
+
+    char model[PLATFORM_MAX_PATH];
+    if (GetEntPropStringSafe(entity, Prop_Data, "m_ModelName", model, sizeof(model)))
+    {
+        if (StrContains(model, "oxygentank", false) != -1)
         {
             return true;
         }

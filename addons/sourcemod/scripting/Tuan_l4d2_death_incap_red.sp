@@ -418,7 +418,7 @@ public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, floa
 
 public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
 {
-    if (!IsValidSurvivor(victim))
+    if (!IsTrackableVictim(victim))
     {
         return Plugin_Continue;
     }
@@ -519,7 +519,7 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         char line[128];
         GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
         GetSpecialInfectedName(victim, victimSiName, sizeof(victimSiName));
-        ResolveSurvivorKillSICause(attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
+        ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
         Format(line, sizeof(line), "%s killed %s", attackerName, victimSiName);
         PrintBlueAllWithOliveCause(attackerClient, line, cause);
         return;
@@ -1228,7 +1228,7 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
     return false;
 }
 
-void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
+void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
 {
     char baseWeapon[64];
     bool hasBaseWeapon = false;
@@ -1261,7 +1261,7 @@ void ResolveSurvivorKillSICause(int attackerClient, int attackerEnt, const char[
 
     if (fire)
     {
-        if (TryCauseFromFireEntitySource(0, attackerEnt, cause, maxlen))
+        if (TryCauseFromFireEntitySource(victim, attackerEnt, cause, maxlen))
         {
             return;
         }
@@ -1745,6 +1745,17 @@ int EnsureAnchorClient()
 bool IsValidSurvivor(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client) && GetClientTeam(client) == 2);
+}
+
+bool IsTrackableVictim(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    int team = GetClientTeam(client);
+    return (team == 2 || team == 3);
 }
 
 bool IsInGameClient(int client)

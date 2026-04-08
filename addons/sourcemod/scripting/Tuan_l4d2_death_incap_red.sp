@@ -5,6 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <multicolors>
+#include <left4dhooks>
 
 #define PLUGIN_VERSION "1.0.0"
 #define ANCHOR_NAME "SI_RedAnchor"
@@ -69,7 +70,7 @@ public void OnPluginEnd()
     }
 
     int anchor = GetClientOfUserId(g_iAnchorUserId);
-    if (IsClientInGame(anchor) && IsFakeClient(anchor))
+    if (anchor > 0 && anchor <= MaxClients && IsClientInGame(anchor) && IsFakeClient(anchor))
     {
         KickClient(anchor, "Removing anchor bot");
     }
@@ -230,7 +231,7 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 {
     isSelf = false;
 
-    if (IsClientInGame(attackerClient))
+    if (IsInGameClient(attackerClient))
     {
         if (attackerClient == victim)
         {
@@ -267,7 +268,7 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
         int snapAttacker = g_iLastAttacker[victim];
         int snapInflictor = g_iLastInflictor[victim];
 
-        if (IsClientInGame(snapAttacker))
+        if (IsInGameClient(snapAttacker))
         {
             if (snapAttacker == victim)
             {
@@ -334,7 +335,7 @@ bool TryResolveFromEntity(int entity, char[] label, int maxlen)
     }
 
     int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
-    if (IsClientInGame(owner) && GetClientTeam(owner) == 3)
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 3)
     {
         GetSpecialInfectedName(owner, label, maxlen);
         return true;
@@ -449,7 +450,7 @@ void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attacke
         }
     }
 
-    if (IsClientInGame(attackerClient) && GetClientTeam(attackerClient) == 3)
+    if (IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 3)
     {
         strcopy(cause, maxlen, "physical");
         return;
@@ -595,16 +596,16 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
 void GetSpecialInfectedName(int client, char[] outName, int maxlen)
 {
-    int zclass = GetEntProp(client, Prop_Send, "m_zombieClass");
+    int zclass = L4D2_GetPlayerZombieClass(client);
     switch (zclass)
     {
-        case 1: strcopy(outName, maxlen, "Smoker");
-        case 2: strcopy(outName, maxlen, "Boomer");
-        case 3: strcopy(outName, maxlen, "Hunter");
-        case 4: strcopy(outName, maxlen, "Spitter");
-        case 5: strcopy(outName, maxlen, "Jockey");
-        case 6: strcopy(outName, maxlen, "Charger");
-        case 8: strcopy(outName, maxlen, "Tank");
+        case L4D2ZombieClass_Smoker: strcopy(outName, maxlen, "Smoker");
+        case L4D2ZombieClass_Boomer: strcopy(outName, maxlen, "Boomer");
+        case L4D2ZombieClass_Hunter: strcopy(outName, maxlen, "Hunter");
+        case L4D2ZombieClass_Spitter: strcopy(outName, maxlen, "Spitter");
+        case L4D2ZombieClass_Jockey: strcopy(outName, maxlen, "Jockey");
+        case L4D2ZombieClass_Charger: strcopy(outName, maxlen, "Charger");
+        case L4D2ZombieClass_Tank: strcopy(outName, maxlen, "Tank");
         default: strcopy(outName, maxlen, "Special Infected");
     }
 }
@@ -615,7 +616,7 @@ void PrintRedAll(const char[] fmt, any ...)
     VFormat(msg, sizeof(msg), fmt, 2);
 
     int author = EnsureAnchorClient();
-    if (!IsClientInGame(author) || GetClientTeam(author) != 3)
+    if (author <= 0 || author > MaxClients || !IsClientInGame(author) || GetClientTeam(author) != 3)
     {
         PrintToChatAll("%s", msg);
         return;
@@ -635,7 +636,7 @@ void PrintRedAll(const char[] fmt, any ...)
 int EnsureAnchorClient()
 {
     int anchor = GetClientOfUserId(g_iAnchorUserId);
-    if (IsClientInGame(anchor) && IsFakeClient(anchor) && GetClientTeam(anchor) == 3)
+    if (anchor > 0 && anchor <= MaxClients && IsClientInGame(anchor) && IsFakeClient(anchor) && GetClientTeam(anchor) == 3)
     {
         return anchor;
     }
@@ -671,6 +672,11 @@ int EnsureAnchorClient()
 bool IsValidSurvivor(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client) && GetClientTeam(client) == 2);
+}
+
+bool IsInGameClient(int client)
+{
+    return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
 
 bool HasRecentSnapshot(int victim)

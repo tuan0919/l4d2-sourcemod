@@ -629,7 +629,7 @@ void PrintRedAll(const char[] fmt, any ...)
             continue;
         }
 
-        CPrintToChatEx(i, author, "{red}%s{default}", msg);
+        CPrintToChatEx(i, author, "{teamcolor}%s{default}", msg);
     }
 }
 

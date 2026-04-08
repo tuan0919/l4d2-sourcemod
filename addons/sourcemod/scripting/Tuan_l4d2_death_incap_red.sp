@@ -1150,8 +1150,7 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
     if (StrEqual(weapon, "melee"))
     {
-        strcopy(output, maxlen, "Melee");
-        return true;
+        return false;
     }
 
     if (StrEqual(weapon, "witch"))
@@ -1259,6 +1258,11 @@ bool ResolveSurvivorCause(int victim, int attackerClient, int attackerEnt, const
 {
     char baseWeapon[64];
     bool hasBaseWeapon = GetBestWeaponLabel(victim, eventWeapon, baseWeapon, sizeof(baseWeapon));
+    if (!hasBaseWeapon && GetClientActiveWeaponLabel(attackerClient, baseWeapon, sizeof(baseWeapon)))
+    {
+        hasBaseWeapon = true;
+    }
+
     if (hasBaseWeapon && StrEqual(baseWeapon, "Pistol", false) && IsDualPistolContext(victim, attackerClient))
     {
         strcopy(baseWeapon, sizeof(baseWeapon), "Dual Pistols");
@@ -1415,18 +1419,9 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
     {
         hasBaseWeapon = true;
     }
-    else
+    else if (GetClientActiveWeaponLabel(attackerClient, baseWeapon, sizeof(baseWeapon)))
     {
-        int active = GetEntPropEnt(attackerClient, Prop_Send, "m_hActiveWeapon");
-        if (IsValidEdict(active))
-        {
-            char cls[64];
-            GetEntityClassname(active, cls, sizeof(cls));
-            if (FormatWeaponName(cls, baseWeapon, sizeof(baseWeapon)))
-            {
-                hasBaseWeapon = true;
-            }
-        }
+        hasBaseWeapon = true;
     }
 
     if (hasBaseWeapon && StrEqual(baseWeapon, "Pistol", false) && IsDualPistolContext(0, attackerClient))
@@ -1685,6 +1680,37 @@ bool GetBestWeaponLabel(int victim, const char[] eventWeapon, char[] outLabel, i
     }
 
     return false;
+}
+
+bool GetClientActiveWeaponLabel(int client, char[] outLabel, int maxlen)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (!IsValidEdict(active))
+    {
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(active, cls, sizeof(cls));
+
+    if (StrEqual(cls, "weapon_melee"))
+    {
+        char melee[64];
+        if (GetEntPropStringSafe(active, Prop_Data, "m_strMapSetScriptName", melee, sizeof(melee)) && melee[0] != '\0')
+        {
+            return FormatWeaponName(melee, outLabel, maxlen);
+        }
+
+        strcopy(outLabel, maxlen, "Melee");
+        return true;
+    }
+
+    return FormatWeaponName(cls, outLabel, maxlen);
 }
 
 bool IsFireFromEntities(int victim, int attackerEnt)

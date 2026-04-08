@@ -54,6 +54,9 @@ float g_fLastMolotovThrow[MAXPLAYERS + 1];
 int g_iLastHazardType[MAXPLAYERS + 1];
 float g_fLastHazardTime[MAXPLAYERS + 1];
 int g_iLastHazardEntityRef[MAXPLAYERS + 1];
+int g_iLastFireAssistType[MAXPLAYERS + 1];
+int g_iLastFireAssistOwner[MAXPLAYERS + 1];
+float g_fLastFireAssistTime[MAXPLAYERS + 1];
 bool g_bIsIncappedState[MAXPLAYERS + 1];
 float g_fLastIncapTime[MAXPLAYERS + 1];
 
@@ -167,6 +170,13 @@ public void OnPluginEnd()
 
 public void OnMapStart()
 {
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        g_iLastFireAssistType[i] = view_as<int>(Hazard_None);
+        g_iLastFireAssistOwner[i] = 0;
+        g_fLastFireAssistTime[i] = 0.0;
+    }
+
     for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
     {
         g_bHazardHooked[i] = false;
@@ -219,6 +229,9 @@ public void OnClientDisconnect(int client)
     g_iLastHazardType[client] = view_as<int>(Hazard_None);
     g_fLastHazardTime[client] = 0.0;
     g_iLastHazardEntityRef[client] = INVALID_ENT_REFERENCE;
+    g_iLastFireAssistType[client] = view_as<int>(Hazard_None);
+    g_iLastFireAssistOwner[client] = 0;
+    g_fLastFireAssistTime[client] = 0.0;
     g_bIsIncappedState[client] = false;
     g_fLastIncapTime[client] = 0.0;
 }
@@ -429,6 +442,18 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     g_iLastDmgType[victim] = damagetype;
     g_fLastDmgTime[victim] = GetGameTime();
 
+    if ((damagetype & DMG_BURN) != 0)
+    {
+        HazardType fireType = Hazard_None;
+        int fireOwner = 0;
+        if (GetFireSourceMeta(victim, inflictor, fireType, fireOwner) && fireType != Hazard_None)
+        {
+            g_iLastFireAssistType[victim] = view_as<int>(fireType);
+            g_iLastFireAssistOwner[victim] = fireOwner;
+            g_fLastFireAssistTime[victim] = GetGameTime();
+        }
+    }
+
     return Plugin_Continue;
 }
 
@@ -510,16 +535,19 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
+    bool headshot = event.GetBool("headshot", false);
+    bool wallbang = (event.GetInt("penetrated", 0) > 0);
 
     if (IsInGameClient(victim) && GetClientTeam(victim) == 3 && IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 2 && attackerClient != victim)
     {
         char attackerName[64];
         char victimSiName[64];
-        char cause[64];
+        char cause[192];
         char line[128];
         GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
         GetSpecialInfectedName(victim, victimSiName, sizeof(victimSiName));
         ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
+        ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
         Format(line, sizeof(line), "%s killed %s", attackerName, victimSiName);
         PrintBlueAllWithOliveCause(attackerClient, line, cause);
         return;
@@ -1355,6 +1383,61 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
     strcopy(cause, maxlen, "physical");
 }
 
+void ApplySurvivorKillQualifiers(int attackerClient, int victimClient, const char[] eventWeapon, int dmgType, bool headshot, bool wallbang, char[] cause, int maxlen)
+{
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2)
+    {
+        return;
+    }
+
+    HazardType fireAssistType = Hazard_None;
+    if (GetRecentFireAssist(victimClient, attackerClient, fireAssistType))
+    {
+        char fireLabel[32];
+        if (HazardTypeToLabel(fireAssistType, fireLabel, sizeof(fireLabel)))
+        {
+            if (StrEqual(cause, "fire", false))
+            {
+                strcopy(cause, maxlen, fireLabel);
+            }
+            else
+            {
+                AppendCauseToken(cause, maxlen, fireLabel);
+            }
+        }
+    }
+
+    if (headshot)
+    {
+        AppendCauseToken(cause, maxlen, "headshot");
+    }
+
+    if (wallbang)
+    {
+        AppendCauseToken(cause, maxlen, "wallbang");
+    }
+
+    if (IsClientDucking(attackerClient))
+    {
+        AppendCauseToken(cause, maxlen, "duck");
+    }
+
+    if (IsClientIncapped(attackerClient))
+    {
+        AppendCauseToken(cause, maxlen, "incap");
+    }
+
+    if (IsClientVomitBlind(attackerClient))
+    {
+        AppendCauseToken(cause, maxlen, "blind");
+    }
+
+    if (IsSniperLikeRange(attackerClient, victimClient, eventWeapon, dmgType))
+    {
+        AppendCauseToken(cause, maxlen, "snip");
+    }
+}
+
 bool GetBestWeaponLabel(int victim, const char[] eventWeapon, char[] outLabel, int maxlen)
 {
     if (FormatWeaponName(eventWeapon, outLabel, maxlen))
@@ -1769,6 +1852,112 @@ bool IsTrackableVictim(int client)
     return (team == 2 || team == 3);
 }
 
+bool GetRecentFireAssist(int victimClient, int attackerClient, HazardType &type)
+{
+    type = Hazard_None;
+    if (victimClient <= 0 || victimClient > MaxClients)
+    {
+        return false;
+    }
+
+    if (g_iLastFireAssistOwner[victimClient] != attackerClient)
+    {
+        return false;
+    }
+
+    if ((GetGameTime() - g_fLastFireAssistTime[victimClient]) > 12.0)
+    {
+        return false;
+    }
+
+    type = view_as<HazardType>(g_iLastFireAssistType[victimClient]);
+    return type != Hazard_None;
+}
+
+void AppendCauseToken(char[] cause, int maxlen, const char[] token)
+{
+    if (token[0] == '\0')
+    {
+        return;
+    }
+
+    if (cause[0] == '\0')
+    {
+        strcopy(cause, maxlen, token);
+        return;
+    }
+
+    if (StrContains(cause, token, false) != -1)
+    {
+        return;
+    }
+
+    char merged[256];
+    Format(merged, sizeof(merged), "%s + %s", cause, token);
+    strcopy(cause, maxlen, merged);
+}
+
+bool IsClientDucking(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_bDucked") && GetEntProp(client, Prop_Send, "m_bDucked") != 0)
+    {
+        return true;
+    }
+
+    return (GetEntityFlags(client) & FL_DUCKING) != 0;
+}
+
+bool IsClientIncapped(int client)
+{
+    return (IsInGameClient(client) && HasEntProp(client, Prop_Send, "m_isIncapacitated") && GetEntProp(client, Prop_Send, "m_isIncapacitated") != 0);
+}
+
+bool IsClientVomitBlind(int client)
+{
+    if (!IsInGameClient(client))
+    {
+        return false;
+    }
+
+    if (!HasEntProp(client, Prop_Send, "m_vomitStart"))
+    {
+        return false;
+    }
+
+    float vomitStart = GetEntPropFloat(client, Prop_Send, "m_vomitStart");
+    if (vomitStart <= 0.0)
+    {
+        return false;
+    }
+
+    return (GetGameTime() - vomitStart) <= 20.0;
+}
+
+bool IsSniperLikeRange(int attackerClient, int victimClient, const char[] eventWeapon, int dmgType)
+{
+    if (!IsInGameClient(attackerClient) || !IsInGameClient(victimClient))
+    {
+        return false;
+    }
+
+    if ((dmgType & DMG_BULLET) == 0 && StrContains(eventWeapon, "sniper", false) == -1 && StrContains(eventWeapon, "hunting_rifle", false) == -1)
+    {
+        return false;
+    }
+
+    float aPos[3];
+    float vPos[3];
+    GetClientEyePosition(attackerClient, aPos);
+    GetClientEyePosition(victimClient, vPos);
+
+    return GetVectorDistance(aPos, vPos) >= 1200.0;
+}
+
 bool IsInGameClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
@@ -2021,6 +2210,28 @@ bool TryCauseFromFireEntitySource(int victim, int attackerEnt, char[] cause, int
 {
     HazardType source = Hazard_None;
     int sourceOwner = 0;
+    if (!GetFireSourceMeta(victim, attackerEnt, source, sourceOwner) || source == Hazard_None)
+    {
+        return false;
+    }
+
+    if (!HazardTypeToLabel(source, cause, maxlen))
+    {
+        return false;
+    }
+
+    if (source == Hazard_Gascan && WasRecentMolotovThrow(sourceOwner, 20.0))
+    {
+        strcopy(cause, maxlen, "molotov");
+    }
+
+    return true;
+}
+
+bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
 
     if (attackerEnt > 0 && attackerEnt <= MAX_TRACKED_EDICTS && IsValidEdict(attackerEnt))
     {
@@ -2038,27 +2249,21 @@ bool TryCauseFromFireEntitySource(int victim, int attackerEnt, char[] cause, int
         }
     }
 
-    if (source == Hazard_None)
-    {
-        return false;
-    }
+    return source != Hazard_None;
+}
 
-    switch (source)
+bool HazardTypeToLabel(HazardType type, char[] outLabel, int maxlen)
+{
+    switch (type)
     {
-        case Hazard_Molotov: strcopy(cause, maxlen, "molotov");
-        case Hazard_Gascan: strcopy(cause, maxlen, "gascan");
-        case Hazard_Firework: strcopy(cause, maxlen, "firework crate");
-        case Hazard_FuelBarrel: strcopy(cause, maxlen, "fuel barrel");
-        case Hazard_PropaneTank: strcopy(cause, maxlen, "propane tank");
-        case Hazard_OxygenTank: strcopy(cause, maxlen, "oxygen tank");
+        case Hazard_Molotov: strcopy(outLabel, maxlen, "molotov");
+        case Hazard_Gascan: strcopy(outLabel, maxlen, "gascan");
+        case Hazard_Firework: strcopy(outLabel, maxlen, "firework crate");
+        case Hazard_FuelBarrel: strcopy(outLabel, maxlen, "fuel barrel");
+        case Hazard_PropaneTank: strcopy(outLabel, maxlen, "propane tank");
+        case Hazard_OxygenTank: strcopy(outLabel, maxlen, "oxygen tank");
         default: return false;
     }
-
-    if (source == Hazard_Gascan && WasRecentMolotovThrow(sourceOwner, 20.0))
-    {
-        strcopy(cause, maxlen, "molotov");
-    }
-
     return true;
 }
 

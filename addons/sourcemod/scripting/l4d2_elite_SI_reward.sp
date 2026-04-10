@@ -5,10 +5,18 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.0"
+
+enum
+{
+	ELITE_SUBTYPE_NONE = 0,
+	ELITE_SUBTYPE_HARDSI,
+	ELITE_SUBTYPE_ABILITY_MOVEMENT
+}
 
 bool g_bIsElite[MAXPLAYERS + 1];
 bool g_bEliteFireImmune[MAXPLAYERS + 1];
+int g_iEliteSubtype[MAXPLAYERS + 1];
 
 ConVar hHRSmoker;
 ConVar hHRBoomer;
@@ -24,6 +32,8 @@ ConVar hHRSI;
 ConVar g_cvEliteChance;
 ConVar g_cvEliteHpMult;
 ConVar g_cvEliteFireChance;
+ConVar g_cvEliteAbilityMovementChanceSmoker;
+ConVar g_cvEliteAbilityMovementChanceSpitter;
 ConVar g_cvScaleDifficulty;
 ConVar g_cvDiffEasy;
 ConVar g_cvDiffNormal;
@@ -52,6 +62,8 @@ float g_fDiffEasy;
 float g_fDiffNormal;
 float g_fDiffHard;
 float g_fDiffExpert;
+int g_iEliteAbilityMovementChanceSmoker;
+int g_iEliteAbilityMovementChanceSpitter;
 bool g_bHeadshotBonus;
 float g_fHeadshotBonusMult;
 int g_iTankRewardMode;
@@ -67,8 +79,18 @@ static const int ELITE_COLORS[6][3] =
     {   0, 255,  80 },   // Boomer
     {   0, 220, 255 },   // Hunter
     { 255, 140,   0 },   // Spitter
-    { 255, 255,   0 },   // Jockey
-    { 255,  30,  30 }    // Charger
+	{ 255, 255,   0 },   // Jockey
+	{ 255,  30,  30 }    // Charger
+};
+
+static const int ELITE_ABILITY_MOVEMENT_COLORS[6][3] =
+{
+	{ 255,  80, 255 },   // Smoker
+	{   0, 255,  80 },   // Boomer
+	{   0, 220, 255 },   // Hunter
+	{ 255, 215,   0 },   // Spitter
+	{ 255, 255,   0 },   // Jockey
+	{ 255,  30,  30 }    // Charger
 };
 
 char g_ZombiesIcons[9][32] = {
@@ -98,6 +120,7 @@ char g_ZombiesNames[9][32] = {
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	CreateNative("L4D2_IsEliteSI", Native_L4D2_IsEliteSI);
+	CreateNative("L4D2_GetEliteSubtype", Native_L4D2_GetEliteSubtype);
 	RegPluginLibrary("l4d2_elite_SI_reward");
 	return APLRes_Success;
 }
@@ -128,6 +151,8 @@ public void OnPluginStart()
 	g_cvEliteChance = CreateConVar("l4d_hp_rewards_elite_chance", "30", "Chance for SI to become Elite (0-100)");
 	g_cvEliteHpMult = CreateConVar("l4d_hp_rewards_elite_hp_mult", "2.5", "Elite HP multiplier");
 	g_cvEliteFireChance = CreateConVar("l4d_hp_rewards_elite_fire", "20", "Chance for Elite to catch fire (0-100)");
+	g_cvEliteAbilityMovementChanceSmoker = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_smoker", "50", "Chance for an Elite Smoker to become the AbilityMovement subtype instead of HardSI (0-100)");
+	g_cvEliteAbilityMovementChanceSpitter = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_spitter", "50", "Chance for an Elite Spitter to become the AbilityMovement subtype instead of HardSI (0-100)");
 	g_cvScaleDifficulty = CreateConVar("l4d_hp_rewards_scale_difficulty", "1", "Scale rewards by current game difficulty");
 	g_cvDiffEasy = CreateConVar("l4d_hp_rewards_diff_easy", "0.8", "Reward multiplier for easy");
 	g_cvDiffNormal = CreateConVar("l4d_hp_rewards_diff_normal", "1.0", "Reward multiplier for normal");
@@ -156,6 +181,8 @@ public void OnPluginStart()
 	bSI = GetConVarBool(hHRSI);
 	bWitch = GetConVarBool(hHRWitch);
 	g_bScaleDifficulty = GetConVarBool(g_cvScaleDifficulty);
+	g_iEliteAbilityMovementChanceSmoker = g_cvEliteAbilityMovementChanceSmoker.IntValue;
+	g_iEliteAbilityMovementChanceSpitter = g_cvEliteAbilityMovementChanceSpitter.IntValue;
 	g_fDiffEasy = g_cvDiffEasy.FloatValue;
 	g_fDiffNormal = g_cvDiffNormal.FloatValue;
 	g_fDiffHard = g_cvDiffHard.FloatValue;
@@ -179,6 +206,8 @@ public void OnPluginStart()
 	HookConVarChange(hHRWitch, HRConfigsChanged);
 	HookConVarChange(hHRSI, HRConfigsChanged);
 	HookConVarChange(g_cvScaleDifficulty, HRConfigsChanged);
+	HookConVarChange(g_cvEliteAbilityMovementChanceSmoker, HRConfigsChanged);
+	HookConVarChange(g_cvEliteAbilityMovementChanceSpitter, HRConfigsChanged);
 	HookConVarChange(g_cvDiffEasy, HRConfigsChanged);
 	HookConVarChange(g_cvDiffNormal, HRConfigsChanged);
 	HookConVarChange(g_cvDiffHard, HRConfigsChanged);
@@ -212,12 +241,14 @@ public void OnDecayChanged(ConVar convar, const char[] oldValue, const char[] ne
 public void OnClientPutInServer(int client) {
     g_bIsElite[client] = false;
     g_bEliteFireImmune[client] = false;
+    g_iEliteSubtype[client] = ELITE_SUBTYPE_NONE;
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
 
 public void OnClientDisconnect(int client) {
     g_bIsElite[client] = false;
     g_bEliteFireImmune[client] = false;
+    g_iEliteSubtype[client] = ELITE_SUBTYPE_NONE;
     SDKUnhook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
 
@@ -234,6 +265,8 @@ public void HRConfigsChanged(ConVar convar, const char[] oValue, const char[] nV
 	bSI = GetConVarBool(hHRSI);
 	bWitch = GetConVarBool(hHRWitch);
 	g_bScaleDifficulty = GetConVarBool(g_cvScaleDifficulty);
+	g_iEliteAbilityMovementChanceSmoker = g_cvEliteAbilityMovementChanceSmoker.IntValue;
+	g_iEliteAbilityMovementChanceSpitter = g_cvEliteAbilityMovementChanceSpitter.IntValue;
 	g_fDiffEasy = g_cvDiffEasy.FloatValue;
 	g_fDiffNormal = g_cvDiffNormal.FloatValue;
 	g_fDiffHard = g_cvDiffHard.FloatValue;
@@ -291,6 +324,7 @@ public Action Timer_ProcessSpawn(Handle timer, int userid) {
 
 	g_bIsElite[client] = true;
 	g_bEliteFireImmune[client] = false;
+	g_iEliteSubtype[client] = GetEliteSubtypeForClass(zClass);
 
 	// HP mult
 	int eliteHp = RoundToFloor(float(GetEntProp(client, Prop_Data, "m_iMaxHealth")) * g_cvEliteHpMult.FloatValue);
@@ -298,9 +332,7 @@ public Action Timer_ProcessSpawn(Handle timer, int userid) {
 	SetEntityHealth(client, eliteHp);
 
 	// Color tint
-	int colorIdx = zClass - 1;
-	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
-	SetEntityRenderColor(client, ELITE_COLORS[colorIdx][0], ELITE_COLORS[colorIdx][1], ELITE_COLORS[colorIdx][2], 255);
+	ApplyEliteRenderColor(client, zClass, g_iEliteSubtype[client]);
 
     // Fire chance
     if (GetRandomInt(1, 100) <= g_cvEliteFireChance.IntValue) {
@@ -538,6 +570,16 @@ public any Native_L4D2_IsEliteSI(Handle plugin, int numParams)
 	return IsEliteSI(client);
 }
 
+public any Native_L4D2_GetEliteSubtype(Handle plugin, int numParams)
+{
+	if (numParams < 1) {
+		return ELITE_SUBTYPE_NONE;
+	}
+
+	int client = GetNativeCell(1);
+	return GetEliteSubtype(client);
+}
+
 bool IsEliteSI(int client)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client)) {
@@ -545,6 +587,49 @@ bool IsEliteSI(int client)
 	}
 
 	return g_bIsElite[client];
+}
+
+int GetEliteSubtype(int client)
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client)) {
+		return ELITE_SUBTYPE_NONE;
+	}
+
+	return g_iEliteSubtype[client];
+}
+
+int GetEliteSubtypeForClass(int zClass)
+{
+	switch (zClass)
+	{
+		case 1:
+		{
+			return GetRandomInt(1, 100) <= g_iEliteAbilityMovementChanceSmoker ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_HARDSI;
+		}
+		case 4:
+		{
+			return GetRandomInt(1, 100) <= g_iEliteAbilityMovementChanceSpitter ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_HARDSI;
+		}
+	}
+
+	return ELITE_SUBTYPE_HARDSI;
+}
+
+void ApplyEliteRenderColor(int client, int zClass, int subtype)
+{
+	if (zClass < 1 || zClass > 6) {
+		return;
+	}
+
+	int colorIdx = zClass - 1;
+	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
+
+	if (subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT) {
+		SetEntityRenderColor(client, ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][0], ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][1], ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][2], 255);
+		return;
+	}
+
+	SetEntityRenderColor(client, ELITE_COLORS[colorIdx][0], ELITE_COLORS[colorIdx][1], ELITE_COLORS[colorIdx][2], 255);
 }
 
 void ResetClientEliteState(int client)
@@ -555,6 +640,7 @@ void ResetClientEliteState(int client)
 
 	g_bIsElite[client] = false;
     g_bEliteFireImmune[client] = false;
+	g_iEliteSubtype[client] = ELITE_SUBTYPE_NONE;
 
 	if (!IsClientInGame(client)) {
 		return;

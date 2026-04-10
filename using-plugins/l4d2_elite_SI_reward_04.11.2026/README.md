@@ -11,6 +11,9 @@
   - cấu hình amount riêng
 - Elite SI chỉ buff máu + đổi màu, không còn boost tốc độ.
 - Chỉ Elite tự bốc cháy mới kháng lửa; Elite còn lại nhận damage lửa bình thường.
+- Bổ sung elite subtype trung tâm: `HardSI` và `AbilityMovement`.
+- `Smoker` và `Spitter` có thể random sang subtype `AbilityMovement`; các SI elite còn lại giữ nhánh `HardSI`.
+- Expose native `L4D2_GetEliteSubtype(client)` để plugin AI/movement gate đúng subtype và không còn chồng logic.
 
 ## File chính
 

@@ -5,9 +5,25 @@
 #include <left4dhooks>
 #include <actions>
 
+native bool L4D2_IsEliteSI(int client);
+native int L4D2_GetEliteSubtype(int client);
+
+bool g_bEliteNativeAvailable;
+bool g_bEliteSubtypeNativeAvailable;
+
+enum
+{
+	ELITE_SUBTYPE_NONE = 0,
+	ELITE_SUBTYPE_HARDSI,
+	ELITE_SUBTYPE_ABILITY_MOVEMENT
+}
+
 bool bLate;
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+	MarkNativeAsOptional("L4D2_IsEliteSI");
+	MarkNativeAsOptional("L4D2_GetEliteSubtype");
+
 	EngineVersion test = GetEngineVersion();
 
 	if( test != Engine_Left4Dead2 )
@@ -148,6 +164,21 @@ public void OnPluginEnd()
 	Tank_OnModuleEnd();
 }
 
+public void OnAllPluginsLoaded()
+{
+	RefreshEliteNativeState();
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+	RefreshEliteNativeState();
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	RefreshEliteNativeState();
+}
+
 void ConVarChanged_Cvars(ConVar hCvar, const char[] sOldVal, const char[] sNewVal)
 {
 	GetCvars();
@@ -197,6 +228,7 @@ Action Timer_ForceInfectedAssault( Handle timer )
 public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 {
 	if(!g_bCvarEnable) return;
+	if(!ShouldApplyHardMovementByActor(actor)) return;
 
 	switch (name[0])
 	{
@@ -227,6 +259,7 @@ public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 // Modify SI movement
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon) {
 	if(!g_bCvarEnable) return Plugin_Continue;
+	if(!ShouldApplyHardMovement(client)) return Plugin_Continue;
 	
 	if( IsBotInfected(client) && IsPlayerAlive(client) && !L4D_IsPlayerGhost(client) ) 
 	{ 
@@ -278,6 +311,7 @@ void player_spawn(Event event, char[] name, bool dontBroadcast) {
 	if(!g_bCvarEnable) return;
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
+	if(!ShouldApplyHardMovement(client)) return;
 	if( IsBotInfected(client) ) {
 		int botInfected = client;
 		// Process for SI class
@@ -307,6 +341,7 @@ void ability_use(Event event, char[] name, bool dontBroadcast) {
 	if(!g_bCvarEnable) return;
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
+	if(!ShouldApplyHardMovement(client)) return;
 	if( IsBotInfected(client) ) {
 		int bot = client;
 		// Process for different SI
@@ -333,8 +368,45 @@ public Action L4D2_OnChooseVictim(int specialInfected, int &curTarget)
 
 public Action L4D2_OnSelectTankAttack(int client, int &sequence) {
 	if(!g_bCvarEnable) return Plugin_Continue;
+	if(!ShouldApplyHardMovement(client)) return Plugin_Continue;
 
 	return Tank_OnSelectTankAttack(client, sequence);
+}
+
+void RefreshEliteNativeState()
+{
+	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+	g_bEliteSubtypeNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_GetEliteSubtype") == FeatureStatus_Available);
+}
+
+bool ShouldApplyHardMovement(int client)
+{
+	if (!IsBotInfected(client)) {
+		return false;
+	}
+
+	if (!g_bEliteNativeAvailable) {
+		return true;
+	}
+
+	if (!L4D2_IsEliteSI(client)) {
+		return false;
+	}
+
+	if (!g_bEliteSubtypeNativeAvailable) {
+		return true;
+	}
+
+	return L4D2_GetEliteSubtype(client) == ELITE_SUBTYPE_HARDSI;
+}
+
+bool ShouldApplyHardMovementByActor(int actor)
+{
+	if (actor > 0 && actor <= MaxClients && IsClientInGame(actor)) {
+		return ShouldApplyHardMovement(actor);
+	}
+
+	return true;
 }
 
 // Other----------

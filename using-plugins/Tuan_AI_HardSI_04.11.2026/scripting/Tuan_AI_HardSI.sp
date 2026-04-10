@@ -6,13 +6,23 @@
 #include <actions>
 
 native bool L4D2_IsEliteSI(int client);
+native int L4D2_GetEliteSubtype(int client);
 
 bool g_bL4D2Version;
 bool bLate;
 bool g_bEliteNativeAvailable;
+bool g_bEliteSubtypeNativeAvailable;
+
+enum
+{
+	ELITE_SUBTYPE_NONE = 0,
+	ELITE_SUBTYPE_HARDSI,
+	ELITE_SUBTYPE_ABILITY_MOVEMENT
+}
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	MarkNativeAsOptional("L4D2_IsEliteSI");
+	MarkNativeAsOptional("L4D2_GetEliteSubtype");
 
     EngineVersion test = GetEngineVersion();
 
@@ -83,6 +93,8 @@ int
 
 float 
 	g_fRunTopSpeed[MAXPLAYERS + 1];
+
+Handle g_hForceInfectedAssaultTimer;
 
 public void OnPluginStart() 
 { 
@@ -155,17 +167,17 @@ public void OnPluginEnd()
 
 public void OnAllPluginsLoaded()
 {
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+	RefreshEliteNativeState();
 }
 
 public void OnLibraryAdded(const char[] name)
 {
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+	RefreshEliteNativeState();
 }
 
 public void OnLibraryRemoved(const char[] name)
 {
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+	RefreshEliteNativeState();
 }
 
 void ConVarChanged_Cvars(ConVar hCvar, const char[] sOldVal, const char[] sNewVal)
@@ -200,8 +212,6 @@ public void OnConfigsExecuted()
 																	KEEP SI AGGRESSIVE
 																	
 ***********************************************************************************************************************************************************************************/
-
-Handle g_hForceInfectedAssaultTimer;
 
 void ResetForceInfectedAssaultTimer(bool closeHandle)
 {
@@ -364,6 +374,7 @@ void player_spawn(Event event, char[] name, bool dontBroadcast) {
 	if(!g_bCvarEnable) return;
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
+	if(!ShouldApplyHardMovement(client)) return;
 	if( IsBotInfected(client) ) {
 		int botInfected = client;
 		// Process for SI class
@@ -467,7 +478,15 @@ bool ShouldApplyHardMovement(int client)
 		return true;
 	}
 
-	return L4D2_IsEliteSI(client);
+	if (!L4D2_IsEliteSI(client)) {
+		return false;
+	}
+
+	if (!g_bEliteSubtypeNativeAvailable) {
+		return true;
+	}
+
+	return L4D2_GetEliteSubtype(client) == ELITE_SUBTYPE_HARDSI;
 }
 
 bool ShouldApplyHardMovementByActor(int actor)
@@ -479,6 +498,12 @@ bool ShouldApplyHardMovementByActor(int actor)
 	// Some action forwards may provide non-client actors.
 	// Keep original behaviour in that case to avoid disabling HardSI logic unexpectedly.
 	return true;
+}
+
+void RefreshEliteNativeState()
+{
+	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
+	g_bEliteSubtypeNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_GetEliteSubtype") == FeatureStatus_Available);
 }
 
 // Other----------

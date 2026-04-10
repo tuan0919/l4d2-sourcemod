@@ -646,19 +646,16 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     bool headshot = event.GetBool("headshot", false);
     bool wallbang = (event.GetInt("penetrated", 0) > 0);
 
-    // OPTIMIZED: Early guard clauses with inverted logic
-    if (!IsInGameClient(victim) || GetClientTeam(victim) != 3)
+    if (!IsInGameClient(victim))
     {
         return;
     }
 
-    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2 || attackerClient == victim)
-    {
-        if (!IsValidSurvivor(victim))
-        {
-            return;
-        }
+    int victimTeam = GetClientTeam(victim);
 
+    // Survivor died — announce death with attacker info
+    if (victimTeam == 2)
+    {
         bool bleedingOut = IsBleedingOutDeath(victim, attackerClient, attackerEnt, weapon, dmgType);
 
         if (g_bPendingIncap[victim] && (GetGameTime() - g_fPendingIncapTime[victim]) <= INCAP_KILL_SUPPRESS_WINDOW)
@@ -672,20 +669,28 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         return;
     }
 
-    // Survivor killed SI
-    char attackerName[64];
-    char victimName[64];
-    char cause[192];
-    char line[128];
+    // SI died — announce survivor kill if attacker is a survivor
+    if (victimTeam == 3)
+    {
+        if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2 || attackerClient == victim)
+        {
+            return;
+        }
 
-    GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
-    GetSpecialInfectedName(victim, victimName, sizeof(victimName));
+        char attackerName[64];
+        char victimName[64];
+        char cause[192];
+        char line[128];
 
-    ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
-    ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
+        GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
+        GetSpecialInfectedName(victim, victimName, sizeof(victimName));
 
-    Format(line, sizeof(line), "%s killed %s", attackerName, victimName);
-    PrintBlueAllWithOliveCause(attackerClient, line, cause);
+        ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
+        ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
+
+        Format(line, sizeof(line), "%s killed %s", attackerName, victimName);
+        PrintBlueAllWithOliveCause(attackerClient, line, cause);
+    }
 }
 
 void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast)

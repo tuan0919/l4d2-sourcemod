@@ -210,9 +210,9 @@ void ResetForceInfectedAssaultTimer(bool closeHandle)
 		return;
 	}
 
-	if (closeHandle && IsValidHandle(g_hForceInfectedAssaultTimer))
+	if (closeHandle)
 	{
-		delete g_hForceInfectedAssaultTimer;
+		KillTimer(g_hForceInfectedAssaultTimer);
 	}
 
 	g_hForceInfectedAssaultTimer = null;
@@ -227,7 +227,7 @@ public void L4D_OnFirstSurvivorLeftSafeArea_Post(int client)
 	g_hForceInfectedAssaultTimer = CreateTimer( g_fCvarAssaultReminderInterval, Timer_ForceInfectedAssault, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE );
 }
 
-Action Timer_ForceInfectedAssault( Handle timer ) 
+Action Timer_ForceInfectedAssault( Handle timer )
 {
 	if (timer != g_hForceInfectedAssaultTimer)
 	{

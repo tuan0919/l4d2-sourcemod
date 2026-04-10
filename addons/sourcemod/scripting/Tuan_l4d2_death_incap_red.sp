@@ -41,7 +41,9 @@ enum HazardType
 }
 
 ConVar g_hEnable;
+ConVar g_hAnnounceEliteSIKill;
 bool g_bEnable;
+bool g_bAnnounceEliteSIKill;
 
 int g_iAnchorUserId;
 Handle g_hAnchorTimer;
@@ -112,8 +114,11 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 public void OnPluginStart()
 {
     g_hEnable = CreateConVar("l4d2_redannounce_enable", "1", "Enable red death/incap announce plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    g_hAnnounceEliteSIKill = CreateConVar("l4d2_redannounce_announce_elite_si_kill", "1", "Announce Elite SI tag in SI kill messages (survivor kills SI).", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     g_hEnable.AddChangeHook(OnCvarChanged);
+    g_hAnnounceEliteSIKill.AddChangeHook(OnCvarChanged);
     g_bEnable = g_hEnable.BoolValue;
+    g_bAnnounceEliteSIKill = g_hAnnounceEliteSIKill.BoolValue;
 
     HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("player_incapacitated_start", Event_PlayerIncapStart, EventHookMode_Post);
@@ -121,6 +126,8 @@ public void OnPluginStart()
     HookEvent("weapon_fire", Event_WeaponFire, EventHookMode_Post);
     HookEvent("witch_killed", Event_WitchKilled, EventHookMode_Post);
     HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
+
+    AutoExecConfig(true, "Tuan_l4d2_death_incap_red");
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -335,6 +342,7 @@ public void OnEntityDestroyed(int entity)
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue)
 {
     g_bEnable = g_hEnable.BoolValue;
+    g_bAnnounceEliteSIKill = g_hAnnounceEliteSIKill.BoolValue;
 }
 
 public Action Timer_DelayedEnsureAnchor(Handle timer)
@@ -691,7 +699,7 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         char line[128];
 
         GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
-        GetSpecialInfectedName(victim, victimName, sizeof(victimName));
+        GetSpecialInfectedName(victim, victimName, sizeof(victimName), g_bAnnounceEliteSIKill);
 
         ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
         ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
@@ -2018,7 +2026,7 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
     return false;
 }
 
-void GetSpecialInfectedName(int client, char[] outName, int maxlen)
+void GetSpecialInfectedName(int client, char[] outName, int maxlen, bool includeEliteTag = true)
 {
     char baseName[32];
 
@@ -2035,7 +2043,7 @@ void GetSpecialInfectedName(int client, char[] outName, int maxlen)
         default: strcopy(baseName, sizeof(baseName), "Special Infected");
     }
 
-    if (IsEliteSI(client))
+    if (includeEliteTag && IsEliteSI(client))
     {
         Format(outName, maxlen, "Elite %s", baseName);
     }

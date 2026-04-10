@@ -15,8 +15,6 @@
 #include <Tuan_custom_forwards>
 #include <colors>
 
-native bool L4D2_IsEliteSI(int client);
-
 public Plugin myinfo = {
 	name			= PLUGIN_NAME_FULL,
 	author			= PLUGIN_AUTHOR,
@@ -84,19 +82,6 @@ public Plugin myinfo = {
 #define TYPE_FIREWORKS_CRATE          7
 #define TYPE_OIL_DRUM_EXPLOSIVE       8
 
-static const char SI_CLASS_NAMES[9][16] = {
-	"Unknown",
-	"Smoker",
-	"Boomer",
-	"Hunter",
-	"Spitter",
-	"Jockey",
-	"Charger",
-	"Unknown",
-	"Tank"
-};
-
-
 static const char WEAPON_NAMES_KEYs[][] = {
 	"weapon_adrenaline",
 	"weapon_pain_pills",
@@ -146,9 +131,6 @@ static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD
 static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_TotalSurvivors = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
-static char g_sLastEliteKiller[64];
-static char g_sLastEliteVictim[32];
-static float g_fEliteKillSuppressUntil;
 ConVar g_hCvarMaxSpecials;
 ConVar g_hCvarTankHealth;
 ConVar g_hCvarInfBotsCurrentAliveSurvivor;
@@ -173,13 +155,6 @@ ArrayList g_hud_kill_right;
 Handle g_hInfoHudDecreaseTimer;
 Handle g_hKillHudDecreaseTimer;
 StringMap mapWeaponName;
-bool g_bEliteNativeAvailable;
-
-public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
-{
-	MarkNativeAsOptional("L4D2_IsEliteSI");
-	return APLRes_Success;
-}
 
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
@@ -193,37 +168,15 @@ public void OnPluginStart() {
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
-		
+	
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
-	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	CreateTimer(PLAYERCOUNT_INTERVAL, Timer_UpdatePlayerCountHUD, _, TIMER_REPEAT);
-}
-
-public void OnAllPluginsLoaded()
-{
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
-}
-
-public void OnLibraryAdded(const char[] name)
-{
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
-}
-
-public void OnLibraryRemoved(const char[] name)
-{
-	g_bEliteNativeAvailable = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available);
 }
 
 public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
-		if (GetGameTime() <= g_fEliteKillSuppressUntil
-			&& StrEqual(attacker_name, g_sLastEliteKiller, false)
-			&& (StrEqual(victim_name, g_sLastEliteVictim, false) || StrContains(victim_name, g_sLastEliteVictim, false) != -1)) {
-			return;
-		}
-
 		char attacker_name_fmt[32];
 		char victim_name_fmt[32];
 		FormatHudNameFromRaw(attacker_name, attacker_name_fmt, sizeof(attacker_name_fmt));
@@ -570,37 +523,6 @@ void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
 		DisplayInfoHUD(output);
 	}
 }
-
-void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
-{
-	if (!g_bEliteNativeAvailable) {
-		return;
-	}
-
-	int victim = GetClientOfUserId(event.GetInt("userid"));
-	if (!IsClient(victim) || GetClientTeam(victim) != TEAM_INFECTED || !L4D2_IsEliteSI(victim)) {
-		return;
-	}
-
-	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	if (!IsClient(attacker) || GetClientTeam(attacker) != TEAM_SURVIVOR) {
-		return;
-	}
-
-	int zClass = GetEntProp(victim, Prop_Send, "m_zombieClass");
-	if (zClass < 1 || zClass > 8) {
-		zClass = 0;
-	}
-
-	char attacker_name_fmt[32];
-	FormatHudNameFromClient(attacker, attacker_name_fmt, sizeof(attacker_name_fmt));
-	FormatEx(output, sizeof(output), "%s killed Elite %s", attacker_name_fmt, SI_CLASS_NAMES[zClass]);
-	DisplayKillHUD(output);
-	GetClientName(attacker, g_sLastEliteKiller, sizeof(g_sLastEliteKiller));
-	strcopy(g_sLastEliteVictim, sizeof(g_sLastEliteVictim), SI_CLASS_NAMES[zClass]);
-	g_fEliteKillSuppressUntil = GetGameTime() + 0.35;
-}
-
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
 	char client_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));

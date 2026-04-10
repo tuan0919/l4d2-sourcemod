@@ -672,14 +672,14 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         return;
     }
 
-    // Survivor killed SI - OPTIMIZED: Combined string lookups
+    // Survivor killed SI
     char attackerName[64];
     char victimName[64];
     char cause[192];
     char line[128];
 
     GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
-    GetClientName(victim, victimName, sizeof(victimName));
+    GetSpecialInfectedName(victim, victimName, sizeof(victimName));
 
     ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
     ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));

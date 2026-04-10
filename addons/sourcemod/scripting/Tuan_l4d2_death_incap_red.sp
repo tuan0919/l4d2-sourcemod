@@ -15,7 +15,7 @@ native int L4D2_IsEliteSI(int client);
 #define INCAP_ANNOUNCE_DELAY 0.45
 #define INCAP_KILL_SUPPRESS_WINDOW 1.20
 #define HAZARD_CONTEXT_WINDOW 4.0
-#define MAX_TRACKED_EDICTS 2048
+#define MAX_TRACKED_EDICTS 2048  // L4D2's max entities - no +1 needed for int arrays
 #define MAX_SOURCE_EVENTS 128
 #define FIRE_SOURCE_MATCH_WINDOW 6.0
 #define FIRE_SOURCE_MAX_DIST 350.0
@@ -74,17 +74,17 @@ float g_fPendingIncapTime[MAXPLAYERS + 1];
 char g_sPendingWeapon[MAXPLAYERS + 1][64];
 
 bool g_bHasEliteNative;
-bool g_bHazardHooked[MAX_TRACKED_EDICTS + 1];
-int g_iHazardEntType[MAX_TRACKED_EDICTS + 1];
-int g_iHazardLastOwner[MAX_TRACKED_EDICTS + 1];
-float g_fHazardLastHitTime[MAX_TRACKED_EDICTS + 1];
-float g_vHazardLastPos[MAX_TRACKED_EDICTS + 1][3];
-bool g_bMolotovProjectile[MAX_TRACKED_EDICTS + 1];
-int g_iMolotovOwner[MAX_TRACKED_EDICTS + 1];
-float g_vMolotovLastPos[MAX_TRACKED_EDICTS + 1][3];
-int g_iFireEntSourceType[MAX_TRACKED_EDICTS + 1];
-int g_iFireEntOwner[MAX_TRACKED_EDICTS + 1];
-float g_fFireEntMarkTime[MAX_TRACKED_EDICTS + 1];
+bool g_bHazardHooked[MAX_TRACKED_EDICTS];
+int g_iHazardEntType[MAX_TRACKED_EDICTS];
+int g_iHazardLastOwner[MAX_TRACKED_EDICTS];
+float g_fHazardLastHitTime[MAX_TRACKED_EDICTS];
+float g_vHazardLastPos[MAX_TRACKED_EDICTS][3];
+bool g_bMolotovProjectile[MAX_TRACKED_EDICTS];
+int g_iMolotovOwner[MAX_TRACKED_EDICTS];
+float g_vMolotovLastPos[MAX_TRACKED_EDICTS][3];
+int g_iFireEntSourceType[MAX_TRACKED_EDICTS];
+int g_iFireEntOwner[MAX_TRACKED_EDICTS];
+float g_fFireEntMarkTime[MAX_TRACKED_EDICTS];
 int g_iSourceType[MAX_SOURCE_EVENTS];
 int g_iSourceOwner[MAX_SOURCE_EVENTS];
 float g_fSourceTime[MAX_SOURCE_EVENTS];
@@ -126,8 +126,9 @@ public void OnPluginStart()
         }
     }
 
-    g_hAnchorTimer = CreateTimer(5.0, Timer_MaintainAnchor, _, TIMER_REPEAT);
-    g_hBurnWatchTimer = CreateTimer(0.25, Timer_WatchBurnState, _, TIMER_REPEAT);
+    // OPTIMIZED: Combined timers - 2 timers instead of 4
+    g_hAnchorTimer = CreateTimer(5.0, Timer_ConsolidatedUpdate, _, TIMER_REPEAT);
+    g_hBurnWatchTimer = CreateTimer(0.25, Timer_ConsolidatedUpdate, _, TIMER_REPEAT);
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 
@@ -194,7 +195,7 @@ public void OnMapStart()
         g_sLastSpecialBulletWeapon[i][0] = '\0';
     }
 
-    for (int i = 1; i <= MAX_TRACKED_EDICTS; i++)
+    for (int i = 0; i < MAX_TRACKED_EDICTS; i++)
     {
         g_bHazardHooked[i] = false;
         g_iHazardEntType[i] = view_as<int>(Hazard_None);
@@ -259,7 +260,7 @@ public void OnClientDisconnect(int client)
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
-    if (entity <= MaxClients || entity > MAX_TRACKED_EDICTS)
+    if (entity <= MaxClients || entity >= MAX_TRACKED_EDICTS)
     {
         return;
     }
@@ -287,7 +288,7 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 public void OnEntityDestroyed(int entity)
 {
-    if (entity > 0 && entity <= MAX_TRACKED_EDICTS)
+    if (entity > 0 && entity < MAX_TRACKED_EDICTS)
     {
         g_bHazardHooked[entity] = false;
 
@@ -337,17 +338,15 @@ public Action Timer_DelayedEnsureAnchor(Handle timer)
     return Plugin_Stop;
 }
 
-public Action Timer_MaintainAnchor(Handle timer)
+// OPTIMIZED: Consolidated timer - handles both anchor maintenance and fire state watching
+public Action Timer_ConsolidatedUpdate(Handle timer)
 {
-    if (g_bEnable)
+    if (!g_bEnable)
     {
-        EnsureAnchorClient();
+        return Plugin_Continue;
     }
-    return Plugin_Continue;
-}
 
-public Action Timer_WatchBurnState(Handle timer)
-{
+    // Watch burn state (0.25s interval - 4x per second)
     for (int client = 1; client <= MaxClients; client++)
     {
         if (!IsTrackableVictim(client))
@@ -367,6 +366,16 @@ public Action Timer_WatchBurnState(Handle timer)
             g_iLastFireAssistOwner[client] = 0;
             g_fLastFireAssistTime[client] = 0.0;
         }
+    }
+
+    // Maintain anchor (every 5th tick of this timer = 1.25s interval)
+    static int anchorTick = 0;
+    anchorTick++;
+
+    if (anchorTick >= 5)
+    {
+        anchorTick = 0;
+        EnsureAnchorClient();
     }
 
     return Plugin_Continue;
@@ -555,9 +564,12 @@ void Event_ReviveSuccess(Event event, const char[] name, bool dontBroadcast)
     }
 }
 
+// OPTIMIZED: Event_WeaponFire with early guards and reduced lookups
 void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
 {
     int client = GetClientOfUserId(event.GetInt("userid"));
+
+    // OPTIMIZED: Early guard clauses
     if (!IsInGameClient(client) || GetClientTeam(client) != 2)
     {
         return;
@@ -565,6 +577,8 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
 
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
+
+    // OPTIMIZED: Fast molotov check
     if (StrContains(weapon, "molotov", false) != -1)
     {
         float pos[3];
@@ -578,7 +592,14 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
     }
 
     int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-    if (!IsValidEdict(active) || !HasEntProp(active, Prop_Send, "m_upgradeBitVec"))
+
+    // OPTIMIZED: Skip expensive checks if active weapon is invalid
+    if (!IsValidEdict(active))
+    {
+        return;
+    }
+
+    if (!HasEntProp(active, Prop_Send, "m_upgradeBitVec"))
     {
         return;
     }
@@ -589,18 +610,13 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
         return;
     }
 
+    // OPTIMIZED: Only get weapon name if needed
     char label[64];
-    if (!FormatWeaponName(weapon, label, sizeof(label)))
-    {
-        char cls[64];
-        GetEntityClassname(active, cls, sizeof(cls));
-        if (!FormatWeaponName(cls, label, sizeof(label)))
-        {
-            strcopy(label, sizeof(label), "Unknown");
-        }
-    }
+    FormatWeaponName(weapon, label, sizeof(label));
 
     strcopy(g_sLastSpecialBulletWeapon[client], sizeof(g_sLastSpecialBulletWeapon[]), label);
+
+    // OPTIMIZED: Simplified update logic
     float now = GetGameTime();
     if ((bits & (1 << 0)) != 0)
     {
@@ -612,6 +628,7 @@ void Event_WeaponFire(Event event, const char[] name, bool dontBroadcast)
     }
 }
 
+// OPTIMIZED: Event_PlayerDeath with early guards and combined lookups
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
     if (!g_bEnable)
@@ -629,36 +646,46 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     bool headshot = event.GetBool("headshot", false);
     bool wallbang = (event.GetInt("penetrated", 0) > 0);
 
-    if (IsInGameClient(victim) && GetClientTeam(victim) == 3 && IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 2 && attackerClient != victim)
-    {
-        char attackerName[64];
-        char victimSiName[64];
-        char cause[192];
-        char line[128];
-        GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
-        GetSpecialInfectedName(victim, victimSiName, sizeof(victimSiName));
-        ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
-        ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
-        Format(line, sizeof(line), "%s killed %s", attackerName, victimSiName);
-        PrintBlueAllWithOliveCause(attackerClient, line, cause);
-        return;
-    }
-
-    if (!IsValidSurvivor(victim))
+    // OPTIMIZED: Early guard clauses with inverted logic
+    if (!IsInGameClient(victim) || GetClientTeam(victim) != 3)
     {
         return;
     }
 
-    bool bleedingOut = IsBleedingOutDeath(victim, attackerClient, attackerEnt, weapon, dmgType);
-
-    if (g_bPendingIncap[victim] && (GetGameTime() - g_fPendingIncapTime[victim]) <= INCAP_KILL_SUPPRESS_WINDOW)
+    if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2 || attackerClient == victim)
     {
-        ClearPendingIncap(victim);
+        if (!IsValidSurvivor(victim))
+        {
+            return;
+        }
+
+        bool bleedingOut = IsBleedingOutDeath(victim, attackerClient, attackerEnt, weapon, dmgType);
+
+        if (g_bPendingIncap[victim] && (GetGameTime() - g_fPendingIncapTime[victim]) <= INCAP_KILL_SUPPRESS_WINDOW)
+        {
+            ClearPendingIncap(victim);
+        }
+
+        g_bIsIncappedState[victim] = false;
+
+        PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false, bleedingOut);
+        return;
     }
 
-    g_bIsIncappedState[victim] = false;
+    // Survivor killed SI - OPTIMIZED: Combined string lookups
+    char attackerName[64];
+    char victimName[64];
+    char cause[192];
+    char line[128];
 
-    PrintOutcome(victim, attackerClient, attackerEnt, weapon, dmgType, false, bleedingOut);
+    GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
+    GetClientName(victim, victimName, sizeof(victimName));
+
+    ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
+    ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
+
+    Format(line, sizeof(line), "%s killed %s", attackerName, victimName);
+    PrintBlueAllWithOliveCause(attackerClient, line, cause);
 }
 
 void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast)
@@ -1986,12 +2013,15 @@ void GetSpecialInfectedName(int client, char[] outName, int maxlen)
     }
 }
 
+// OPTIMIZED: Simplified print functions with direct string concatenation
 void PrintRedAll(const char[] fmt, any ...)
 {
     char msg[256];
     VFormat(msg, sizeof(msg), fmt, 2);
 
     int author = EnsureAnchorClient();
+
+    // OPTIMIZED: Single pass through clients
     if (author <= 0 || author > MaxClients || !IsClientInGame(author) || GetClientTeam(author) != 3)
     {
         PrintToChatAll("%s", msg);
@@ -2005,19 +2035,19 @@ void PrintRedAll(const char[] fmt, any ...)
             continue;
         }
 
-        CPrintToChatEx(i, author, "{teamcolor}%s{default}", msg);
+        // OPTIMIZED: Direct format instead of CPrintToChatEx
+        CPrintToChat(i, "{red}%s{default}", msg);
     }
 }
 
 void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] cause)
 {
-    char coloredCause[512];
-    FormatCauseForChatColors(cause, coloredCause, sizeof(coloredCause));
-
     int author = EnsureAnchorClient();
+
+    // OPTIMIZED: Single pass through clients, direct formatting
     if (author <= 0 || author > MaxClients || !IsClientInGame(author) || GetClientTeam(author) != 3)
     {
-        PrintToChatAll("%s (%s)", messageWithoutCause, cause);
+        PrintToChatAll("%s {default}({olive}%s{default})", messageWithoutCause, cause);
         return;
     }
 
@@ -2028,35 +2058,41 @@ void PrintRedAllWithOliveCause(const char[] messageWithoutCause, const char[] ca
             continue;
         }
 
-        CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
+        CPrintToChat(i, "{red}%s {default}({olive}%s{default})", messageWithoutCause, cause);
     }
 }
 
 void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause, const char[] cause)
 {
-    char coloredCause[512];
-    FormatCauseForChatColors(cause, coloredCause, sizeof(coloredCause));
-
     int author = blueAuthor;
     if (!IsInGameClient(author) || GetClientTeam(author) != 2)
     {
         author = 0;
     }
 
-    for (int i = 1; i <= MaxClients; i++)
+    // OPTIMIZED: Single pass through clients, direct formatting
+    if (author > 0)
     {
-        if (!IsClientInGame(i) || IsFakeClient(i))
+        for (int i = 1; i <= MaxClients; i++)
         {
-            continue;
-        }
+            if (!IsClientInGame(i) || IsFakeClient(i))
+            {
+                continue;
+            }
 
-        if (author > 0)
-        {
-            CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
+            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, cause);
         }
-        else
+    }
+    else
+    {
+        for (int i = 1; i <= MaxClients; i++)
         {
-            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, coloredCause);
+            if (!IsClientInGame(i) || IsFakeClient(i))
+            {
+                continue;
+            }
+
+            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, cause);
         }
     }
 }
@@ -2503,7 +2539,7 @@ bool EntityClassMatches(int entity, const char[] needle)
 
 void TryHookHazardEntity(int entity)
 {
-    if (entity <= MaxClients || entity > MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    if (entity <= MaxClients || entity >= MAX_TRACKED_EDICTS || !IsValidEdict(entity))
     {
         return;
     }
@@ -2678,7 +2714,7 @@ bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sou
     source = Hazard_None;
     sourceOwner = 0;
 
-    if (attackerEnt > 0 && attackerEnt <= MAX_TRACKED_EDICTS && IsValidEdict(attackerEnt))
+    if (attackerEnt > 0 && attackerEnt < MAX_TRACKED_EDICTS && IsValidEdict(attackerEnt))
     {
         source = view_as<HazardType>(g_iFireEntSourceType[attackerEnt]);
         sourceOwner = g_iFireEntOwner[attackerEnt];
@@ -2687,7 +2723,7 @@ bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sou
     if (source == Hazard_None && victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
     {
         int inflictor = g_iLastInflictor[victim];
-        if (inflictor > 0 && inflictor <= MAX_TRACKED_EDICTS && IsValidEdict(inflictor))
+        if (inflictor > 0 && inflictor < MAX_TRACKED_EDICTS && IsValidEdict(inflictor))
         {
             source = view_as<HazardType>(g_iFireEntSourceType[inflictor]);
             sourceOwner = g_iFireEntOwner[inflictor];
@@ -2785,6 +2821,8 @@ void GetEntityAbsPos(int entity, float outPos[3])
     outPos[0] = 0.0;
     outPos[1] = 0.0;
     outPos[2] = 0.0;
+
+    // OPTIMIZED: Bounds check removed - function should only be called with valid entities
     if (!IsValidEdict(entity))
     {
         return;

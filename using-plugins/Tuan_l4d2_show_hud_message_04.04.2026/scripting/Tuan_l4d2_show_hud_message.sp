@@ -57,14 +57,19 @@ public Plugin myinfo = {
 #define LEFT_FEED_BASE 9
 #define RIGHT_KILL_BASE 2
 #define PLAYERCOUNT_SLOT 0
+#define TOTALSURVIVORS_SLOT 1
 #define IsClient(%1) ((1 <= %1 <= MaxClients) && IsClientInGame(%1))
 #define L4D2_ZOMBIECLASS_TANK		8
 #define HUD_TIMEOUT	5.0
 #define PLAYERCOUNT_INTERVAL 1.0
-#define PLAYERCOUNT_X 0.72
+#define PLAYERCOUNT_X 0.00
 #define PLAYERCOUNT_Y 0.03
-#define PLAYERCOUNT_W 0.28
+#define PLAYERCOUNT_W 0.70
 #define PLAYERCOUNT_H 0.05
+#define TOTALSURVIVORS_X 0.72
+#define TOTALSURVIVORS_Y 0.03
+#define TOTALSURVIVORS_W 0.28
+#define TOTALSURVIVORS_H 0.05
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
 #define TEAM_INFECTED		3
@@ -138,7 +143,8 @@ static int g_iHUDFlags_Left_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_F
 static int g_iHUDFlags_Left_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
 static int g_iHUDFlags_Right_Normal = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS | HUD_FLAG_BLINK;
-static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
+static int g_iHUDFlags_TotalSurvivors = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
@@ -351,6 +357,7 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
 	for (int slot = RIGHT_KILL_BASE; slot < RIGHT_KILL_BASE + HUD_FEED_MAX; slot++)
 		RemoveHUD(slot);
 	RemoveHUD(PLAYERCOUNT_SLOT);
+	RemoveHUD(TOTALSURVIVORS_SLOT);
 
 	delete g_hud_info_left;
 	g_hud_info_left = new ArrayList(ByteCountToCells(128));
@@ -371,6 +378,7 @@ public void OnMapEnd() {
 	delete g_hInfoHudDecreaseTimer;
 	delete g_hKillHudDecreaseTimer;
 	RemoveHUD(PLAYERCOUNT_SLOT);
+	RemoveHUD(TOTALSURVIVORS_SLOT);
 }
 
 
@@ -734,10 +742,14 @@ void RemoveHUD(int slot) {
 void UpdatePlayerCountHUD()
 {
 	int aliveSurvivorCount = 0;
+	int totalSurvivorCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (IsClient(i) && GetClientTeam(i) == TEAM_SURVIVOR && IsPlayerAlive(i)) {
-			aliveSurvivorCount++;
+		if (IsClient(i) && GetClientTeam(i) == TEAM_SURVIVOR) {
+			totalSurvivorCount++;
+			if (IsPlayerAlive(i)) {
+				aliveSurvivorCount++;
+			}
 		}
 	}
 
@@ -760,7 +772,13 @@ void UpdatePlayerCountHUD()
 		tankHealth = g_hCvarTankHealth.IntValue;
 	}
 
+	// Left HUD: dynamic info
 	FormatEx(output, sizeof(output), "Alive Survivor: %d | SI limit: %d | Tank HP: %d", aliveSurvivorCount, maxSpecials, tankHealth);
 	HUDSetLayout(PLAYERCOUNT_SLOT, g_iHUDFlags_PlayerCount, output);
 	HUDPlace(PLAYERCOUNT_SLOT, PLAYERCOUNT_X, PLAYERCOUNT_Y, PLAYERCOUNT_W, PLAYERCOUNT_H);
+
+	// Right HUD: total survivors
+	FormatEx(output, sizeof(output), "Total Survivors: %d / %d", aliveSurvivorCount, totalSurvivorCount);
+	HUDSetLayout(TOTALSURVIVORS_SLOT, g_iHUDFlags_TotalSurvivors, output);
+	HUDPlace(TOTALSURVIVORS_SLOT, TOTALSURVIVORS_X, TOTALSURVIVORS_Y, TOTALSURVIVORS_W, TOTALSURVIVORS_H);
 }

@@ -2070,7 +2070,6 @@ void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause
         author = 0;
     }
 
-    // OPTIMIZED: Single pass through clients, direct formatting
     if (author > 0)
     {
         for (int i = 1; i <= MaxClients; i++)
@@ -2080,7 +2079,7 @@ void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause
                 continue;
             }
 
-            CPrintToChat(i, "{lightblue}%s {default}({olive}%s{default})", messageWithoutCause, cause);
+            CPrintToChatEx(i, author, "{teamcolor}%s {default}({olive}%s{default})", messageWithoutCause, cause);
         }
     }
     else
@@ -3137,6 +3136,17 @@ void GetCleanClientName(int client, char[] outName, int maxlen)
     if (start < strlen(outName))
     {
         strcopy(outName, maxlen, outName[start]);
+    }
+
+    ReplaceString(outName, maxlen, " BOT", "", false);
+    ReplaceString(outName, maxlen, " Bot", "", false);
+
+    if (IsInGameClient(client) && IsFakeClient(client) && GetClientTeam(client) == 2)
+    {
+        if (StrContains(outName, " Bot", false) == -1)
+        {
+            Format(outName, maxlen, "%s Bot", outName);
+        }
     }
 }
 

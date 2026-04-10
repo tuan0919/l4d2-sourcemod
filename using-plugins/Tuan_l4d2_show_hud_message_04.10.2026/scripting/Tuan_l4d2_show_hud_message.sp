@@ -136,6 +136,8 @@ ConVar g_hCvarTankHealth;
 ConVar g_hCvarInfBotsCurrentAliveSurvivor;
 ConVar g_hCvarInfBotsCurrentSILimit;
 ConVar g_hCvarInfBotsCurrentTankHP;
+ConVar g_hCvarKillFeed;
+bool g_bKillFeedEnabled;
 #define HUD_NAME_VISIBLE 14
 
 enum struct HUD
@@ -158,6 +160,9 @@ StringMap mapWeaponName;
 
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
+	g_hCvarKillFeed = CreateConVar(PLUGIN_PREFIX ... PLUGIN_NAME ... "_kill_feed", "1", "Enable right-side kill feed HUD messages.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarKillFeed.AddChangeHook(OnCvarChanged);
+	g_bKillFeedEnabled = g_hCvarKillFeed.BoolValue;
 	g_hud_info_left = new ArrayList(ByteCountToCells(128));
 	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 	g_hCvarInfBotsCurrentAliveSurvivor = FindConVar("l4d_infectedbots_current_alive_survivor");
@@ -172,6 +177,18 @@ public void OnPluginStart() {
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
 	CreateTimer(PLAYERCOUNT_INTERVAL, Timer_UpdatePlayerCountHUD, _, TIMER_REPEAT);
+}
+
+public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue) {
+	g_bKillFeedEnabled = g_hCvarKillFeed.BoolValue;
+
+	if (!g_bKillFeedEnabled) {
+		g_hud_kill_right.Clear();
+		for (int slot = RIGHT_KILL_BASE; slot < RIGHT_KILL_BASE + HUD_FEED_MAX; slot++) {
+			RemoveHUD(slot);
+		}
+		delete g_hKillHudDecreaseTimer;
+	}
 }
 
 public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
@@ -492,6 +509,10 @@ void DisplayInfoHUD(const char[] info) {
 }
 
 void DisplayKillHUD(const char[] info) {
+	if (!g_bKillFeedEnabled) {
+		return;
+	}
+
 	HUD feed;
 	g_hud_kill_right.PushString(info);
 	if (g_hud_kill_right.Length > HUD_FEED_MAX) {

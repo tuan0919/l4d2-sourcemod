@@ -19,6 +19,7 @@ native int L4D2_IsEliteSI(int client);
 #define MAX_SOURCE_EVENTS 128
 #define FIRE_SOURCE_MATCH_WINDOW 6.0
 #define FIRE_SOURCE_MAX_DIST 350.0
+#define STAGGER_MATCH_WINDOW 1.25
 
 enum AttackerKind
 {
@@ -64,6 +65,8 @@ float g_fLastIncapTime[MAXPLAYERS + 1];
 float g_fLastIncendiaryShot[MAXPLAYERS + 1];
 float g_fLastExplosiveShot[MAXPLAYERS + 1];
 char g_sLastSpecialBulletWeapon[MAXPLAYERS + 1][64];
+int g_iLastStaggerBy[MAXPLAYERS + 1];
+float g_fLastStaggerTime[MAXPLAYERS + 1];
 
 Handle g_hIncapTimer[MAXPLAYERS + 1];
 bool g_bPendingIncap[MAXPLAYERS + 1];
@@ -117,6 +120,7 @@ public void OnPluginStart()
     HookEvent("revive_success", Event_ReviveSuccess, EventHookMode_Post);
     HookEvent("weapon_fire", Event_WeaponFire, EventHookMode_Post);
     HookEvent("witch_killed", Event_WitchKilled, EventHookMode_Post);
+    HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -193,6 +197,8 @@ public void OnMapStart()
         g_fLastIncendiaryShot[i] = 0.0;
         g_fLastExplosiveShot[i] = 0.0;
         g_sLastSpecialBulletWeapon[i][0] = '\0';
+        g_iLastStaggerBy[i] = 0;
+        g_fLastStaggerTime[i] = 0.0;
     }
 
     for (int i = 0; i < MAX_TRACKED_EDICTS; i++)
@@ -256,6 +262,8 @@ public void OnClientDisconnect(int client)
     g_fLastIncendiaryShot[client] = 0.0;
     g_fLastExplosiveShot[client] = 0.0;
     g_sLastSpecialBulletWeapon[client][0] = '\0';
+    g_iLastStaggerBy[client] = 0;
+    g_fLastStaggerTime[client] = 0.0;
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -713,6 +721,25 @@ void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast)
     ResolveWitchKillCause(attackerClient, cause, sizeof(cause));
     Format(line, sizeof(line), "%s killed Witch", attackerName);
     PrintBlueAllWithOliveCause(attackerClient, line, cause);
+}
+
+void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
+{
+    int victim = GetClientOfUserId(event.GetInt("userid"));
+    int attacker = GetClientOfUserId(event.GetInt("attacker"));
+
+    if (!IsInGameClient(victim) || !IsInGameClient(attacker))
+    {
+        return;
+    }
+
+    if (GetClientTeam(victim) != 3 || GetClientTeam(attacker) != 2)
+    {
+        return;
+    }
+
+    g_iLastStaggerBy[victim] = attacker;
+    g_fLastStaggerTime[victim] = GetGameTime();
 }
 
 public Action Timer_AnnounceIncap(Handle timer, int userid)
@@ -1683,7 +1710,7 @@ void ApplySurvivorKillQualifiers(int attackerClient, int victimClient, const cha
         AppendCauseToken(cause, maxlen, "snip");
     }
 
-    if (IsVictimStaggered(victimClient))
+    if (IsVictimStaggeredByAttacker(victimClient, attackerClient))
     {
         AppendCauseToken(cause, maxlen, "stagger");
     }
@@ -2375,7 +2402,32 @@ bool IsSniperLikeRange(int attackerClient, int victimClient, const char[] eventW
     return GetVectorDistance(aPos, vPos) >= 1200.0;
 }
 
-bool IsVictimStaggered(int client)
+bool IsVictimStaggeredByAttacker(int victimClient, int attackerClient)
+{
+    if (!IsInGameClient(victimClient) || !IsInGameClient(attackerClient))
+    {
+        return false;
+    }
+
+    if (GetClientTeam(victimClient) != 3 || GetClientTeam(attackerClient) != 2)
+    {
+        return false;
+    }
+
+    if (!IsClientCurrentlyStaggered(victimClient))
+    {
+        return false;
+    }
+
+    if (g_iLastStaggerBy[victimClient] != attackerClient)
+    {
+        return false;
+    }
+
+    return (GetGameTime() - g_fLastStaggerTime[victimClient]) <= STAGGER_MATCH_WINDOW;
+}
+
+bool IsClientCurrentlyStaggered(int client)
 {
     if (!IsInGameClient(client))
     {

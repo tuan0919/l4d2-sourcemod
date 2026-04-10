@@ -69,7 +69,7 @@ public Plugin myinfo = {
 #define TOTALSURVIVORS_X 0.72
 #define TOTALSURVIVORS_Y 0.03
 #define TOTALSURVIVORS_W 0.28
-#define TOTALSURVIVORS_H 0.05
+#define TOTALSURVIVORS_H 0.11
 #define CLASSNAME_WITCH               "witch"
 #define TEAM_SURVIVOR		2
 #define TEAM_INFECTED		3
@@ -146,6 +146,7 @@ static int g_iHUDFlags_Right_Newest = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD
 static int g_iHUDFlags_PlayerCount = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_LEFT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static int g_iHUDFlags_TotalSurvivors = HUD_FLAG_TEXT | HUD_FLAG_ALIGN_RIGHT | HUD_FLAG_NOBG | HUD_FLAG_TEAM_SURVIVORS;
 static char output[256];
+static float g_fMapStartTime;
 static char g_sLastEliteKiller[64];
 static char g_sLastEliteVictim[32];
 static float g_fEliteKillSuppressUntil;
@@ -349,6 +350,7 @@ public void Tuan_OnClient_RevivedOther(int client, int target) {
 
 public void OnMapStart() {
 	GameRules_SetProp("m_bChallengeModeActive", true, _, _, true);
+	g_fMapStartTime = GetGameTime();
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
@@ -742,14 +744,19 @@ void RemoveHUD(int slot) {
 void UpdatePlayerCountHUD()
 {
 	int aliveSurvivorCount = 0;
-	int totalSurvivorCount = 0;
+	int humanConnectedCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (IsClient(i) && GetClientTeam(i) == TEAM_SURVIVOR) {
-			totalSurvivorCount++;
-			if (IsPlayerAlive(i)) {
-				aliveSurvivorCount++;
-			}
+		if (!IsClient(i)) {
+			continue;
+		}
+
+		if (!IsFakeClient(i)) {
+			humanConnectedCount++;
+		}
+
+		if (GetClientTeam(i) == TEAM_SURVIVOR && IsPlayerAlive(i)) {
+			aliveSurvivorCount++;
 		}
 	}
 
@@ -777,8 +784,32 @@ void UpdatePlayerCountHUD()
 	HUDSetLayout(PLAYERCOUNT_SLOT, g_iHUDFlags_PlayerCount, output);
 	HUDPlace(PLAYERCOUNT_SLOT, PLAYERCOUNT_X, PLAYERCOUNT_Y, PLAYERCOUNT_W, PLAYERCOUNT_H);
 
-	// Right HUD: total survivors
-	FormatEx(output, sizeof(output), "Total Survivors: %d / %d", aliveSurvivorCount, totalSurvivorCount);
+	char chapterName[64];
+	GetCurrentMap(chapterName, sizeof(chapterName));
+
+	int openSlots = MaxClients - humanConnectedCount;
+	if (openSlots < 0) {
+		openSlots = 0;
+	}
+
+	char mapTime[16];
+	FormatElapsedMapTime(mapTime, sizeof(mapTime));
+
+	// Right HUD: chapter, open slots, map time
+	FormatEx(output, sizeof(output), "Chapter: %s\nOpen slots: %d\nMap time: %s", chapterName, openSlots, mapTime);
 	HUDSetLayout(TOTALSURVIVORS_SLOT, g_iHUDFlags_TotalSurvivors, output);
 	HUDPlace(TOTALSURVIVORS_SLOT, TOTALSURVIVORS_X, TOTALSURVIVORS_Y, TOTALSURVIVORS_W, TOTALSURVIVORS_H);
+}
+
+void FormatElapsedMapTime(char[] buffer, int maxlen)
+{
+	int elapsed = RoundToFloor(GetGameTime() - g_fMapStartTime);
+	if (elapsed < 0) {
+		elapsed = 0;
+	}
+
+	int hours = elapsed / 3600;
+	int minutes = (elapsed % 3600) / 60;
+	int seconds = elapsed % 60;
+	FormatEx(buffer, maxlen, "%02d:%02d:%02d", hours, minutes, seconds);
 }

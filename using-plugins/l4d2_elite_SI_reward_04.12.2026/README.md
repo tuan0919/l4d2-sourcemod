@@ -1,5 +1,15 @@
 # l4d2_elite_SI_reward
 
+## Update 12/04/2026
+
+- Thêm elite subtype mới `ChargerAction` cho Charger.
+- Bổ sung cvar `l4d_hp_rewards_elite_charger_action_chance` để roll Charger elite sang nhánh `ChargerAction` thay vì `HardSI`.
+- Tách rõ rule subtype:
+  - `Smoker` / `Spitter`: `HardSI` hoặc `AbilityMovement`
+  - `Charger`: `HardSI` hoặc `ChargerAction`
+- Giữ nguyên native `L4D2_IsEliteSI` và `L4D2_GetEliteSubtype(client)` để các plugin behavior gate đúng subtype.
+- Update màu render để phân biệt ChargerAction với Charger elite nhánh HardSI.
+
 ## Update 11/04/2026
 
 - Cho phép chỉnh reward HP riêng cho từng SI: Smoker/Boomer/Hunter/Spitter/Jockey/Charger.

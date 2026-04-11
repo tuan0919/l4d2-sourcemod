@@ -11,7 +11,8 @@ enum
 {
 	ELITE_SUBTYPE_NONE = 0,
 	ELITE_SUBTYPE_HARDSI,
-	ELITE_SUBTYPE_ABILITY_MOVEMENT
+	ELITE_SUBTYPE_ABILITY_MOVEMENT,
+	ELITE_SUBTYPE_CHARGER_ACTION
 }
 
 bool g_bIsElite[MAXPLAYERS + 1];
@@ -34,6 +35,7 @@ ConVar g_cvEliteHpMult;
 ConVar g_cvEliteFireChance;
 ConVar g_cvEliteAbilityMovementChanceSmoker;
 ConVar g_cvEliteAbilityMovementChanceSpitter;
+ConVar g_cvEliteChargerActionChance;
 ConVar g_cvScaleDifficulty;
 ConVar g_cvDiffEasy;
 ConVar g_cvDiffNormal;
@@ -64,6 +66,7 @@ float g_fDiffHard;
 float g_fDiffExpert;
 int g_iEliteAbilityMovementChanceSmoker;
 int g_iEliteAbilityMovementChanceSpitter;
+int g_iEliteChargerActionChance;
 bool g_bHeadshotBonus;
 float g_fHeadshotBonusMult;
 int g_iTankRewardMode;
@@ -153,6 +156,7 @@ public void OnPluginStart()
 	g_cvEliteFireChance = CreateConVar("l4d_hp_rewards_elite_fire", "20", "Chance for Elite to catch fire (0-100)");
 	g_cvEliteAbilityMovementChanceSmoker = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_smoker", "50", "Chance for an Elite Smoker to become the AbilityMovement subtype instead of HardSI (0-100)");
 	g_cvEliteAbilityMovementChanceSpitter = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_spitter", "50", "Chance for an Elite Spitter to become the AbilityMovement subtype instead of HardSI (0-100)");
+	g_cvEliteChargerActionChance = CreateConVar("l4d_hp_rewards_elite_charger_action_chance", "100", "Chance for an Elite Charger to become the ChargerAction subtype instead of HardSI (0-100)");
 	g_cvScaleDifficulty = CreateConVar("l4d_hp_rewards_scale_difficulty", "1", "Scale rewards by current game difficulty");
 	g_cvDiffEasy = CreateConVar("l4d_hp_rewards_diff_easy", "0.8", "Reward multiplier for easy");
 	g_cvDiffNormal = CreateConVar("l4d_hp_rewards_diff_normal", "1.0", "Reward multiplier for normal");
@@ -183,6 +187,7 @@ public void OnPluginStart()
 	g_bScaleDifficulty = GetConVarBool(g_cvScaleDifficulty);
 	g_iEliteAbilityMovementChanceSmoker = g_cvEliteAbilityMovementChanceSmoker.IntValue;
 	g_iEliteAbilityMovementChanceSpitter = g_cvEliteAbilityMovementChanceSpitter.IntValue;
+	g_iEliteChargerActionChance = g_cvEliteChargerActionChance.IntValue;
 	g_fDiffEasy = g_cvDiffEasy.FloatValue;
 	g_fDiffNormal = g_cvDiffNormal.FloatValue;
 	g_fDiffHard = g_cvDiffHard.FloatValue;
@@ -208,6 +213,7 @@ public void OnPluginStart()
 	HookConVarChange(g_cvScaleDifficulty, HRConfigsChanged);
 	HookConVarChange(g_cvEliteAbilityMovementChanceSmoker, HRConfigsChanged);
 	HookConVarChange(g_cvEliteAbilityMovementChanceSpitter, HRConfigsChanged);
+	HookConVarChange(g_cvEliteChargerActionChance, HRConfigsChanged);
 	HookConVarChange(g_cvDiffEasy, HRConfigsChanged);
 	HookConVarChange(g_cvDiffNormal, HRConfigsChanged);
 	HookConVarChange(g_cvDiffHard, HRConfigsChanged);
@@ -267,6 +273,7 @@ public void HRConfigsChanged(ConVar convar, const char[] oValue, const char[] nV
 	g_bScaleDifficulty = GetConVarBool(g_cvScaleDifficulty);
 	g_iEliteAbilityMovementChanceSmoker = g_cvEliteAbilityMovementChanceSmoker.IntValue;
 	g_iEliteAbilityMovementChanceSpitter = g_cvEliteAbilityMovementChanceSpitter.IntValue;
+	g_iEliteChargerActionChance = g_cvEliteChargerActionChance.IntValue;
 	g_fDiffEasy = g_cvDiffEasy.FloatValue;
 	g_fDiffNormal = g_cvDiffNormal.FloatValue;
 	g_fDiffHard = g_cvDiffHard.FloatValue;
@@ -610,6 +617,10 @@ int GetEliteSubtypeForClass(int zClass)
 		{
 			return GetRandomInt(1, 100) <= g_iEliteAbilityMovementChanceSpitter ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_HARDSI;
 		}
+		case 6:
+		{
+			return GetRandomInt(1, 100) <= g_iEliteChargerActionChance ? ELITE_SUBTYPE_CHARGER_ACTION : ELITE_SUBTYPE_HARDSI;
+		}
 	}
 
 	return ELITE_SUBTYPE_HARDSI;
@@ -626,6 +637,12 @@ void ApplyEliteRenderColor(int client, int zClass, int subtype)
 
 	if (subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT) {
 		SetEntityRenderColor(client, ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][0], ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][1], ELITE_ABILITY_MOVEMENT_COLORS[colorIdx][2], 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_CHARGER_ACTION) {
+		// Use a brighter red to distinguish ChargerAction subtype from HardSI red.
+		SetEntityRenderColor(client, 255, 60, 60, 255);
 		return;
 	}
 

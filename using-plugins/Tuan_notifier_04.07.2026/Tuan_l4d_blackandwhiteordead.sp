@@ -32,6 +32,18 @@ bool g_bBWNotifyHealedOther;
 bool g_bBWNotifyGoBnW;
 bool g_bBWNotifyRevivedOther;
 
+void BW_ResetClientState(int client) {
+	if (client >= 1 && client <= MaxClients) {
+		g_bPlayerBW[client] = false;
+	}
+}
+
+void BW_ResetAllStates() {
+	for (int i = 1; i <= MaxClients; i++) {
+		g_bPlayerBW[i] = false;
+	}
+}
+
 void BW_GetCvars() {
 	g_bBWEnable = g_hBWEnable.BoolValue;
 	g_bBWNotifyHealedOther = g_hBWNotifyHealedOther.BoolValue;
@@ -57,6 +69,8 @@ public void OnPluginStart()
 	HookEvent("revive_success", Event_ReviveSuccess_Pre, EventHookMode_Pre);
 	HookEvent("revive_success", Event_ReviveSuccess_Post);
 	HookEvent("heal_success", Event_HealSuccess_Post);
+	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
+	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
 	g_OnClientHealedBnW = CreateGlobalForward("Tuan_OnClient_HealedOther", ET_Event, Param_Cell, Param_Cell);
 	g_OnClientGoBnW = CreateGlobalForward("Tuan_OnClient_GoBnW", ET_Event, Param_Cell);
 	g_OnClientRevivedOther = CreateGlobalForward("Tuan_OnClient_RevivedOther", ET_Event, Param_Cell, Param_Cell);
@@ -70,6 +84,27 @@ public void OnPluginStart()
 	g_hBWNotifyRevivedOther.AddChangeHook(BW_OnConVarChanged);
 	BW_GetCvars();
 	AutoExecConfig(true, "tuan_notifier_unified_blackwhite");
+}
+
+public void OnMapStart() {
+	BW_ResetAllStates();
+}
+
+public void OnClientPutInServer(int client) {
+	BW_ResetClientState(client);
+}
+
+public void OnClientDisconnect(int client) {
+	BW_ResetClientState(client);
+}
+
+void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
+	BW_ResetAllStates();
+}
+
+void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	BW_ResetClientState(client);
 }
 
 void FireClientHealedOtherEvent(int client, int victim) {

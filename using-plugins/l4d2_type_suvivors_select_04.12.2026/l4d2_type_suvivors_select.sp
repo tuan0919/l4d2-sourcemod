@@ -26,6 +26,31 @@ int g_GameIndexMap[8] = {2, 0, 1, 3, 4, 5, 6, 7};
 
 bool g_bIsL4D1Map = false;
 
+bool IsL4D1RosterMap(const char[] map)
+{
+    if (StrContains(map, "l4d_", false) == 0)
+        return true;
+
+    if (StrContains(map, "c7m", false) == 0
+        || StrContains(map, "c8m", false) == 0
+        || StrContains(map, "c9m", false) == 0
+        || StrContains(map, "c10m", false) == 0
+        || StrContains(map, "c11m", false) == 0
+        || StrContains(map, "c12m", false) == 0
+        || StrContains(map, "c13m", false) == 0
+        || StrContains(map, "c14m", false) == 0)
+        return true;
+
+    return false;
+}
+
+void UpdateMapRosterType()
+{
+    char map[64];
+    GetCurrentMap(map, sizeof(map));
+    g_bIsL4D1Map = IsL4D1RosterMap(map);
+}
+
 static const char g_SurvivorNames[8][16] =
 {
     "Coach",
@@ -62,13 +87,10 @@ bool CheckPrecacheModel(const char[] mdl)
 
 public void OnMapStart()
 {
-    char map[64];
-    GetCurrentMap(map, sizeof(map));
-
-    g_bIsL4D1Map = StrContains(map, "l4d_") == 0;
+    UpdateMapRosterType();
 
     CheckPrecacheModel("models/survivors/survivor_coach.mdl");
-    CheckPrecacheModel("models/survivors/survivor_nick.mdl");
+    CheckPrecacheModel("models/survivors/survivor_gambler.mdl");
     CheckPrecacheModel("models/survivors/survivor_rochelle.mdl");
     CheckPrecacheModel("models/survivors/survivor_mechanic.mdl");
 
@@ -103,6 +125,8 @@ public void OnPluginStart()
 
     RegConsoleCmd("sm_f", Cmd_Francis);
     RegConsoleCmd("sm_francis", Cmd_Francis);
+
+    UpdateMapRosterType();
 }
 
 public Action Cmd_Coach(int client, int args)     { return ChangeToSurvivor(client, SURV_COACH); }

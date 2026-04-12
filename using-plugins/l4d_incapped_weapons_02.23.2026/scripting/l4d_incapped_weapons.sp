@@ -219,7 +219,6 @@
 #include <sdkhooks>
 #include <dhooks>
 #include <left4dhooks>
-#include <Tuan_custom_forwards>
 
 #define CVAR_FLAGS			FCVAR_NOTIFY
 #define GAMEDATA			"l4d_incapped_weapons"
@@ -252,6 +251,7 @@ int g_iPrimaryAmmoType;
 ArrayList g_ByteSaved_Deploy, g_ByteSaved_OnIncap, g_ByteSaved_FireBullet;
 Address g_Address_Deploy, g_Address_OnIncap, g_Address_FireBullet;
 DynamicDetour g_hDetourFireBullet, g_hDetourCanUseOnSelf;
+Handle g_hForwardSelfRevived;
 
 ArrayList g_aRestrict;
 StringMap g_aWeaponIDs;
@@ -324,6 +324,8 @@ public void OnAllPluginsLoaded()
 
 public void OnPluginStart()
 {
+	g_hForwardSelfRevived = CreateGlobalForward("Tuan_OnClient_SelfRevived", ET_Ignore, Param_Cell);
+
 	// ====================================================================================================
 	// GAMEDATA
 	// ====================================================================================================
@@ -1874,7 +1876,13 @@ Action OnTakeReviveDamagePost(int victim, int &attacker, int &inflictor, float &
 void RevivePlayer(int client, bool pills)
 {
 	L4D_ReviveSurvivor(client);
-	Tuan_OnClient_SelfRevived(client);
+
+	if( g_hForwardSelfRevived != null )
+	{
+		Call_StartForward(g_hForwardSelfRevived);
+		Call_PushCell(client);
+		Call_Finish();
+	}
 
 	// Revive black and white
 	int test = pills ? 0 : 1;

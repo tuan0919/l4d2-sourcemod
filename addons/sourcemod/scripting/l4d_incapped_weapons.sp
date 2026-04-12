@@ -1,6 +1,6 @@
 /*
 *	Incapped Weapons Patch
-*	Copyright (C) 2024 Silvers
+*	Copyright (C) 2026 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"1.38"
+#define PLUGIN_VERSION 		"1.42"
 
 /*=======================================================================================
 	Plugin Info:
@@ -31,6 +31,23 @@
 
 ========================================================================================
 	Change Log:
+
+1.42 (17-Feb-2026)
+	- Fixed reserve ammo setting to 0 when someone is being revived just after attempting to self-revive.
+	- Thanks to "Elite Biker" and "Binhz109" for reporting.
+
+1.41b (25-Jan-2026)
+	- Added "Russian" translations. Thanks to "JustMadMan" for providing.
+
+1.41 (04-Jan-2026)
+	- Possibly fixed healing animation looping sometimes occurring. Thanks to "Pemarces273" for reporting.
+
+1.40 (01-Jul-2025)
+	- Fixed client not in game errors. Thanks to "voledar" for reporting.
+	- Possibly fixed healing animation looping sometimes occurring. Thanks to "Pemarces273" for reporting.
+
+1.39 (21-Mar-2025)
+	- Plugin now gives a pistol if a player only has restricted weapons. Thanks to "zuaLdakid05" for reporting.
 
 1.38 (07-Sep-2024)
 	- Changed the plugin to not fail if any addresses were already patched.
@@ -226,10 +243,15 @@ Handle g_hTimerUseHealth[MAXPLAYERS+1];
 Handle g_hTimerRevive[MAXPLAYERS+1];
 bool g_bHasHeal[MAXPLAYERS+1];
 bool g_bIsPills[MAXPLAYERS+1];
+char g_sIncapType[MAXPLAYERS+1][32];
+int g_iIncapAmmo[MAXPLAYERS+1];
+int g_iOffsetAmmo;
+int g_iPrimaryAmmoType;
 
 ArrayList g_ByteSaved_Deploy, g_ByteSaved_OnIncap, g_ByteSaved_FireBullet;
 Address g_Address_Deploy, g_Address_OnIncap, g_Address_FireBullet;
 DynamicDetour g_hDetourFireBullet, g_hDetourCanUseOnSelf;
+Handle g_hForwardSelfRevived;
 
 ArrayList g_aRestrict;
 StringMap g_aWeaponIDs;
@@ -302,6 +324,8 @@ public void OnAllPluginsLoaded()
 
 public void OnPluginStart()
 {
+	g_hForwardSelfRevived = CreateGlobalForward("Tuan_OnClient_SelfRevived", ET_Ignore, Param_Cell);
+
 	// ====================================================================================================
 	// GAMEDATA
 	// ====================================================================================================
@@ -395,7 +419,7 @@ public void OnPluginStart()
 			g_ByteSaved_FireBullet.Push(LoadFromAddress(g_Address_FireBullet + view_as<Address>(i), NumberType_Int8));
 		}
 
-		if( g_ByteSaved_FireBullet.Get(0) != iByteMatch ) 
+		if( g_ByteSaved_FireBullet.Get(0) != iByteMatch )
 		{
 			if( g_ByteSaved_FireBullet.Get(0) != (iByteCount == 1 ? 0x75 : 0x90) )
 				SetFailState("Failed to load 'FireBullet', byte mismatch @ %d (0x%02X != 0x%02X)", iOffset, g_ByteSaved_FireBullet.Get(0), iByteMatch);
@@ -564,6 +588,9 @@ public void OnPluginStart()
 	// ====================================================================================================
 	// LATE LOAD
 	// ====================================================================================================
+	g_iOffsetAmmo = FindSendPropInfo("CTerrorPlayer", "m_iAmmo");
+	g_iPrimaryAmmoType = FindSendPropInfo("CBaseCombatWeapon", "m_iPrimaryAmmoType");
+
 	if( g_bLateLoad )
 	{
 		IsAllowed();
@@ -579,7 +606,7 @@ public void OnPluginStart()
 				if( IsClientInGame(i) && GetClientTeam(i) == 2 && IsPlayerAlive(i) && GetEntProp(i, Prop_Send, "m_isIncapacitated", 1) && GetEntProp(i, Prop_Send, "m_isHangingFromLedge", 1) == 0 )
 				{
 					SDKHook(i, SDKHook_WeaponCanSwitchTo, CanSwitchTo);
-					
+
 					weapon = GetEntPropEnt(i, Prop_Send, "m_hActiveWeapon");
 					if( weapon != -1 ) CanSwitchTo(i, weapon);
 
@@ -718,6 +745,8 @@ void ClearVars(int client)
 	delete g_hTimerRevive[client];
 	delete g_hTimerUseHealth[client];
 
+	g_iIncapAmmo[client] = 0;
+	g_sIncapType[client][0] = 0;
 	g_bIsPills[client] = false;
 	g_bHasHeal[client] = false;
 	g_fReviveTimer[client] = 0.0;
@@ -967,12 +996,47 @@ void DoIncapped(int userid)
 		if( weapon != -1 && ValidateWeapon(client, weapon) ) return;
 
 		// Switch to primary/pistol/melee/other valid if current weapon restricted, otherwise do nothing.
+		g_sIncapType[client][0] = 0;
+
+		bool hasWeapon;
 		for( int i = 0; i < 5; i++ )
 		{
 			weapon = GetPlayerWeaponSlot(client, i);
 			if( weapon != -1 && ValidateWeapon(client, weapon) )
 			{
+				if( i < 2 )
+				{
+					hasWeapon = true;
+				}
+
 				return;
+			}
+
+			if( !hasWeapon && i == 1 )
+			{
+				if( weapon != -1 )
+				{
+					static char classname[32];
+					GetEdictClassname(weapon, classname, sizeof(classname));
+
+					g_iIncapAmmo[client] = GetEntProp(weapon, Prop_Send, "m_iClip1");
+					if( g_bLeft4Dead2 && strcmp(classname[7], "melee") == 0 )
+					{
+						GetEntPropString(weapon, Prop_Data, "m_strMapSetScriptName", classname, sizeof(classname));
+					}
+
+					g_sIncapType[client] = classname;
+
+					RemovePlayerItem(client, weapon);
+					RemoveEntity(weapon);
+				}
+
+				int entity = GivePlayerItem(client, "weapon_pistol");
+				if( entity != INVALID_ENT_REFERENCE )
+				{
+					RemovePlayerItem(client, entity);
+					EquipPlayerWeapon(client, entity);
+				}
 			}
 		}
 	}
@@ -1122,7 +1186,7 @@ void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if( client && GetClientTeam(client) == 2 )
+	if( client && IsClientInGame(client) && GetClientTeam(client) == 2 )
 	{
 		ClearVars(client);
 
@@ -1143,8 +1207,16 @@ void Event_ReviveBegin(Event event, const char[] name, bool dontBroadcast)
 	if( client && g_bHasHeal[client] )
 	{
 		int weapon = GetPlayerWeaponSlot(client, 0);
+
 		if( weapon != -1 && GetEntProp(weapon, Prop_Send, "m_iClip1") > 0 )
 		{
+			// Fix reserve ammo going to 0
+			DataPack dPack = new DataPack();
+			RequestFrame(OnFrameRevive, dPack);
+			dPack.WriteCell(GetClientUserId(client));
+			dPack.WriteCell(EntIndexToEntRef(weapon));
+			dPack.WriteCell(GetOrSetPlayerAmmo(client, weapon));
+
 			EquipPlayerWeapon(client, weapon);
 			SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
 		}
@@ -1160,13 +1232,50 @@ void Event_ReviveBegin(Event event, const char[] name, bool dontBroadcast)
 	}
 }
 
+void OnFrameRevive(DataPack dPack)
+{
+	dPack.Reset();
+
+	int client = dPack.ReadCell();
+
+	client = GetClientOfUserId(client);
+	if( client && IsClientInGame(client) )
+	{
+		int weapon = dPack.ReadCell();
+		weapon = EntRefToEntIndex(weapon);
+		if( weapon != INVALID_ENT_REFERENCE )
+		{
+			if( weapon == GetPlayerWeaponSlot(client, 0) )
+			{
+				int ammo = dPack.ReadCell();
+				GetOrSetPlayerAmmo(client, weapon, ammo);
+			}
+		}
+	}
+
+	delete dPack;
+}
+
+int GetOrSetPlayerAmmo(int client, int weapon, int iAmmo = -1)
+{
+	int offset = GetEntData(weapon, g_iPrimaryAmmoType) * 4; // Thanks to "Root" or whoever for this method of not hard-coding offsets: https://github.com/zadroot/AmmoManager/blob/master/scripting/ammo_manager.sp
+
+	// Get/Set
+	if( offset )
+	{
+		if( iAmmo != -1 ) SetEntData(client, g_iOffsetAmmo + offset, iAmmo);
+		else return GetEntData(client, g_iOffsetAmmo + offset);
+	}
+
+	return 0;
+}
+
 void Event_ReviveSuccess(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("subject"));
 	if( client && GetClientTeam(client) == 2 )
 	{
 		g_hTimerRevive[client] = null; // Null here, otherwise deleting throws timer errors because the timer is closing itself at this point with return Plugin_Stop
-		ClearVars(client);
 
 		DamageHook(true);
 
@@ -1176,6 +1285,26 @@ void Event_ReviveSuccess(Event event, const char[] name, bool dontBroadcast)
 		SDKUnhook(client, SDKHook_WeaponCanSwitchTo, CanSwitchTo);
 
 		ResetHooks(client);
+
+		// Give secondary weapon back, if primary and secondary were restricted on incap
+		if( g_sIncapType[client][0] )
+		{
+			int weapon = GetPlayerWeaponSlot(client, 1);
+			if( weapon != -1 )
+			{
+				RemovePlayerItem(client, weapon);
+				RemoveEntity(weapon);
+			}
+
+			weapon = GivePlayerItem(client, g_sIncapType[client]);
+			if( weapon != INVALID_ENT_REFERENCE )
+			{
+				EquipPlayerWeapon(client, weapon);
+				SetEntProp(weapon, Prop_Send, "m_iClip1", g_iIncapAmmo[client]);
+			}
+		}
+
+		ClearVars(client);
 	}
 }
 
@@ -1401,7 +1530,7 @@ Action OnAnimPre(int client, int &anim)
 	}
 	else
 	{
-		if( g_bHasHeal[client] )
+		if( g_bHasHeal[client] && !g_bCvarThrow )
 		{
 			switch( anim )
 			{
@@ -1417,11 +1546,8 @@ Action OnAnimPre(int client, int &anim)
 
 				case L4D1_ACT_PRIMARYATTACK_GREN1_IDLE, L4D1_ACT_PRIMARYATTACK_GREN2_IDLE:
 				{
-					if( !g_bCvarThrow )
-					{
-						anim = L4D1_ACT_IDLE_INCAP_PISTOL;
-						return Plugin_Changed;
-					}
+					anim = L4D1_ACT_IDLE_INCAP_PISTOL;
+					return Plugin_Changed;
 				}
 			}
 		}
@@ -1480,15 +1606,21 @@ void HealPlayer(DataPack dPack)
 
 	g_hTimerUseHealth[client] = null;
 
-	if( GetEntPropEnt(client, Prop_Send, "m_reviveOwner") != -1 ) return;
+	if( GetEntPropEnt(client, Prop_Send, "m_reviveOwner") != -1 ) return; // Ignore if being revived
 
 	if( client && IsClientInGame(client) && IsPlayerAlive(client) && GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) )
 	{
 		// Delete pills/adrenaline
 		if( EntRefToEntIndex(weapon) != INVALID_ENT_REFERENCE )
 		{
-			RemovePlayerItem(client, weapon);
-			RemoveEntity(weapon);
+			static char classname[32];
+			GetEdictClassname(weapon, classname, sizeof(classname));
+
+			if( strncmp(classname[7], "pain", 4) == 0 || (g_bLeft4Dead2 && strncmp(classname[7], "adren", 5) == 0) )
+			{
+				RemovePlayerItem(client, weapon);
+				RemoveEntity(weapon);
+			}
 		}
 
 		// Healing type
@@ -1514,6 +1646,7 @@ void HealPlayer(DataPack dPack)
 					SDKHook(client, SDKHook_OnTakeDamageAlivePost, OnTakeReviveDamagePost);
 
 				// Wait for revive animation to complete
+				delete g_hTimerRevive[client];
 				g_hTimerRevive[client] = CreateTimer(TIMER_ANIM, TimerAnim, GetClientUserId(client));
 			}
 			else
@@ -1530,8 +1663,8 @@ void HealPlayer(DataPack dPack)
 					{
 						g_iHint[client] = 0;
 						g_fReviveTimer[client] = pills ? g_fCvarDelayPills : g_fCvarDelayAdren;
-						delete g_hTimerRevive[client];
 
+						delete g_hTimerRevive[client];
 						g_hTimerRevive[client] = CreateTimer(TIMER_REVIVE, TimerRevive, userid, TIMER_REPEAT);
 					}
 				}
@@ -1647,6 +1780,8 @@ Action TimerRevive(Handle timer, int userid)
 		{
 			g_fReviveTimer[client] = 0.0;
 
+			SetEntPropEnt(client, Prop_Send, "m_reviveOwner", -1);
+
 			RevivePlayer(client, g_bIsPills[client]);
 		}
 		else
@@ -1741,6 +1876,13 @@ Action OnTakeReviveDamagePost(int victim, int &attacker, int &inflictor, float &
 void RevivePlayer(int client, bool pills)
 {
 	L4D_ReviveSurvivor(client);
+
+	if( g_hForwardSelfRevived != null )
+	{
+		Call_StartForward(g_hForwardSelfRevived);
+		Call_PushCell(client);
+		Call_Finish();
+	}
 
 	// Revive black and white
 	int test = pills ? 0 : 1;
@@ -1882,6 +2024,7 @@ void DetourRem()
 	}
 }
 
+// Prevent shooting when reviving self, or allow shot and resume revive?
 int g_iReviveOwner, g_iBulletClient;
 MRESReturn CTerrorGun_FireBullet_Pre(int pThis)
 {

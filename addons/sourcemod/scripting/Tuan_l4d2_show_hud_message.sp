@@ -304,18 +304,24 @@ public void Tuan_OnClient_GoBnW(int client) {
 }
 
 public void Tuan_OnClient_RevivedOther(int client, int target) {
+	if (client == target) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	char target_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
 	FormatHudNameFromClient(target, target_name_fmt, sizeof(target_name_fmt));
 
-	if (client == target) {
-		FormatEx(output, sizeof(output), "%s self get up", client_name_fmt);
-		DisplayInfoHUD(output);
-	} else {
-		FormatEx(output, sizeof(output), "%s helped %s to get up", client_name_fmt, target_name_fmt);
-		DisplayInfoHUD(output);
-	}
+	FormatEx(output, sizeof(output), "%s helped %s to get up", client_name_fmt, target_name_fmt);
+	DisplayInfoHUD(output);
+}
+
+public void Tuan_OnClient_SelfRevived(int client) {
+	char client_name_fmt[32];
+	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
+	FormatEx(output, sizeof(output), "%s self revived", client_name_fmt);
+	DisplayInfoHUD(output);
 }
 
 public void OnMapStart() {

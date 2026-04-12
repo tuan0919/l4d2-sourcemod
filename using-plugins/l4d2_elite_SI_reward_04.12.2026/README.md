@@ -2,13 +2,13 @@
 
 ## Update 12/04/2026
 
-- Thêm elite subtype mới `ChargerAction` cho Charger.
-- Bổ sung cvar `l4d_hp_rewards_elite_charger_action_chance` để roll Charger elite sang nhánh `ChargerAction` thay vì `HardSI`.
+- Thêm elite subtype mới `ChargerSteering` cho Charger (id=3).
+- Dùng cvar legacy `l4d_hp_rewards_elite_charger_action_chance` để roll Charger elite sang nhánh `ChargerSteering` thay vì `HardSI`.
 - Tách rõ rule subtype:
   - `Smoker` / `Spitter`: `HardSI` hoặc `AbilityMovement`
-  - `Charger`: `HardSI` hoặc `ChargerAction`
+  - `Charger`: `HardSI` hoặc `ChargerSteering`
 - Giữ nguyên native `L4D2_IsEliteSI` và `L4D2_GetEliteSubtype(client)` để các plugin behavior gate đúng subtype.
-- Update màu render để phân biệt ChargerAction với Charger elite nhánh HardSI.
+- Update màu render để phân biệt ChargerSteering với Charger elite nhánh HardSI.
 
 ## Update 11/04/2026
 

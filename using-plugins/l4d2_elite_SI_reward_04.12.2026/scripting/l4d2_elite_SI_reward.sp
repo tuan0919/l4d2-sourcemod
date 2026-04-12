@@ -12,7 +12,7 @@ enum
 	ELITE_SUBTYPE_NONE = 0,
 	ELITE_SUBTYPE_HARDSI,
 	ELITE_SUBTYPE_ABILITY_MOVEMENT,
-	ELITE_SUBTYPE_CHARGER_ACTION
+	ELITE_SUBTYPE_CHARGER_STEERING
 }
 
 bool g_bIsElite[MAXPLAYERS + 1];
@@ -156,7 +156,7 @@ public void OnPluginStart()
 	g_cvEliteFireChance = CreateConVar("l4d_hp_rewards_elite_fire", "20", "Chance for Elite to catch fire (0-100)");
 	g_cvEliteAbilityMovementChanceSmoker = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_smoker", "50", "Chance for an Elite Smoker to become the AbilityMovement subtype instead of HardSI (0-100)");
 	g_cvEliteAbilityMovementChanceSpitter = CreateConVar("l4d_hp_rewards_elite_ability_movement_chance_spitter", "50", "Chance for an Elite Spitter to become the AbilityMovement subtype instead of HardSI (0-100)");
-	g_cvEliteChargerActionChance = CreateConVar("l4d_hp_rewards_elite_charger_action_chance", "100", "Chance for an Elite Charger to become the ChargerAction subtype instead of HardSI (0-100)");
+	g_cvEliteChargerActionChance = CreateConVar("l4d_hp_rewards_elite_charger_action_chance", "100", "Legacy key. Chance for an Elite Charger to become the ChargerSteering subtype instead of HardSI (0-100)");
 	g_cvScaleDifficulty = CreateConVar("l4d_hp_rewards_scale_difficulty", "1", "Scale rewards by current game difficulty");
 	g_cvDiffEasy = CreateConVar("l4d_hp_rewards_diff_easy", "0.8", "Reward multiplier for easy");
 	g_cvDiffNormal = CreateConVar("l4d_hp_rewards_diff_normal", "1.0", "Reward multiplier for normal");
@@ -619,7 +619,7 @@ int GetEliteSubtypeForClass(int zClass)
 		}
 		case 6:
 		{
-			return GetRandomInt(1, 100) <= g_iEliteChargerActionChance ? ELITE_SUBTYPE_CHARGER_ACTION : ELITE_SUBTYPE_HARDSI;
+			return GetRandomInt(1, 100) <= g_iEliteChargerActionChance ? ELITE_SUBTYPE_CHARGER_STEERING : ELITE_SUBTYPE_HARDSI;
 		}
 	}
 
@@ -640,8 +640,8 @@ void ApplyEliteRenderColor(int client, int zClass, int subtype)
 		return;
 	}
 
-	if (subtype == ELITE_SUBTYPE_CHARGER_ACTION) {
-		// Use a brighter red to distinguish ChargerAction subtype from HardSI red.
+	if (subtype == ELITE_SUBTYPE_CHARGER_STEERING) {
+		// Use a brighter red to distinguish ChargerSteering subtype from HardSI red.
 		SetEntityRenderColor(client, 255, 60, 60, 255);
 		return;
 	}

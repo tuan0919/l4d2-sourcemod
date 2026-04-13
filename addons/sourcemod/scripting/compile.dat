@@ -111,7 +111,7 @@ Age=1552329568
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d2_getup_fixes.sp]
 Age=1552353074
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\Tuan_l4d2_death_incap_red.sp]
-Age=1552791323
+Age=1552792009
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d_incapped_weapons.sp]
 Age=1552705110
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\l4d2_a2s_fix.sp]
@@ -134,3 +134,5 @@ Age=1552786276
 Age=1552786277
 [C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\tuan_notify_member_events.smx]
 Age=1552786277
+[C:\Users\ASUS\Desktop\l4d2-dedicated-server\l4d2-sourcemod\addons\sourcemod\scripting\tuan_notify_member_events.sp]
+Age=1552792009

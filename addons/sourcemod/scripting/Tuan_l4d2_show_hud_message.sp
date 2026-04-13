@@ -881,17 +881,19 @@ void RemoveHUD(int slot) {
 void UpdatePlayerCountHUD()
 {
 	int aliveSurvivorCount = 0;
-	int totalConnectedCount = 0;
+	int humanSurvivorCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClient(i)) {
 			continue;
 		}
 
-		totalConnectedCount++;
-
 		if (GetClientTeam(i) == TEAM_SURVIVOR && IsPlayerAlive(i)) {
 			aliveSurvivorCount++;
+		}
+
+		if (GetClientTeam(i) == TEAM_SURVIVOR && !IsFakeClient(i)) {
+			humanSurvivorCount++;
 		}
 	}
 
@@ -922,18 +924,12 @@ void UpdatePlayerCountHUD()
 	char chapterName[64];
 	GetCurrentMap(chapterName, sizeof(chapterName));
 
-	int visibleMaxPlayers = 0;
-	if (g_hCvarSvVisibleMaxPlayers != null) {
-		visibleMaxPlayers = g_hCvarSvVisibleMaxPlayers.IntValue;
-	}
-	if (visibleMaxPlayers <= 0 && g_hCvarSvMaxPlayers != null) {
-		visibleMaxPlayers = g_hCvarSvMaxPlayers.IntValue;
-	}
-	if (visibleMaxPlayers <= 0) {
-		visibleMaxPlayers = MaxClients;
+	int maxPlayers = 8;
+	if (g_hCvarSvMaxPlayers != null && g_hCvarSvMaxPlayers.IntValue > 0) {
+		maxPlayers = g_hCvarSvMaxPlayers.IntValue;
 	}
 
-	int openSlots = visibleMaxPlayers - totalConnectedCount;
+	int openSlots = maxPlayers - humanSurvivorCount;
 	if (openSlots < 0) {
 		openSlots = 0;
 	}

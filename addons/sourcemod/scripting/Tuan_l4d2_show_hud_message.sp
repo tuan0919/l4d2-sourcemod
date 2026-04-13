@@ -173,7 +173,7 @@ StringMap mapWeaponName;
 
 public void OnPluginStart() {
 	CreateConVar(PLUGIN_PREFIX ... "version", PLUGIN_VERSION, "Plugin version.", FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
-	g_hCvarChatNotification = CreateConVar(PLUGIN_PREFIX ... "chat_notification", "1", "Enable chat notification output.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarChatNotification = CreateConVar(PLUGIN_PREFIX ... "chat_notification", "0", "Enable chat notification output.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvarScreenHudNotification = CreateConVar(PLUGIN_PREFIX ... "screen_hud_notification", "1", "Enable screen HUD notification output.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvarLegacyForwardMode = CreateConVar(PLUGIN_PREFIX ... "legacy_forward_mode", "0", "Enable legacy Tuan_custom_forwards handlers in core.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hCvarKillFeed = CreateConVar(PLUGIN_PREFIX ... "kill_feed", "1", "Enable right-side kill feed HUD messages.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -192,6 +192,7 @@ public void OnPluginStart() {
 	CreateNative("TuanNotify_IsScreenHudNotificationEnabled", Native_IsScreenHudNotificationEnabled);
 	CreateNative("TuanNotify_IsKillFeedEnabled", Native_IsKillFeedEnabled);
 	RegPluginLibrary(TUAN_NOTIFY_LIBRARY);
+	EnsureScriptedHudEnabled();
 	g_hud_info_left = new ArrayList(ByteCountToCells(128));
 	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 	g_hCvarInfBotsCurrentAliveSurvivor = FindConVar("l4d_infectedbots_current_alive_survivor");
@@ -445,6 +446,8 @@ public void OnMapStart() {
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
+	EnsureScriptedHudEnabled();
+
 	for (int slot = LEFT_FEED_BASE; slot < LEFT_FEED_BASE + HUD_FEED_MAX; slot++)
 		RemoveHUD(slot);
 	for (int slot = RIGHT_KILL_BASE; slot < RIGHT_KILL_BASE + HUD_FEED_MAX; slot++)
@@ -472,6 +475,10 @@ public void OnMapEnd() {
 	delete g_hKillHudDecreaseTimer;
 	RemoveHUD(PLAYERCOUNT_SLOT);
 	RemoveHUD(TOTALSURVIVORS_SLOT);
+}
+
+void EnsureScriptedHudEnabled() {
+	GameRules_SetProp("m_bChallengeModeActive", true, _, _, true);
 }
 
 
@@ -630,6 +637,8 @@ public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int
 //Function-------------------------------
 
 void DisplayInfoHUD(const char[] info) {
+	EnsureScriptedHudEnabled();
+
 	if (info[0] == '\0') {
 		return;
 	}
@@ -664,6 +673,8 @@ void DisplayInfoHUD(const char[] info) {
 }
 
 void DisplayKillHUD(const char[] info) {
+	EnsureScriptedHudEnabled();
+
 	if (info[0] == '\0') {
 		return;
 	}

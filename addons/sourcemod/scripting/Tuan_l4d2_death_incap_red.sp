@@ -696,7 +696,6 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         char attackerName[64];
         char victimName[64];
         char cause[192];
-        char line[128];
 
         GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
         GetSpecialInfectedName(victim, victimName, sizeof(victimName), g_bAnnounceEliteSIKill);
@@ -704,8 +703,7 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
         ResolveSurvivorKillSICause(victim, attackerClient, attackerEnt, weapon, dmgType, cause, sizeof(cause));
         ApplySurvivorKillQualifiers(attackerClient, victim, weapon, dmgType, headshot, wallbang, cause, sizeof(cause));
 
-        Format(line, sizeof(line), "%s killed %s", attackerName, victimName);
-        PrintBlueAllWithOliveCause(attackerClient, line, cause);
+        PrintActionWithCause(Attacker_Survivor, attackerName, "killed", victimName, cause);
     }
 }
 
@@ -724,11 +722,9 @@ void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast)
 
     char attackerName[64];
     char cause[192];
-    char line[128];
     GetCleanClientName(attackerClient, attackerName, sizeof(attackerName));
     ResolveWitchKillCause(attackerClient, cause, sizeof(cause));
-    Format(line, sizeof(line), "%s killed Witch", attackerName);
-    PrintBlueAllWithOliveCause(attackerClient, line, cause);
+    PrintActionWithCause(Attacker_Survivor, attackerName, "killed", "Witch", cause);
 }
 
 void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
@@ -793,60 +789,83 @@ void PrintOutcome(int victim, int attackerClient, int attackerEnt, const char[] 
     if (!incap && bleedingOut)
     {
         char victimName[64];
-        char line[128];
         GetCleanClientName(victim, victimName, sizeof(victimName));
-        Format(line, sizeof(line), "%s died", victimName);
-        PrintRedAllWithOliveCause(line, "bleeding out");
+        PrintActionWithCause(Attacker_Survivor, victimName, "died", "", "bleeding out");
         return;
     }
 
     if (isSelf || kind == Attacker_Unknown)
     {
         char victimName[64];
-        char line[128];
         GetCleanClientName(victim, victimName, sizeof(victimName));
 
         if (incap)
         {
-            Format(line, sizeof(line), "%s incapped himself", victimName);
-            PrintRedAllWithOliveCause(line, cause);
+            PrintActionWithCause(Attacker_Survivor, victimName, "incapacitated himself", "", cause);
         }
         else
         {
-            Format(line, sizeof(line), "%s suicided", victimName);
-            PrintRedAllWithOliveCause(line, cause);
+            PrintActionWithCause(Attacker_Survivor, victimName, "suicided", "", cause);
         }
         return;
     }
 
     char victimName[64];
-    char line[128];
     GetCleanClientName(victim, victimName, sizeof(victimName));
 
     if (kind == Attacker_CI)
     {
         if (incap)
         {
-            Format(line, sizeof(line), "Common Infected incapped %s", victimName);
-            PrintRedAllWithOliveCause(line, cause);
+            PrintActionWithCause(Attacker_CI, "Common Infected", "incapacitated", victimName, cause);
         }
         else
         {
-            Format(line, sizeof(line), "Common Infected killed %s", victimName);
-            PrintRedAllWithOliveCause(line, cause);
+            PrintActionWithCause(Attacker_CI, "Common Infected", "killed", victimName, cause);
         }
         return;
     }
 
     if (incap)
     {
-        Format(line, sizeof(line), "%s incapped %s", attackerLabel, victimName);
-        PrintRedAllWithOliveCause(line, cause);
+        PrintActionWithCause(kind, attackerLabel, "incapacitated", victimName, cause);
     }
     else
     {
-        Format(line, sizeof(line), "%s killed %s", attackerLabel, victimName);
-        PrintRedAllWithOliveCause(line, cause);
+        PrintActionWithCause(kind, attackerLabel, "killed", victimName, cause);
+    }
+}
+
+void PrintActionWithCause(AttackerKind actorKind, const char[] actorName, const char[] verb, const char[] targetName, const char[] cause)
+{
+    char causeColored[192];
+    FormatCauseForChatColors(cause, causeColored, sizeof(causeColored));
+
+    char verbColor[16];
+    if (actorKind == Attacker_Survivor)
+    {
+        strcopy(verbColor, sizeof(verbColor), "{blue}");
+    }
+    else
+    {
+        strcopy(verbColor, sizeof(verbColor), "{red}");
+    }
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsFakeClient(i))
+        {
+            continue;
+        }
+
+        if (targetName[0] != '\0')
+        {
+            CPrintToChat(i, "{green}[%s] %s%s {green}[%s] {default}({olive}%s{default}){default}.", actorName, verbColor, verb, targetName, causeColored);
+        }
+        else
+        {
+            CPrintToChat(i, "{green}[%s] %s%s {default}({olive}%s{default}){default}.", actorName, verbColor, verb, causeColored);
+        }
     }
 }
 
@@ -3203,16 +3222,30 @@ void GetCleanClientName(int client, char[] outName, int maxlen)
         strcopy(outName, maxlen, outName[start]);
     }
 
+    RemoveNameNumberTags(outName, maxlen);
+
     ReplaceString(outName, maxlen, " BOT", "", false);
     ReplaceString(outName, maxlen, " Bot", "", false);
 
     if (IsInGameClient(client) && IsFakeClient(client) && GetClientTeam(client) == 2)
     {
-        if (StrContains(outName, " Bot", false) == -1)
+        if (StrContains(outName, " BOT", false) == -1)
         {
-            Format(outName, maxlen, "%s Bot", outName);
+            Format(outName, maxlen, "%s BOT", outName);
         }
     }
+}
+
+void RemoveNameNumberTags(char[] text, int maxlen)
+{
+    char tag[8];
+    for (int i = 1; i <= 64; i++)
+    {
+        Format(tag, sizeof(tag), "(%d)", i);
+        ReplaceString(text, maxlen, tag, "", false);
+    }
+
+    TrimString(text);
 }
 
 bool GetEntPropStringSafe(int entity, PropType type, const char[] prop, char[] buffer, int maxlen)

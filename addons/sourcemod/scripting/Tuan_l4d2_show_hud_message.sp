@@ -142,6 +142,8 @@ ConVar g_hCvarTankHealth;
 ConVar g_hCvarInfBotsCurrentAliveSurvivor;
 ConVar g_hCvarInfBotsCurrentSILimit;
 ConVar g_hCvarInfBotsCurrentTankHP;
+ConVar g_hCvarSvVisibleMaxPlayers;
+ConVar g_hCvarSvMaxPlayers;
 ConVar g_hCvarChatNotification;
 ConVar g_hCvarScreenHudNotification;
 ConVar g_hCvarLegacyForwardMode;
@@ -197,6 +199,8 @@ public void OnPluginStart() {
 	g_hCvarInfBotsCurrentAliveSurvivor = FindConVar("l4d_infectedbots_current_alive_survivor");
 	g_hCvarInfBotsCurrentSILimit = FindConVar("l4d_infectedbots_current_si_limit");
 	g_hCvarInfBotsCurrentTankHP = FindConVar("l4d_infectedbots_current_tank_hp");
+	g_hCvarSvVisibleMaxPlayers = FindConVar("sv_visiblemaxplayers");
+	g_hCvarSvMaxPlayers = FindConVar("sv_maxplayers");
 	g_hCvarMaxSpecials = FindConVar("z_max_player_zombies");
 	g_hCvarTankHealth = FindConVar("z_tank_health");
 	mapWeaponName = new StringMap();
@@ -647,8 +651,11 @@ void DisplayInfoHUD(const char[] info) {
 		return;
 	}
 
+	char hudInfo[128];
+	BuildHudSafeMessage(info, hudInfo, sizeof(hudInfo));
+
 	if (g_bChatNotificationEnabled) {
-		CPrintToChatAll("{olive}%s", info);
+		CPrintToChatAll("%s", info);
 	}
 
 	bool displayedOnHud = false;
@@ -658,7 +665,7 @@ void DisplayInfoHUD(const char[] info) {
 	}
 
 	HUD feed;
-	g_hud_info_left.PushString(info);
+	g_hud_info_left.PushString(hudInfo);
 	if (g_hud_info_left.Length > HUD_FEED_MAX) {
 		g_hud_info_left.Erase(0);
 	}
@@ -683,8 +690,11 @@ void DisplayKillHUD(const char[] info) {
 		return;
 	}
 
+	char hudInfo[128];
+	BuildHudSafeMessage(info, hudInfo, sizeof(hudInfo));
+
 	if (g_bChatNotificationEnabled) {
-		CPrintToChatAll("{default}%s", info);
+		CPrintToChatAll("%s", info);
 	}
 
 	bool displayedOnHud = false;
@@ -694,7 +704,7 @@ void DisplayKillHUD(const char[] info) {
 	}
 
 	HUD feed;
-	g_hud_kill_right.PushString(info);
+	g_hud_kill_right.PushString(hudInfo);
 	if (g_hud_kill_right.Length > HUD_FEED_MAX) {
 		g_hud_kill_right.Erase(0);
 	}
@@ -871,16 +881,14 @@ void RemoveHUD(int slot) {
 void UpdatePlayerCountHUD()
 {
 	int aliveSurvivorCount = 0;
-	int humanConnectedCount = 0;
+	int totalConnectedCount = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (!IsClient(i)) {
 			continue;
 		}
 
-		if (!IsFakeClient(i)) {
-			humanConnectedCount++;
-		}
+		totalConnectedCount++;
 
 		if (GetClientTeam(i) == TEAM_SURVIVOR && IsPlayerAlive(i)) {
 			aliveSurvivorCount++;
@@ -914,7 +922,18 @@ void UpdatePlayerCountHUD()
 	char chapterName[64];
 	GetCurrentMap(chapterName, sizeof(chapterName));
 
-	int openSlots = MaxClients - humanConnectedCount;
+	int visibleMaxPlayers = 0;
+	if (g_hCvarSvVisibleMaxPlayers != null) {
+		visibleMaxPlayers = g_hCvarSvVisibleMaxPlayers.IntValue;
+	}
+	if (visibleMaxPlayers <= 0 && g_hCvarSvMaxPlayers != null) {
+		visibleMaxPlayers = g_hCvarSvMaxPlayers.IntValue;
+	}
+	if (visibleMaxPlayers <= 0) {
+		visibleMaxPlayers = MaxClients;
+	}
+
+	int openSlots = visibleMaxPlayers - totalConnectedCount;
 	if (openSlots < 0) {
 		openSlots = 0;
 	}
@@ -926,6 +945,32 @@ void UpdatePlayerCountHUD()
 	FormatEx(output, sizeof(output), "Chapter: %s\nOpen slots: %d\nMap time: %s", chapterName, openSlots, mapTime);
 	HUDSetLayout(TOTALSURVIVORS_SLOT, g_iHUDFlags_TotalSurvivors, output);
 	HUDPlace(TOTALSURVIVORS_SLOT, TOTALSURVIVORS_X, TOTALSURVIVORS_Y, TOTALSURVIVORS_W, TOTALSURVIVORS_H);
+}
+
+void BuildHudSafeMessage(const char[] input, char[] outputMessage, int maxlen)
+{
+	strcopy(outputMessage, maxlen, input);
+	StripColorTags(outputMessage, maxlen);
+	ReplaceString(outputMessage, maxlen, "[", "", false);
+	ReplaceString(outputMessage, maxlen, "]", "", false);
+	TrimString(outputMessage);
+}
+
+void StripColorTags(char[] text, int maxlen)
+{
+	static const char tags[][] = {
+		"{default}",
+		"{green}",
+		"{blue}",
+		"{red}",
+		"{olive}",
+		"{lightblue}",
+		"{teamcolor}"
+	};
+
+	for (int i = 0; i < sizeof(tags); i++) {
+		ReplaceString(text, maxlen, tags[i], "", false);
+	}
 }
 
 void FormatElapsedMapTime(char[] buffer, int maxlen)

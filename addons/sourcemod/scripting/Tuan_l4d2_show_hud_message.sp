@@ -1,5 +1,5 @@
-#define PLUGIN_VERSION		"1.3.0-tuan-gearpatch"
-#define PLUGIN_PREFIX		"l4d2_"
+#define PLUGIN_VERSION		"2.0.0-tuan-notify-core"
+#define PLUGIN_PREFIX		"tuan_notify_core_"
 #define PLUGIN_NAME			"show_hud_messages"
 #define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD [GearPatch]"
 #define PLUGIN_DESCRIPTION	"show extra death messages + global HUD feedback with short bracket names"
@@ -14,6 +14,9 @@
 #include <left4dhooks>
 #include <Tuan_custom_forwards>
 #include <colors>
+
+#define TUAN_NOTIFY_LIBRARY "tuan_notify_core"
+#define TUAN_NOTIFY_FWD_PUBLISHED "TuanNotify_OnPublished"
 
 public Plugin myinfo = {
 	name			= PLUGIN_NAME_FULL,
@@ -81,6 +84,8 @@ public Plugin myinfo = {
 #define TYPE_GAS_PUMP                 6
 #define TYPE_FIREWORKS_CRATE          7
 #define TYPE_OIL_DRUM_EXPLOSIVE       8
+#define TUAN_NOTIFY_CHANNEL_INFO      "info"
+#define TUAN_NOTIFY_CHANNEL_KILL      "kill"
 
 static const char WEAPON_NAMES_KEYs[][] = {
 	"weapon_adrenaline",
@@ -137,7 +142,14 @@ ConVar g_hCvarTankHealth;
 ConVar g_hCvarInfBotsCurrentAliveSurvivor;
 ConVar g_hCvarInfBotsCurrentSILimit;
 ConVar g_hCvarInfBotsCurrentTankHP;
+ConVar g_hCvarChatNotification;
+ConVar g_hCvarScreenHudNotification;
+ConVar g_hCvarLegacyForwardMode;
 ConVar g_hCvarKillFeed;
+GlobalForward g_hForwardPublished;
+bool g_bChatNotificationEnabled;
+bool g_bScreenHudNotificationEnabled;
+bool g_bLegacyForwardMode;
 bool g_bKillFeedEnabled;
 #define HUD_NAME_VISIBLE 14
 
@@ -160,10 +172,26 @@ Handle g_hKillHudDecreaseTimer;
 StringMap mapWeaponName;
 
 public void OnPluginStart() {
-	CreateConVar(PLUGIN_NAME ... "_version", PLUGIN_VERSION, "Plugin Version of " ... PLUGIN_NAME_FULL, FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
-	g_hCvarKillFeed = CreateConVar(PLUGIN_PREFIX ... PLUGIN_NAME ... "_kill_feed", "1", "Enable right-side kill feed HUD messages.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	CreateConVar(PLUGIN_PREFIX ... "version", PLUGIN_VERSION, "Plugin version.", FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
+	g_hCvarChatNotification = CreateConVar(PLUGIN_PREFIX ... "chat_notification", "1", "Enable chat notification output.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarScreenHudNotification = CreateConVar(PLUGIN_PREFIX ... "screen_hud_notification", "1", "Enable screen HUD notification output.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarLegacyForwardMode = CreateConVar(PLUGIN_PREFIX ... "legacy_forward_mode", "0", "Enable legacy Tuan_custom_forwards handlers in core.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarKillFeed = CreateConVar(PLUGIN_PREFIX ... "kill_feed", "1", "Enable right-side kill feed HUD messages.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hCvarChatNotification.AddChangeHook(OnCvarChanged);
+	g_hCvarScreenHudNotification.AddChangeHook(OnCvarChanged);
+	g_hCvarLegacyForwardMode.AddChangeHook(OnCvarChanged);
 	g_hCvarKillFeed.AddChangeHook(OnCvarChanged);
+	g_bChatNotificationEnabled = g_hCvarChatNotification.BoolValue;
+	g_bScreenHudNotificationEnabled = g_hCvarScreenHudNotification.BoolValue;
+	g_bLegacyForwardMode = g_hCvarLegacyForwardMode.BoolValue;
 	g_bKillFeedEnabled = g_hCvarKillFeed.BoolValue;
+	g_hForwardPublished = CreateGlobalForward(TUAN_NOTIFY_FWD_PUBLISHED, ET_Event, Param_String, Param_String, Param_Cell);
+	CreateNative("TuanNotify_PublishInfo", Native_PublishInfo);
+	CreateNative("TuanNotify_PublishKill", Native_PublishKill);
+	CreateNative("TuanNotify_IsChatNotificationEnabled", Native_IsChatNotificationEnabled);
+	CreateNative("TuanNotify_IsScreenHudNotificationEnabled", Native_IsScreenHudNotificationEnabled);
+	CreateNative("TuanNotify_IsKillFeedEnabled", Native_IsKillFeedEnabled);
+	RegPluginLibrary(TUAN_NOTIFY_LIBRARY);
 	g_hud_info_left = new ArrayList(ByteCountToCells(128));
 	g_hud_kill_right = new ArrayList(ByteCountToCells(128));
 	g_hCvarInfBotsCurrentAliveSurvivor = FindConVar("l4d_infectedbots_current_alive_survivor");
@@ -178,10 +206,27 @@ public void OnPluginStart() {
 	HookEvent("round_start", Event_RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("defibrillator_used", Event_Defib_Used, EventHookMode_Pre);
 	CreateTimer(PLAYERCOUNT_INTERVAL, Timer_UpdatePlayerCountHUD, _, TIMER_REPEAT);
+	AutoExecConfig(true, "tuan_notify_core");
 }
 
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue) {
+	g_bChatNotificationEnabled = g_hCvarChatNotification.BoolValue;
+	g_bScreenHudNotificationEnabled = g_hCvarScreenHudNotification.BoolValue;
+	g_bLegacyForwardMode = g_hCvarLegacyForwardMode.BoolValue;
 	g_bKillFeedEnabled = g_hCvarKillFeed.BoolValue;
+
+	if (!g_bScreenHudNotificationEnabled) {
+		g_hud_info_left.Clear();
+		g_hud_kill_right.Clear();
+		for (int leftSlot = LEFT_FEED_BASE; leftSlot < LEFT_FEED_BASE + HUD_FEED_MAX; leftSlot++) {
+			RemoveHUD(leftSlot);
+		}
+		for (int rightSlot = RIGHT_KILL_BASE; rightSlot < RIGHT_KILL_BASE + HUD_FEED_MAX; rightSlot++) {
+			RemoveHUD(rightSlot);
+		}
+		delete g_hInfoHudDecreaseTimer;
+		delete g_hKillHudDecreaseTimer;
+	}
 
 	if (!g_bKillFeedEnabled) {
 		g_hud_kill_right.Clear();
@@ -192,7 +237,45 @@ public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newVa
 	}
 }
 
+public any Native_PublishInfo(Handle plugin, int numParams) {
+	char message[128];
+	GetNativeString(1, message, sizeof(message));
+	DisplayInfoHUD(message);
+	return 1;
+}
+
+public any Native_PublishKill(Handle plugin, int numParams) {
+	char message[128];
+	GetNativeString(1, message, sizeof(message));
+	DisplayKillHUD(message);
+	return 1;
+}
+
+public any Native_IsChatNotificationEnabled(Handle plugin, int numParams) {
+	return g_bChatNotificationEnabled ? 1 : 0;
+}
+
+public any Native_IsScreenHudNotificationEnabled(Handle plugin, int numParams) {
+	return g_bScreenHudNotificationEnabled ? 1 : 0;
+}
+
+public any Native_IsKillFeedEnabled(Handle plugin, int numParams) {
+	return g_bKillFeedEnabled ? 1 : 0;
+}
+
+void FirePublishedForward(const char[] channel, const char[] message, bool displayedOnHud) {
+	Call_StartForward(g_hForwardPublished);
+	Call_PushString(channel);
+	Call_PushString(message);
+	Call_PushCell(displayedOnHud ? 1 : 0);
+	Call_Finish();
+}
+
 public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
 		char attacker_name_fmt[32];
@@ -211,6 +294,10 @@ public void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, ch
 }
 
 public void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char victim_name_fmt[32];
 	FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
 
@@ -230,6 +317,10 @@ public void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name
 }
 
 public void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, char[] weapon_name) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	bool isSelf = StrEqual(attacker_name, victim_name);
 	if (StrEqual(weapon_name, "None")) {
 		char attacker_name_fmt[32];
@@ -247,6 +338,10 @@ public void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, c
 }
 
 public void Tuan_OnClient_IncappedByUnknown(char[] victim_name, char[] weapon_name) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char victim_name_fmt[32];
 	FormatHudNameFromRaw(victim_name, victim_name_fmt, sizeof(victim_name_fmt));
 
@@ -263,6 +358,10 @@ public void Tuan_OnClient_IncappedByUnknown(char[] victim_name, char[] weapon_na
 }
 
 public void Tuan_OnClient_UsedThrowable(int client, int throwable_type) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
 
@@ -283,6 +382,10 @@ public void Tuan_OnClient_UsedThrowable(int client, int throwable_type) {
 }
 
 public void Tuan_OnClient_HealedOther(int client, int victim) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	char victim_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
@@ -297,6 +400,10 @@ public void Tuan_OnClient_HealedOther(int client, int victim) {
 }
 
 public void Tuan_OnClient_GoBnW(int client) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
 	FormatEx(output, sizeof(output), "%s is at last life", client_name_fmt);
@@ -304,6 +411,10 @@ public void Tuan_OnClient_GoBnW(int client) {
 }
 
 public void Tuan_OnClient_RevivedOther(int client, int target) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	if (client == target) {
 		return;
 	}
@@ -318,6 +429,10 @@ public void Tuan_OnClient_RevivedOther(int client, int target) {
 }
 
 public void Tuan_OnClient_SelfRevived(int client) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
 	FormatEx(output, sizeof(output), "%s self revived", client_name_fmt);
@@ -441,6 +556,10 @@ void FormatGearTransferGiveMessage(int client, int target, const char[] weapon_n
 }
 
 public void GearTransfer_OnWeaponGive(int client, int target, int item) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	if (!IsClient(client) || !IsClient(target)) {
 		return;
 	}
@@ -454,6 +573,10 @@ public void GearTransfer_OnWeaponGive(int client, int target, int item) {
 }
 
 public void GearTransfer_OnWeaponGivenEvent(int client, int target, int weaponid) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	if (!IsClient(client) || !IsClient(target)) {
 		return;
 	}
@@ -465,6 +588,10 @@ public void GearTransfer_OnWeaponGivenEvent(int client, int target, int weaponid
 }
 
 public void GearTransfer_OnWeaponGrab(int client, int target, int item) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	if (IsClient(target)) {
 		L4D2WeaponId weaponId = L4D2_GetWeaponId(item);
 		char weapon_name[64];
@@ -480,6 +607,10 @@ public void GearTransfer_OnWeaponGrab(int client, int target, int item) {
 }
 
 public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int itemTaken) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	L4D2WeaponId givenWeaponId = L4D2_GetWeaponId(itemGiven);
 	L4D2WeaponId takenWeaponId = L4D2_GetWeaponId(itemTaken);
 	char given_weapon_name[64];
@@ -499,6 +630,20 @@ public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int
 //Function-------------------------------
 
 void DisplayInfoHUD(const char[] info) {
+	if (info[0] == '\0') {
+		return;
+	}
+
+	if (g_bChatNotificationEnabled) {
+		CPrintToChatAll("{olive}%s", info);
+	}
+
+	bool displayedOnHud = false;
+	if (!g_bScreenHudNotificationEnabled) {
+		FirePublishedForward(TUAN_NOTIFY_CHANNEL_INFO, info, displayedOnHud);
+		return;
+	}
+
 	HUD feed;
 	g_hud_info_left.PushString(info);
 	if (g_hud_info_left.Length > HUD_FEED_MAX) {
@@ -514,10 +659,22 @@ void DisplayInfoHUD(const char[] info) {
 
 	delete g_hInfoHudDecreaseTimer;
 	g_hInfoHudDecreaseTimer = CreateTimer(HUD_TIMEOUT, Timer_InfoHUDDecrease, _, TIMER_REPEAT);
+	displayedOnHud = true;
+	FirePublishedForward(TUAN_NOTIFY_CHANNEL_INFO, info, displayedOnHud);
 }
 
 void DisplayKillHUD(const char[] info) {
-	if (!g_bKillFeedEnabled) {
+	if (info[0] == '\0') {
+		return;
+	}
+
+	if (g_bChatNotificationEnabled) {
+		CPrintToChatAll("{default}%s", info);
+	}
+
+	bool displayedOnHud = false;
+	if (!g_bScreenHudNotificationEnabled || !g_bKillFeedEnabled) {
+		FirePublishedForward(TUAN_NOTIFY_CHANNEL_KILL, info, displayedOnHud);
 		return;
 	}
 
@@ -536,6 +693,8 @@ void DisplayKillHUD(const char[] info) {
 
 	delete g_hKillHudDecreaseTimer;
 	g_hKillHudDecreaseTimer = CreateTimer(HUD_TIMEOUT, Timer_KillHUDDecrease, _, TIMER_REPEAT);
+	displayedOnHud = true;
+	FirePublishedForward(TUAN_NOTIFY_CHANNEL_KILL, info, displayedOnHud);
 }
 
 void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
@@ -553,6 +712,10 @@ void Event_Defib_Used(Event event, const char[] name, bool dontBroadCast) {
 	}
 }
 public void Tuan_OnClient_ExplodeObject(int client, int object_type) {
+	if (!g_bLegacyForwardMode) {
+		return;
+	}
+
 	char client_name_fmt[32];
 	FormatHudNameFromClient(client, client_name_fmt, sizeof(client_name_fmt));
 

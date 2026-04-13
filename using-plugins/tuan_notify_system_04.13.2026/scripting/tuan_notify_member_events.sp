@@ -243,25 +243,50 @@ void FormatHudNameFromClient(int client, char[] buffer, int maxlen)
     char name[MAX_NAME_LENGTH];
     char shortName[64];
     GetClientName(client, name, sizeof(name));
+    StripNameNumberTags(name, sizeof(name));
+    if (IsClient(client) && IsFakeClient(client) && GetClientTeam(client) == 2)
+    {
+        AppendBotSuffix(name, sizeof(name));
+    }
     GetShortHudNameFromRaw(name, shortName, sizeof(shortName));
     strcopy(buffer, maxlen, shortName);
 }
 
 void FormatChatNameFromClient(int client, char[] buffer, int maxlen)
 {
-    char shortName[64];
-    FormatHudNameFromClient(client, shortName, sizeof(shortName));
-    FormatEx(buffer, maxlen, "[%s]", shortName);
+    FormatHudNameFromClient(client, buffer, maxlen);
+}
+
+void StripNameNumberTags(char[] text, int maxlen)
+{
+    char tag[8];
+    for (int i = 1; i <= 64; i++)
+    {
+        FormatEx(tag, sizeof(tag), "(%d)", i);
+        ReplaceString(text, maxlen, tag, "", false);
+    }
+    TrimString(text);
+}
+
+void AppendBotSuffix(char[] text, int maxlen)
+{
+    ReplaceString(text, maxlen, " BOT", "", false);
+    ReplaceString(text, maxlen, " Bot", "", false);
+    TrimString(text);
+    if (StrContains(text, " BOT", false) == -1)
+    {
+        FormatEx(text, maxlen, "%s BOT", text);
+    }
 }
 
 void BuildChatLineActionWithTarget(const char[] actor, const char[] action, const char[] target, char[] buffer, int maxlen)
 {
-    FormatEx(buffer, maxlen, "{green}%s {blue}%s {green}%s{default}.", actor, action, target);
+    FormatEx(buffer, maxlen, "{olive}%s {blue}%s {olive}%s{default}.", actor, action, target);
 }
 
 void BuildChatLineActionOnly(const char[] actor, const char[] action, char[] buffer, int maxlen)
 {
-    FormatEx(buffer, maxlen, "{green}%s {blue}%s{default}.", actor, action);
+    FormatEx(buffer, maxlen, "{olive}%s {blue}%s{default}.", actor, action);
 }
 
 void GetGearTransferWeaponNameById(int weaponid, char[] buffer, int maxlen)
@@ -458,7 +483,7 @@ public void GearTransfer_OnWeaponGive(int client, int target, int item)
     g_hWeaponNameMap.GetString(weaponName, weaponName, sizeof(weaponName));
     FormatChatNameFromClient(client, clientFmt, sizeof(clientFmt));
     FormatChatNameFromClient(target, targetFmt, sizeof(targetFmt));
-    FormatEx(line, sizeof(line), "{green}%s {blue}gave %s to {green}%s{default}.", clientFmt, weaponName, targetFmt);
+    FormatEx(line, sizeof(line), "{olive}%s {blue}gave %s to {olive}%s{default}.", clientFmt, weaponName, targetFmt);
     PublishInfo(line);
 }
 
@@ -476,7 +501,7 @@ public void GearTransfer_OnWeaponGivenEvent(int client, int target, int weaponid
     GetGearTransferWeaponNameById(weaponid, weaponName, sizeof(weaponName));
     FormatChatNameFromClient(client, clientFmt, sizeof(clientFmt));
     FormatChatNameFromClient(target, targetFmt, sizeof(targetFmt));
-    FormatEx(line, sizeof(line), "{green}%s {blue}gave %s to {green}%s{default}.", clientFmt, weaponName, targetFmt);
+    FormatEx(line, sizeof(line), "{olive}%s {blue}gave %s to {olive}%s{default}.", clientFmt, weaponName, targetFmt);
     PublishInfo(line);
 }
 
@@ -496,7 +521,7 @@ public void GearTransfer_OnWeaponGrab(int client, int target, int item)
     g_hWeaponNameMap.GetString(weaponName, weaponName, sizeof(weaponName));
     FormatChatNameFromClient(client, clientFmt, sizeof(clientFmt));
     FormatChatNameFromClient(target, targetFmt, sizeof(targetFmt));
-    FormatEx(line, sizeof(line), "{green}%s {blue}grabbed %s from {green}%s{default}.", clientFmt, weaponName, targetFmt);
+    FormatEx(line, sizeof(line), "{olive}%s {blue}grabbed %s from {olive}%s{default}.", clientFmt, weaponName, targetFmt);
     PublishInfo(line);
 }
 
@@ -522,6 +547,6 @@ public void GearTransfer_OnWeaponSwap(int client, int target, int itemGiven, int
     FormatChatNameFromClient(client, clientFmt, sizeof(clientFmt));
     FormatChatNameFromClient(target, targetFmt, sizeof(targetFmt));
 
-    FormatEx(line, sizeof(line), "{green}%s {blue}swapped %s for %s with {green}%s{default}.", clientFmt, givenWeaponName, takenWeaponName, targetFmt);
+    FormatEx(line, sizeof(line), "{olive}%s {blue}swapped %s for %s with {olive}%s{default}.", clientFmt, givenWeaponName, takenWeaponName, targetFmt);
     PublishInfo(line);
 }

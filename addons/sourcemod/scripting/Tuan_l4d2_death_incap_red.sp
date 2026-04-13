@@ -860,11 +860,11 @@ void PrintActionWithCause(AttackerKind actorKind, const char[] actorName, const 
 
         if (targetName[0] != '\0')
         {
-            CPrintToChat(i, "{green}[%s] %s%s {green}[%s] {default}({olive}%s{default}){default}.", actorName, verbColor, verb, targetName, causeColored);
+            CPrintToChat(i, "{olive}%s %s%s {olive}%s {default}({green}%s{default}){default}.", actorName, verbColor, verb, targetName, causeColored);
         }
         else
         {
-            CPrintToChat(i, "{green}[%s] %s%s {default}({olive}%s{default}){default}.", actorName, verbColor, verb, causeColored);
+            CPrintToChat(i, "{olive}%s %s%s {default}({green}%s{default}){default}.", actorName, verbColor, verb, causeColored);
         }
     }
 }
@@ -2158,7 +2158,7 @@ void PrintBlueAllWithOliveCause(int blueAuthor, const char[] messageWithoutCause
 void FormatCauseForChatColors(const char[] cause, char[] outCause, int maxlen)
 {
     strcopy(outCause, maxlen, cause);
-    ReplaceString(outCause, maxlen, "/", "{default}/{olive}", false);
+    ReplaceString(outCause, maxlen, "/", "{default}/{green}", false);
 }
 
 int EnsureAnchorClient()

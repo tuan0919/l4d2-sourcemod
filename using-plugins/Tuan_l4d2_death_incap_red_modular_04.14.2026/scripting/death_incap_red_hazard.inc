@@ -174,12 +174,68 @@ bool TryCauseFromFireEntitySource(int victim, int attackerEnt, char[] cause, int
         return false;
     }
 
-    if (source == Hazard_Gascan && WasRecentMolotovThrow(sourceOwner, 20.0))
+    if (source == Hazard_Gascan && !HasExplicitGascanEvidence(victim, attackerEnt) && HasExplicitMolotovEvidence(victim, attackerEnt, sourceOwner))
     {
         strcopy(cause, maxlen, "molotov");
     }
 
     return true;
+}
+
+bool HasExplicitGascanEvidence(int victim, int attackerEnt)
+{
+    if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
+    {
+        return true;
+    }
+
+    HazardType linkedType = Hazard_None;
+    int linkedOwner = 0;
+    if (TryInferHazardFromLinkedFireEntity(attackerEnt, linkedType, linkedOwner) && linkedType == Hazard_Gascan)
+    {
+        return true;
+    }
+
+    if (!HasRecentSnapshot(victim))
+    {
+        return false;
+    }
+
+    int snapInflictor = g_iLastInflictor[victim];
+    int snapWeapon = g_iLastWeapon[victim];
+    if (EntityIsGascan(snapInflictor) || LinkedEntityIsGascan(snapInflictor) || EntityIsGascan(snapWeapon) || LinkedEntityIsGascan(snapWeapon))
+    {
+        return true;
+    }
+
+    linkedType = Hazard_None;
+    linkedOwner = 0;
+    if (TryInferHazardFromLinkedFireEntity(snapInflictor, linkedType, linkedOwner) && linkedType == Hazard_Gascan)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool HasExplicitMolotovEvidence(int victim, int attackerEnt, int sourceOwner)
+{
+    if (EntityIsMolotovProjectile(attackerEnt) || LinkedEntityIsMolotovProjectile(attackerEnt))
+    {
+        return true;
+    }
+
+    if (HasRecentSnapshot(victim))
+    {
+        int snapInflictor = g_iLastInflictor[victim];
+        int snapWeapon = g_iLastWeapon[victim];
+        if (EntityIsMolotovProjectile(snapInflictor) || LinkedEntityIsMolotovProjectile(snapInflictor) || EntityIsMolotovProjectile(snapWeapon) || LinkedEntityIsMolotovProjectile(snapWeapon))
+        {
+            return true;
+        }
+    }
+
+    return WasRecentMolotovThrow(sourceOwner, 3.0);
 }
 
 bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sourceOwner)
@@ -408,6 +464,40 @@ bool LinkedEntityIsGascan(int entity)
 
     int effect = GetLinkedEntity(entity, "m_hEffectEntity");
     if (EntityIsGascan(effect))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool LinkedEntityIsMolotovProjectile(int entity)
+{
+    if (!IsValidEdict(entity))
+    {
+        return false;
+    }
+
+    int owner = GetLinkedEntity(entity, "m_hOwnerEntity");
+    if (EntityIsMolotovProjectile(owner))
+    {
+        return true;
+    }
+
+    int parent = GetLinkedEntity(entity, "m_hMoveParent");
+    if (EntityIsMolotovProjectile(parent))
+    {
+        return true;
+    }
+
+    int effect = GetLinkedEntity(entity, "m_hEffectEntity");
+    if (EntityIsMolotovProjectile(effect))
+    {
+        return true;
+    }
+
+    int inflictor = GetLinkedEntity(entity, "m_hInflictor");
+    if (EntityIsMolotovProjectile(inflictor))
     {
         return true;
     }

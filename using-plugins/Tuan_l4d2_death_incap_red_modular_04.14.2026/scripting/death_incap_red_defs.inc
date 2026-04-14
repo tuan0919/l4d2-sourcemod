@@ -17,8 +17,10 @@ native int L4D2_IsEliteSI(int client);
 #define HAZARD_CONTEXT_WINDOW 4.0
 #define MAX_TRACKED_EDICTS 2048  // L4D2's max entities - no +1 needed for int arrays
 #define MAX_SOURCE_EVENTS 128
-#define FIRE_SOURCE_MATCH_WINDOW 6.0
+#define FIRE_SOURCE_MATCH_WINDOW 12.0
 #define FIRE_SOURCE_MAX_DIST 350.0
+#define FIRE_ASSIST_STALE_WINDOW 20.0
+#define FIRE_ASSIST_UNLOCK_GRACE 2.0
 #define STAGGER_MATCH_WINDOW 1.25
 
 enum AttackerKind

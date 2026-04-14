@@ -152,6 +152,11 @@ bool GetRecentFireAssist(int victimClient, int attackerClient, HazardType &type)
         return false;
     }
 
+    if ((GetGameTime() - g_fLastFireAssistTime[victimClient]) > FIRE_ASSIST_STALE_WINDOW)
+    {
+        return false;
+    }
+
     if (!g_bFireAssistLocked[victimClient])
     {
         return false;
@@ -443,6 +448,16 @@ bool IsClientCurrentlyOnFire(int client)
     if (HasEntProp(client, Prop_Send, "m_flFlameBurnTime"))
     {
         return GetEntPropFloat(client, Prop_Send, "m_flFlameBurnTime") > GetGameTime();
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_burnPercent"))
+    {
+        return GetEntPropFloat(client, Prop_Send, "m_burnPercent") > 0.0;
+    }
+
+    if (HasEntProp(client, Prop_Data, "m_fFlags"))
+    {
+        return (GetEntProp(client, Prop_Data, "m_fFlags") & FL_ONFIRE) != 0;
     }
 
     return false;

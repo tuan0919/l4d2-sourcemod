@@ -26,6 +26,21 @@ public Action Timer_ConsolidatedUpdate(Handle timer)
             continue;
         }
 
+        float lockAge = GetGameTime() - g_fLastFireAssistTime[client];
+        if (lockAge > FIRE_ASSIST_STALE_WINDOW)
+        {
+            g_bFireAssistLocked[client] = false;
+            g_iLastFireAssistType[client] = view_as<int>(Hazard_None);
+            g_iLastFireAssistOwner[client] = 0;
+            g_fLastFireAssistTime[client] = 0.0;
+            continue;
+        }
+
+        if (lockAge <= FIRE_ASSIST_UNLOCK_GRACE)
+        {
+            continue;
+        }
+
         if (!IsClientCurrentlyOnFire(client))
         {
             g_bFireAssistLocked[client] = false;

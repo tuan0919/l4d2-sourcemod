@@ -183,7 +183,7 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
     {
         char primary[64];
         HazardType assistType = Hazard_None;
-        if (GetRecentFireAssist(victim, attackerClient, assistType))
+        if (attackerClient > 0 && attackerClient <= MaxClients && GetRecentFireAssist(victim, attackerClient, assistType))
         {
             if (HazardTypeToLabel(assistType, cause, maxlen))
             {
@@ -204,14 +204,14 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             EntityClassMatches(attackerEnt, "inferno") ||
             EntityClassMatches(attackerEnt, "entityflame")
         );
-        if (infernoLike && WasRecentMolotovThrow(attackerClient, 20.0))
-        {
-            BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
-            return;
-        }
-        if (EntityIsGascan(attackerEnt) || LinkedEntityIsGascan(attackerEnt))
+        if (IsGascanSource(victim, attackerEnt, eventWeapon))
         {
             BuildPrimaryCause(baseWeapon, bulletFireState, true, "gascan", cause, maxlen);
+            return;
+        }
+        if (infernoLike && attackerClient > 0 && attackerClient <= MaxClients && WasRecentMolotovThrow(attackerClient, 8.0))
+        {
+            BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
             return;
         }
         if (EntityClassMatches(attackerEnt, "fire_cracker_blast") || EntityClassMatches(attackerEnt, "firework"))
@@ -229,7 +229,7 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             BuildPrimaryCause(baseWeapon, bulletFireState, true, "molotov", cause, maxlen);
             return;
         }
-        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        if (attackerClient > 0 && attackerClient <= MaxClients && TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
             strcopy(primary, sizeof(primary), cause);
             BuildPrimaryCause(baseWeapon, bulletFireState, true, primary, cause, maxlen);
@@ -240,7 +240,7 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
             return;
         }
-        if (TryResolveRecentSpecialBullet(attackerClient, true, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
+        if (attackerClient > 0 && attackerClient <= MaxClients && TryResolveRecentSpecialBullet(attackerClient, true, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
         {
             BuildPrimaryCause(baseWeapon, true, true, "", cause, maxlen);
             return;
@@ -278,7 +278,7 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, "gascan", cause, maxlen);
             return;
         }
-        if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+        if (attackerClient > 0 && attackerClient <= MaxClients && TryCauseFromHazardContext(attackerClient, cause, maxlen))
         {
             strcopy(primary, sizeof(primary), cause);
             BuildPrimaryCause(baseWeapon, bulletExplosiveState, false, primary, cause, maxlen);
@@ -289,7 +289,7 @@ void ResolveSurvivorKillSICause(int victim, int attackerClient, int attackerEnt,
             BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return;
         }
-        if (TryResolveRecentSpecialBullet(attackerClient, false, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
+        if (attackerClient > 0 && attackerClient <= MaxClients && TryResolveRecentSpecialBullet(attackerClient, false, baseWeapon, sizeof(baseWeapon), hasBaseWeapon))
         {
             BuildPrimaryCause(baseWeapon, true, false, "", cause, maxlen);
             return;
@@ -328,12 +328,12 @@ void ResolveWitchKillCause(int attackerClient, char[] cause, int maxlen)
         }
     }
 
-    if (TryCauseFromHazardContext(attackerClient, cause, maxlen))
+    if (attackerClient > 0 && attackerClient <= MaxClients && TryCauseFromHazardContext(attackerClient, cause, maxlen))
     {
         return;
     }
 
-    if (WasRecentMolotovThrow(attackerClient, 20.0))
+    if (attackerClient > 0 && attackerClient <= MaxClients && WasRecentMolotovThrow(attackerClient, 20.0))
     {
         strcopy(cause, maxlen, "molotov");
         return;

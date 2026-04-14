@@ -4,10 +4,13 @@
 #include <sourcemod>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.1.0"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
+
+#define HINT_COLOR_NORMAL_DEFAULT "255 255 255"
+#define HINT_COLOR_ELITE_DEFAULT "255 255 0"
 
 enum
 {
@@ -35,6 +38,7 @@ native int EliteSI_GetSubtype(int client);
 
 ConVar g_cvEnable;
 ConVar g_cvEnableSiRewards;
+ConVar g_cvEnableNormalSiRewards;
 ConVar g_cvEnableTankRewards;
 ConVar g_cvEnableWitchRewards;
 ConVar g_cvMaxTempHealth;
@@ -45,6 +49,7 @@ ConVar g_cvRewardHunter;
 ConVar g_cvRewardSpitter;
 ConVar g_cvRewardJockey;
 ConVar g_cvRewardCharger;
+ConVar g_cvRewardNormalSiAmount;
 
 ConVar g_cvScaleDifficulty;
 ConVar g_cvDiffEasy;
@@ -60,9 +65,14 @@ ConVar g_cvWitchRewardMode;
 ConVar g_cvWitchRewardAmount;
 
 ConVar g_cvShowHint;
+ConVar g_cvHintColorNormalSi;
+ConVar g_cvHintColorEliteSi;
 ConVar g_cvZDifficulty;
 
 float g_fPillsDecayRate;
+
+char g_sHintColorNormalSi[16];
+char g_sHintColorEliteSi[16];
 
 GlobalForward g_fwRewardGranted;
 
@@ -121,7 +131,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_reward_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvEnableSiRewards = CreateConVar("l4d2_elite_reward_si_enable", "1", "0=Off elite SI rewards, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvEnableSiRewards = CreateConVar("l4d2_elite_reward_si_enable", "1", "0=Off SI rewards, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvEnableNormalSiRewards = CreateConVar("l4d2_elite_reward_normal_si_enable", "0", "0=Only elite SI reward, 1=Normal SI can also reward.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvEnableTankRewards = CreateConVar("l4d2_elite_reward_tank_enable", "1", "0=Off tank reward, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvEnableWitchRewards = CreateConVar("l4d2_elite_reward_witch_enable", "1", "0=Off witch reward, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvMaxTempHealth = CreateConVar("l4d2_elite_reward_temp_hp_limit", "200", "Temp HP cap when granting reward.", FCVAR_NOTIFY, true, 1.0, true, 500.0);
@@ -132,6 +143,7 @@ public void OnPluginStart()
 	g_cvRewardSpitter = CreateConVar("l4d2_elite_reward_spitter", "2", "Reward when killing elite spitter.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvRewardJockey = CreateConVar("l4d2_elite_reward_jockey", "3", "Reward when killing elite jockey.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvRewardCharger = CreateConVar("l4d2_elite_reward_charger", "5", "Reward when killing elite charger.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_cvRewardNormalSiAmount = CreateConVar("l4d2_elite_reward_normal_si_amount", "1", "Reward when killing normal (non-elite) SI.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 
 	g_cvScaleDifficulty = CreateConVar("l4d2_elite_reward_scale_by_difficulty", "1", "0=Disable, 1=Scale reward by z_difficulty.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvDiffEasy = CreateConVar("l4d2_elite_reward_diff_easy", "0.8", "Difficulty multiplier on easy.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
@@ -147,6 +159,8 @@ public void OnPluginStart()
 	g_cvWitchRewardAmount = CreateConVar("l4d2_elite_reward_witch_amount", "15", "Base reward for witch death.", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 
 	g_cvShowHint = CreateConVar("l4d2_elite_reward_show_hint", "1", "0=No hint, 1=Show instructor hint on reward.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvHintColorNormalSi = CreateConVar("l4d2_elite_reward_hint_color_normal_si", HINT_COLOR_NORMAL_DEFAULT, "Instructor hint text color for normal SI reward in format 'R G B'.", FCVAR_NOTIFY);
+	g_cvHintColorEliteSi = CreateConVar("l4d2_elite_reward_hint_color_elite_si", HINT_COLOR_ELITE_DEFAULT, "Instructor hint text color for elite SI reward in format 'R G B'.", FCVAR_NOTIFY);
 
 	CreateConVar("l4d2_elite_reward_version", PLUGIN_VERSION, "Elite reward plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_rewards");
@@ -159,6 +173,10 @@ public void OnPluginStart()
 	{
 		decay.AddChangeHook(OnDecayChanged);
 	}
+
+	RefreshHintColorCache();
+	g_cvHintColorNormalSi.AddChangeHook(OnHintColorChanged);
+	g_cvHintColorEliteSi.AddChangeHook(OnHintColorChanged);
 
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
 	HookEvent("witch_killed", Event_WitchKilled, EventHookMode_Post);
@@ -197,7 +215,13 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	if (!IsEliteKill(victim))
+	if (!IsTrackableSiClass(zClass))
+	{
+		return;
+	}
+
+	bool isEliteKill = IsEliteKill(victim);
+	if (!isEliteKill && !g_cvEnableNormalSiRewards.BoolValue)
 	{
 		return;
 	}
@@ -207,7 +231,8 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	int reward = ApplyRewardModifiers(GetSiClassReward(zClass), headshot);
+	int baseReward = isEliteKill ? GetSiClassReward(zClass) : g_cvRewardNormalSiAmount.IntValue;
+	int reward = ApplyRewardModifiers(baseReward, headshot);
 	if (reward <= 0)
 	{
 		return;
@@ -217,11 +242,19 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	if (g_cvShowHint.BoolValue)
 	{
 		char text[160];
-		int subtype = GetSafeEliteSubtype(victim);
-		char subtypeText[24];
-		GetSubtypeLabel(subtype, subtypeText, sizeof(subtypeText));
-		Format(text, sizeof(text), "%s Elite %s [%s] +%d Temp HP", headshot ? "Headshot" : "Killed", g_siNames[zClass], subtypeText, added);
-		DisplayInstructorHint(attacker, text, g_siIcons[zClass]);
+		if (isEliteKill)
+		{
+			int subtype = GetSafeEliteSubtype(victim);
+			char subtypeText[24];
+			GetSubtypeLabel(subtype, subtypeText, sizeof(subtypeText));
+			Format(text, sizeof(text), "%s Elite %s [%s] +%d Temp HP", headshot ? "Headshot" : "Killed", g_siNames[zClass], subtypeText, added);
+			DisplayInstructorHint(attacker, text, g_siIcons[zClass], g_sHintColorEliteSi);
+		}
+		else
+		{
+			Format(text, sizeof(text), "%s Normal %s +%d Temp HP", headshot ? "Headshot" : "Killed", g_siNames[zClass], added);
+			DisplayInstructorHint(attacker, text, g_siIcons[zClass], g_sHintColorNormalSi);
+		}
 	}
 
 	NotifyRewardGranted(attacker, added, zClass, 0);
@@ -260,7 +293,7 @@ public void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast
 			{
 				char text[128];
 				Format(text, sizeof(text), "Witch slain, team +%d Temp HP", added);
-				DisplayInstructorHint(i, text, "icon_skull");
+				DisplayInstructorHint(i, text, "icon_skull", HINT_COLOR_NORMAL_DEFAULT);
 			}
 
 			NotifyRewardGranted(i, added, ZC_WITCH, 1);
@@ -273,7 +306,7 @@ public void Event_WitchKilled(Event event, const char[] name, bool dontBroadcast
 		{
 			char text[128];
 			Format(text, sizeof(text), "Witch slain, +%d Temp HP", added);
-			DisplayInstructorHint(attacker, text, "icon_skull");
+			DisplayInstructorHint(attacker, text, "icon_skull", HINT_COLOR_NORMAL_DEFAULT);
 		}
 
 		NotifyRewardGranted(attacker, added, ZC_WITCH, 0);
@@ -307,7 +340,7 @@ void HandleTankReward(int attacker, bool headshot)
 			{
 				char text[128];
 				Format(text, sizeof(text), "Tank slain, team +%d Temp HP", added);
-				DisplayInstructorHint(i, text, g_siIcons[ZC_TANK]);
+				DisplayInstructorHint(i, text, g_siIcons[ZC_TANK], HINT_COLOR_NORMAL_DEFAULT);
 			}
 
 			NotifyRewardGranted(i, added, ZC_TANK, 1);
@@ -320,7 +353,7 @@ void HandleTankReward(int attacker, bool headshot)
 		{
 			char text[128];
 			Format(text, sizeof(text), "Tank slain, +%d Temp HP", added);
-			DisplayInstructorHint(attacker, text, g_siIcons[ZC_TANK]);
+			DisplayInstructorHint(attacker, text, g_siIcons[ZC_TANK], HINT_COLOR_NORMAL_DEFAULT);
 		}
 
 		NotifyRewardGranted(attacker, added, ZC_TANK, 0);
@@ -360,6 +393,11 @@ int GetSiClassReward(int zClass)
 	}
 
 	return 0;
+}
+
+bool IsTrackableSiClass(int zClass)
+{
+	return zClass >= ZC_SMOKER && zClass <= ZC_CHARGER;
 }
 
 int ApplyRewardModifiers(int baseReward, bool headshot)
@@ -491,7 +529,28 @@ void NotifyRewardGranted(int receiver, int amount, int sourceClass, int mode)
 	Call_Finish();
 }
 
-void DisplayInstructorHint(int target, const char[] text, const char[] icon)
+public void OnHintColorChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	RefreshHintColorCache();
+}
+
+void RefreshHintColorCache()
+{
+	g_cvHintColorNormalSi.GetString(g_sHintColorNormalSi, sizeof(g_sHintColorNormalSi));
+	g_cvHintColorEliteSi.GetString(g_sHintColorEliteSi, sizeof(g_sHintColorEliteSi));
+
+	if (g_sHintColorNormalSi[0] == '\0')
+	{
+		strcopy(g_sHintColorNormalSi, sizeof(g_sHintColorNormalSi), HINT_COLOR_NORMAL_DEFAULT);
+	}
+
+	if (g_sHintColorEliteSi[0] == '\0')
+	{
+		strcopy(g_sHintColorEliteSi, sizeof(g_sHintColorEliteSi), HINT_COLOR_ELITE_DEFAULT);
+	}
+}
+
+void DisplayInstructorHint(int target, const char[] text, const char[] icon, const char[] color)
 {
 	int entity = CreateEntityByName("env_instructor_hint");
 	if (entity <= 0)
@@ -513,7 +572,7 @@ void DisplayInstructorHint(int target, const char[] text, const char[] icon)
 	DispatchKeyValue(entity, "hint_forcecaption", "true");
 	DispatchKeyValue(entity, "hint_allow_nodraw_target", "1");
 	DispatchKeyValue(entity, "hint_instance_type", "0");
-	DispatchKeyValue(entity, "hint_color", "255 255 255");
+	DispatchKeyValue(entity, "hint_color", color);
 
 	char hintText[192];
 	strcopy(hintText, sizeof(hintText), text);

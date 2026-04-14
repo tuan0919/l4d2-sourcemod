@@ -22,8 +22,9 @@ He thong moi gom 6 plugin nho, load doc lap:
      - `EliteSI_OnEliteCleared(client)`
 
 2. `scripting/l4d2_elite_si_rewards.sp`
-   - Thuong Temp HP cho Elite SI / Tank / Witch
+   - Thuong Temp HP cho Elite SI, optional Normal SI, Tank, Witch
    - Scale theo difficulty + headshot bonus
+   - Ho tro mau instructor hint rieng cho elite SI va normal SI
    - Expose forward:
      - `EliteSIReward_OnGranted(receiver, amount, sourceClass, mode)`
 
@@ -63,6 +64,28 @@ Tat ca cvar moi su dung prefix:
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 
+### Reward update 14/04/2026
+
+Bo reward da bo sung them nhom cvar de ho tro normal SI va mau hint rieng:
+
+- `l4d2_elite_reward_normal_si_enable`
+  - `0`: chi thuong elite SI
+  - `1`: normal SI (non-elite) cung co reward
+
+- `l4d2_elite_reward_normal_si_amount`
+  - Luong Temp HP thuong cho normal SI
+
+- `l4d2_elite_reward_hint_color_normal_si`
+  - Mau instructor hint khi kill normal SI
+  - Mac dinh: `255 255 255` (trang)
+
+- `l4d2_elite_reward_hint_color_elite_si`
+  - Mau instructor hint khi kill elite SI
+  - Mac dinh: `255 255 0` (vang)
+
+Luu y: `l4d2_elite_reward_si_enable` hien tai la cong tac tong cho reward SI.
+Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
+
 ## Tich hop giua plugin
 
 - Core cap du lieu subtype bang native
@@ -80,3 +103,11 @@ Da compile thanh cong 5 file `.sp` bang `spcomp.exe` trong qua trinh rewrite.
   - `Tuan_AI_HardSI`
   - `l4d_infected_movement`
   - `l4d2_charger_steering` (ban cu)
+
+## Changelog
+
+### 14/04/2026
+
+- Bo sung reward cho normal SI (co cvar bat/tat rieng)
+- Bo sung cvar so HP thuong cho normal SI
+- Bo sung 2 cvar mau instructor hint rieng cho normal SI va elite SI

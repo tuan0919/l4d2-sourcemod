@@ -160,6 +160,211 @@ HazardType FindBestFireSource(const float firePos[3], int &owner)
     return bestType;
 }
 
+bool HasFreshFireSourceCache(int fireEnt)
+{
+    if (fireEnt <= 0 || fireEnt >= MAX_TRACKED_EDICTS || !IsValidEdict(fireEnt))
+    {
+        return false;
+    }
+
+    if (view_as<HazardType>(g_iFireEntSourceType[fireEnt]) == Hazard_None)
+    {
+        return false;
+    }
+
+    float age = GetGameTime() - g_fFireEntMarkTime[fireEnt];
+    return (age >= 0.0 && age <= FIRE_SOURCE_CACHE_WINDOW);
+}
+
+void AddLinkedEntityCandidate(int fromEnt, const char[] prop, int queue[FIRE_ENTITY_LINK_SCAN_MAX], int &count)
+{
+    if (count >= FIRE_ENTITY_LINK_SCAN_MAX)
+    {
+        return;
+    }
+
+    int linked = GetLinkedEntity(fromEnt, prop);
+    if (!IsValidEdict(linked) || linked <= MaxClients)
+    {
+        return;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        if (queue[i] == linked)
+        {
+            return;
+        }
+    }
+
+    queue[count++] = linked;
+}
+
+int ResolveSourceOwnerFromEntity(int sourceEnt, int fireEnt)
+{
+    int owner = ResolveDamageOwnerClient(GetLinkedEntity(sourceEnt, "m_hOwnerEntity"), GetLinkedEntity(sourceEnt, "m_hPhysicsAttacker"));
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    owner = ResolveProjectileOwner(sourceEnt);
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    owner = ResolveDamageOwnerClient(GetLinkedEntity(fireEnt, "m_hOwnerEntity"), GetLinkedEntity(fireEnt, "m_hInflictor"));
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    owner = ResolveProjectileOwner(fireEnt);
+    if (IsInGameClient(owner) && GetClientTeam(owner) == 2)
+    {
+        return owner;
+    }
+
+    return 0;
+}
+
+bool ResolveFireSourceDeterministic(int fireEnt, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
+
+    if (!IsValidEdict(fireEnt))
+    {
+        return false;
+    }
+
+    int queue[FIRE_ENTITY_LINK_SCAN_MAX];
+    int count = 0;
+    int index = 0;
+    queue[count++] = fireEnt;
+
+    while (index < count && count <= FIRE_ENTITY_LINK_SCAN_MAX)
+    {
+        int ent = queue[index++];
+        if (!IsValidEdict(ent))
+        {
+            continue;
+        }
+
+        HazardType hazard = GetHazardType(ent);
+        if (hazard != Hazard_None)
+        {
+            source = hazard;
+            sourceOwner = ResolveSourceOwnerFromEntity(ent, fireEnt);
+            return true;
+        }
+
+        if (EntityIsMolotovProjectile(ent))
+        {
+            source = Hazard_Molotov;
+            sourceOwner = ResolveSourceOwnerFromEntity(ent, fireEnt);
+            return true;
+        }
+
+        AddLinkedEntityCandidate(ent, "m_hOwnerEntity", queue, count);
+        AddLinkedEntityCandidate(ent, "m_hMoveParent", queue, count);
+        AddLinkedEntityCandidate(ent, "m_hEffectEntity", queue, count);
+        AddLinkedEntityCandidate(ent, "m_hInflictor", queue, count);
+        AddLinkedEntityCandidate(ent, "m_hPhysicsAttacker", queue, count);
+        AddLinkedEntityCandidate(ent, "m_hThrower", queue, count);
+    }
+
+    return false;
+}
+
+bool ResolveFireSourceHeuristic(int fireEnt, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
+
+    if (!IsValidEdict(fireEnt))
+    {
+        return false;
+    }
+
+    float origin[3];
+    GetEntityAbsPos(fireEnt, origin);
+    source = FindBestFireSource(origin, sourceOwner);
+    if (source != Hazard_None)
+    {
+        return true;
+    }
+
+    int owner = ResolveProjectileOwner(fireEnt);
+    if (WasRecentMolotovThrow(owner, 20.0))
+    {
+        source = Hazard_Molotov;
+        sourceOwner = owner;
+        return true;
+    }
+
+    return false;
+}
+
+void ResolveAndStoreFireEntitySource(int fireEnt, bool isRecheck)
+{
+    if (fireEnt <= 0 || fireEnt >= MAX_TRACKED_EDICTS || !IsValidEdict(fireEnt))
+    {
+        return;
+    }
+
+    FireSourceConfidence oldConfidence = view_as<FireSourceConfidence>(g_iFireEntSourceConfidence[fireEnt]);
+    bool oldFresh = HasFreshFireSourceCache(fireEnt);
+
+    HazardType source = Hazard_None;
+    int sourceOwner = 0;
+    FireSourceConfidence confidence = FireSourceConfidence_None;
+
+    if (ResolveFireSourceDeterministic(fireEnt, source, sourceOwner))
+    {
+        confidence = FireSourceConfidence_Deterministic;
+    }
+    else if (ResolveFireSourceHeuristic(fireEnt, source, sourceOwner))
+    {
+        confidence = FireSourceConfidence_Heuristic;
+    }
+
+    if (oldFresh && oldConfidence == FireSourceConfidence_Deterministic && confidence != FireSourceConfidence_Deterministic)
+    {
+        if (isRecheck)
+        {
+            g_fFireEntMarkTime[fireEnt] = GetGameTime();
+        }
+        return;
+    }
+
+    g_iFireEntSourceType[fireEnt] = view_as<int>(source);
+    g_iFireEntOwner[fireEnt] = sourceOwner;
+    g_iFireEntSourceConfidence[fireEnt] = view_as<int>(confidence);
+    g_fFireEntMarkTime[fireEnt] = GetGameTime();
+}
+
+bool TryResolveFireSourceFromEntity(int fireEnt, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
+
+    if (fireEnt <= 0 || fireEnt >= MAX_TRACKED_EDICTS || !IsValidEdict(fireEnt))
+    {
+        return false;
+    }
+
+    if (!HasFreshFireSourceCache(fireEnt))
+    {
+        ResolveAndStoreFireEntitySource(fireEnt, false);
+    }
+
+    source = view_as<HazardType>(g_iFireEntSourceType[fireEnt]);
+    sourceOwner = g_iFireEntOwner[fireEnt];
+    return source != Hazard_None;
+}
+
 bool TryCauseFromFireEntitySource(int victim, int attackerEnt, char[] cause, int maxlen)
 {
     HazardType source = Hazard_None;
@@ -243,74 +448,43 @@ bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sou
     source = Hazard_None;
     sourceOwner = 0;
 
-    if (attackerEnt > 0 && attackerEnt < MAX_TRACKED_EDICTS && IsValidEdict(attackerEnt))
+    if (TryResolveFireSourceFromEntity(attackerEnt, source, sourceOwner))
     {
-        source = view_as<HazardType>(g_iFireEntSourceType[attackerEnt]);
-        sourceOwner = g_iFireEntOwner[attackerEnt];
+        return true;
     }
 
-    if (source == Hazard_None && victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
+    if (victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
     {
         int inflictor = g_iLastInflictor[victim];
-        if (inflictor > 0 && inflictor < MAX_TRACKED_EDICTS && IsValidEdict(inflictor))
+        if (TryResolveFireSourceFromEntity(inflictor, source, sourceOwner))
         {
-            source = view_as<HazardType>(g_iFireEntSourceType[inflictor]);
-            sourceOwner = g_iFireEntOwner[inflictor];
-            if (source == Hazard_None)
-            {
-                TryInferHazardFromLinkedFireEntity(inflictor, source, sourceOwner);
-            }
+            return true;
+        }
+
+        TryInferHazardFromLinkedFireEntity(inflictor, source, sourceOwner);
+        if (source != Hazard_None)
+        {
+            return true;
         }
     }
 
-    if (source == Hazard_None && victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
+    if (victim > 0 && victim <= MaxClients && HasRecentSnapshot(victim))
     {
         float victimPos[3];
         GetClientEyePosition(victim, victimPos);
         source = FindBestFireSource(victimPos, sourceOwner);
-    }
-
-    return source != Hazard_None;
-}
-
-bool TryInferHazardFromLinkedFireEntity(int fireEnt, HazardType &source, int &sourceOwner)
-{
-    source = Hazard_None;
-    sourceOwner = 0;
-
-    if (!IsValidEdict(fireEnt))
-    {
-        return false;
-    }
-
-    int links[4];
-    links[0] = GetLinkedEntity(fireEnt, "m_hOwnerEntity");
-    links[1] = GetLinkedEntity(fireEnt, "m_hMoveParent");
-    links[2] = GetLinkedEntity(fireEnt, "m_hEffectEntity");
-    links[3] = GetLinkedEntity(fireEnt, "m_hInflictor");
-
-    for (int i = 0; i < sizeof(links); i++)
-    {
-        int ent = links[i];
-        if (!IsValidEdict(ent))
+        if (source != Hazard_None)
         {
-            continue;
-        }
-
-        HazardType t = GetHazardType(ent);
-        if (t != Hazard_None)
-        {
-            source = t;
-            sourceOwner = ResolveDamageOwnerClient(GetLinkedEntity(ent, "m_hOwnerEntity"), GetLinkedEntity(ent, "m_hPhysicsAttacker"));
-            if (sourceOwner == 0)
-            {
-                sourceOwner = ResolveProjectileOwner(ent);
-            }
             return true;
         }
     }
 
     return false;
+}
+
+bool TryInferHazardFromLinkedFireEntity(int fireEnt, HazardType &source, int &sourceOwner)
+{
+    return ResolveFireSourceDeterministic(fireEnt, source, sourceOwner);
 }
 
 bool HazardTypeToLabel(HazardType type, char[] outLabel, int maxlen)

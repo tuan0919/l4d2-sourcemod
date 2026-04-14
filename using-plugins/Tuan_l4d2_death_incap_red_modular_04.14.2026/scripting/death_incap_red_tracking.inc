@@ -112,32 +112,26 @@ public void Frame_MarkFireEntitySource(any entityRef)
         return;
     }
 
-    float origin[3];
-    GetEntityAbsPos(entity, origin);
+    ResolveAndStoreFireEntitySource(entity, false);
 
-    int sourceOwner = 0;
-    HazardType source = FindBestFireSource(origin, sourceOwner);
-    if (source == Hazard_None)
+    if (view_as<HazardType>(g_iFireEntSourceType[entity]) == Hazard_None && !g_bFireEntRecheckQueued[entity])
     {
-        if (TryInferHazardFromLinkedFireEntity(entity, source, sourceOwner))
-        {
-            // linked-entity inference found direct source (gascan/fuel/...)
-        }
+        g_bFireEntRecheckQueued[entity] = true;
+        CreateTimer(FIRE_ENTITY_RECHECK_DELAY, Timer_RecheckFireEntitySource, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+    }
+}
+
+public Action Timer_RecheckFireEntitySource(Handle timer, int entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity == INVALID_ENT_REFERENCE || entity <= 0 || entity > MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    {
+        return Plugin_Stop;
     }
 
-    if (source == Hazard_None)
-    {
-        int owner = ResolveProjectileOwner(entity);
-        if (WasRecentMolotovThrow(owner, 20.0))
-        {
-            source = Hazard_Molotov;
-            sourceOwner = owner;
-        }
-    }
-
-    g_iFireEntSourceType[entity] = view_as<int>(source);
-    g_iFireEntOwner[entity] = sourceOwner;
-    g_fFireEntMarkTime[entity] = GetGameTime();
+    g_bFireEntRecheckQueued[entity] = false;
+    ResolveAndStoreFireEntitySource(entity, true);
+    return Plugin_Stop;
 }
 
 public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, float damage, int damagetype)

@@ -116,7 +116,9 @@ public void OnMapStart()
         g_vMolotovLastPos[i][2] = 0.0;
         g_iFireEntSourceType[i] = view_as<int>(Hazard_None);
         g_iFireEntOwner[i] = 0;
+        g_iFireEntSourceConfidence[i] = view_as<int>(FireSourceConfidence_None);
         g_fFireEntMarkTime[i] = 0.0;
+        g_bFireEntRecheckQueued[i] = false;
     }
 
     for (int i = 0; i < MAX_SOURCE_EVENTS; i++)

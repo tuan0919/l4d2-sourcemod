@@ -60,6 +60,8 @@ public void OnEntityDestroyed(int entity)
         g_vMolotovLastPos[entity][2] = 0.0;
         g_iFireEntSourceType[entity] = view_as<int>(Hazard_None);
         g_iFireEntOwner[entity] = 0;
+        g_iFireEntSourceConfidence[entity] = view_as<int>(FireSourceConfidence_None);
         g_fFireEntMarkTime[entity] = 0.0;
+        g_bFireEntRecheckQueued[entity] = false;
     }
 }

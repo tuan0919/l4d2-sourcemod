@@ -5,6 +5,7 @@
 Tach ro he thong thong bao thanh nhom plugin co ten dong bo, de nhin vao la thay quan he phu thuoc va vai tro tung plugin:
 
 - Death/Incap chat do plugin rieng quan ly (`Tuan_l4d2_death_incap_red`)
+  - Source hien tai duoc tach module tai `using-plugins/Tuan_l4d2_death_incap_red_modular_04.14.2026/`
 - HUD/event feed dung bo `tuan_notify_*`
 
 ## Kien truc

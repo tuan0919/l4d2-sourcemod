@@ -6,7 +6,7 @@ Rewrite lai he thong Elite SI + reward HP theo huong module, giam chong cheo log
 
 ## Kien truc moi
 
-He thong moi gom 7 plugin nho, load doc lap:
+He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 14 plugin nho, load doc lap:
 
 1. `scripting/l4d2_elite_si_core.sp`
    - Nguon su that cho Elite SI (roll elite, HP multiplier, mau render, fire immunity)
@@ -28,10 +28,23 @@ He thong moi gom 7 plugin nho, load doc lap:
    - Expose forward:
      - `EliteSIReward_OnGranted(receiver, amount, sourceClass, mode)`
 
-3. `scripting/l4d2_elite_si_hardsi.sp`
-   - Nhanh AI HardSI chi cho subtype `Abnormal behavior`
-   - Bao gom boomer/spitter/tank bhop, hunter pounce tuning, jockey pressure, charger force-charge,
-     smoker action hook de tranh bug `nb_assault`
+3. Nhanh `Abnormal behavior` (tach theo tung SI + 1 module director):
+   - `scripting/l4d2_elite_si_hardsi_director.sp`
+     - Nhanh global cho `nb_assault` + exec aggressive cfg (`cfg/l4d2_elite_si_hardsi/aggressive_ai.cfg`)
+   - `scripting/l4d2_elite_si_hardsi_smoker.sp`
+     - Smoker action hook de tranh bug `nb_assault`
+   - `scripting/l4d2_elite_si_hardsi_boomer.sp`
+     - Boomer bhop + vomit pressure movement
+   - `scripting/l4d2_elite_si_hardsi_hunter.sp`
+     - Hunter fast pounce + pounce angle tuning + leap-away gate
+   - `scripting/l4d2_elite_si_hardsi_spitter.sp`
+     - Spitter bhop pressure
+   - `scripting/l4d2_elite_si_hardsi_jockey.sp`
+     - Jockey hop pressure
+   - `scripting/l4d2_elite_si_hardsi_charger.sp`
+     - Charger force-charge + bhop + retarget angle
+   - `scripting/l4d2_elite_si_hardsi_tank.sp`
+     - Tank bhop + smart rock + allow/deny rock throw
 
 4. `scripting/l4d2_elite_si_ability_movement.sp`
    - Nhanh movement ability cho subtype `Strange Movement`
@@ -55,7 +68,7 @@ He thong moi gom 7 plugin nho, load doc lap:
 ## Subtype mapping
 
 - `0`: none
-- `1`: Abnormal behavior (legacy internal: HardSI)
+- `1`: Abnormal behavior (legacy internal: HardSI, code enum moi: `ELITE_SUBTYPE_ABNORMAL_BEHAVIOR`)
 - `2`: Strange Movement (legacy internal: AbilityMovement)
 - `3`: ChargerSteering
 - `4`: ChargerAction
@@ -77,7 +90,7 @@ Tat ca cvar moi su dung prefix:
 
 - `l4d2_elite_si_core_*`
 - `l4d2_elite_reward_*`
-- `l4d2_elite_hardsi_*`
+- `l4d2_elite_si_hardsi_*`
 - `l4d2_elite_ability_move_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
@@ -121,7 +134,7 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 
 - Elite type text da ho tro custom theo tung SI class + subtype qua file data:
   - `addons/sourcemod/data/elite_si_type_descriptions.cfg`
-  - Vi du HardSI cua Charger co the dat mo ta khac HardSI cua Smoker.
+  - Vi du Abnormal behavior cua Charger co the dat mo ta khac Abnormal behavior cua Smoker.
 
 - Core expose native moi de plugin khac lay ten/desc type dang active:
   - `EliteSI_GetTypeName(client, buffer, maxlen)`
@@ -207,3 +220,17 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 - Core bo sung cooldown spawn elite de tranh burst nhieu elite cung luc:
   - `l4d2_elite_si_core_spawn_cooldown`
     - Mac dinh `20.0`s
+
+### 15/04/2026 (Abnormal split)
+
+- Remove plugin tong `l4d2_elite_si_hardsi.sp`.
+- Tach Abnormal behavior thanh nhieu plugin nho theo tung SI:
+  - `l4d2_elite_si_hardsi_smoker`
+  - `l4d2_elite_si_hardsi_boomer`
+  - `l4d2_elite_si_hardsi_hunter`
+  - `l4d2_elite_si_hardsi_spitter`
+  - `l4d2_elite_si_hardsi_jockey`
+  - `l4d2_elite_si_hardsi_charger`
+  - `l4d2_elite_si_hardsi_tank`
+  - `l4d2_elite_si_hardsi_director` (global `nb_assault` + aggressive cfg)
+- Cac cvar cua nhanh Abnormal behavior duoc doi prefix sang `l4d2_elite_si_hardsi_*` de dong bo he thong elite.

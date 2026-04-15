@@ -19,7 +19,7 @@
 enum
 {
 	ELITE_SUBTYPE_NONE = 0,
-	ELITE_SUBTYPE_HARDSI,
+	ELITE_SUBTYPE_ABNORMAL_BEHAVIOR,
 	ELITE_SUBTYPE_ABILITY_MOVEMENT,
 	ELITE_SUBTYPE_CHARGER_STEERING,
 	ELITE_SUBTYPE_CHARGER_ACTION,
@@ -69,7 +69,7 @@ int g_iAutoLoadAttempt;
 GlobalForward g_fwEliteAssigned;
 GlobalForward g_fwEliteCleared;
 
-static const int ELITE_HARDSI_COLORS[6][3] =
+static const int ELITE_ABNORMAL_BEHAVIOR_COLORS[6][3] =
 {
 	{180, 0, 255},
 	{0, 255, 80},
@@ -410,7 +410,7 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 		return;
 	}
 
-	SetEntityRenderColor(client, ELITE_HARDSI_COLORS[colorIndex][0], ELITE_HARDSI_COLORS[colorIndex][1], ELITE_HARDSI_COLORS[colorIndex][2], 255);
+	SetEntityRenderColor(client, ELITE_ABNORMAL_BEHAVIOR_COLORS[colorIndex][0], ELITE_ABNORMAL_BEHAVIOR_COLORS[colorIndex][1], ELITE_ABNORMAL_BEHAVIOR_COLORS[colorIndex][2], 255);
 }
 
 int RollSubtypeByClass(int zClass)
@@ -423,7 +423,7 @@ int RollSubtypeByClass(int zClass)
 		}
 		case ZC_SPITTER:
 		{
-			return GetRandomInt(1, 100) <= g_cvSpitterAbilityChance.IntValue ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_HARDSI;
+			return GetRandomInt(1, 100) <= g_cvSpitterAbilityChance.IntValue ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
 		}
 		case ZC_CHARGER:
 		{
@@ -447,11 +447,11 @@ int RollSubtypeByClass(int zClass)
 				return ELITE_SUBTYPE_CHARGER_STEERING;
 			}
 
-			return ELITE_SUBTYPE_HARDSI;
+			return ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
 		}
 	}
 
-	return ELITE_SUBTYPE_HARDSI;
+	return ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
 }
 
 int RollSmokerNoxiousSubtype()
@@ -564,7 +564,7 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 {
 	switch (subtype)
 	{
-		case ELITE_SUBTYPE_HARDSI: strcopy(buffer, maxlen, "Abnormal behavior");
+		case ELITE_SUBTYPE_ABNORMAL_BEHAVIOR: strcopy(buffer, maxlen, "Abnormal behavior");
 		case ELITE_SUBTYPE_ABILITY_MOVEMENT: strcopy(buffer, maxlen, "Strange Movement");
 		case ELITE_SUBTYPE_CHARGER_STEERING: strcopy(buffer, maxlen, "ChargerSteering");
 		case ELITE_SUBTYPE_CHARGER_ACTION: strcopy(buffer, maxlen, "ChargerAction");
@@ -587,7 +587,7 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 {
 	switch (subtype)
 	{
-		case ELITE_SUBTYPE_HARDSI: strcopy(buffer, maxlen, "aggressive AI pressure with advanced attack patterns");
+		case ELITE_SUBTYPE_ABNORMAL_BEHAVIOR: strcopy(buffer, maxlen, "aggressive AI pressure with advanced attack patterns");
 		case ELITE_SUBTYPE_ABILITY_MOVEMENT: strcopy(buffer, maxlen, "maintains momentum while casting special abilities");
 		case ELITE_SUBTYPE_CHARGER_STEERING: strcopy(buffer, maxlen, "can steer aggressively during a charge");
 		case ELITE_SUBTYPE_CHARGER_ACTION: strcopy(buffer, maxlen, "uses dedicated charger action routines");
@@ -618,7 +618,7 @@ int GetSiClassIndex(int zClass)
 
 bool IsValidSubtypeForConfig(int subtype)
 {
-	return subtype >= ELITE_SUBTYPE_HARDSI && subtype < ELITE_SUBTYPE_COUNT;
+	return subtype >= ELITE_SUBTYPE_ABNORMAL_BEHAVIOR && subtype < ELITE_SUBTYPE_COUNT;
 }
 
 void ResetEliteTypeDescriptionCache()
@@ -660,7 +660,7 @@ void LoadEliteTypeDescriptionsFromData()
 			continue;
 		}
 
-		for (int subtype = ELITE_SUBTYPE_HARDSI; subtype < ELITE_SUBTYPE_COUNT; subtype++)
+		for (int subtype = ELITE_SUBTYPE_ABNORMAL_BEHAVIOR; subtype < ELITE_SUBTYPE_COUNT; subtype++)
 		{
 			char defaultName[ELITE_TYPE_NAME_LEN];
 			char defaultDesc[ELITE_TYPE_DESC_LEN];
@@ -696,7 +696,7 @@ void WriteDefaultEliteTypeDescriptionFile(const char[] path)
 			continue;
 		}
 
-		for (int subtype = ELITE_SUBTYPE_HARDSI; subtype < ELITE_SUBTYPE_COUNT; subtype++)
+		for (int subtype = ELITE_SUBTYPE_ABNORMAL_BEHAVIOR; subtype < ELITE_SUBTYPE_COUNT; subtype++)
 		{
 			char keyName[16];
 			char name[ELITE_TYPE_NAME_LEN];

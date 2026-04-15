@@ -15,7 +15,7 @@
 enum
 {
 	ELITE_SUBTYPE_NONE = 0,
-	ELITE_SUBTYPE_HARDSI,
+	ELITE_SUBTYPE_ABNORMAL_BEHAVIOR,
 	ELITE_SUBTYPE_ABILITY_MOVEMENT,
 	ELITE_SUBTYPE_CHARGER_STEERING,
 	ELITE_SUBTYPE_CHARGER_ACTION,
@@ -537,7 +537,7 @@ void GetSubtypeLabel(int subtype, char[] buffer, int maxlen)
 {
 	switch (subtype)
 	{
-		case ELITE_SUBTYPE_HARDSI: strcopy(buffer, maxlen, "Abnormal behavior");
+		case ELITE_SUBTYPE_ABNORMAL_BEHAVIOR: strcopy(buffer, maxlen, "Abnormal behavior");
 		case ELITE_SUBTYPE_ABILITY_MOVEMENT: strcopy(buffer, maxlen, "Strange Movement");
 		case ELITE_SUBTYPE_CHARGER_STEERING: strcopy(buffer, maxlen, "ChargerSteer");
 		case ELITE_SUBTYPE_CHARGER_ACTION: strcopy(buffer, maxlen, "ChargerAction");

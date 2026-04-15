@@ -161,3 +161,29 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
   - `HardSI` -> `Abnormal behavior`
   - `AbilityMovement` -> `Strange Movement`
 - Bo sung thong bao spawn elite SI chat full mau do + mo ta ngan subtype
+
+### 16/04/2026
+
+- Tat publish thong bao spawn elite sang script HUD notifier.
+  - `l4d2_elite_si_core_spawn_announce` chi con anh huong chat announce.
+
+- Bo sung cvar test force subtype Smoker:
+  - `l4d2_elite_si_core_smoker_force_subtype`
+    - `0`: random nhu binh thuong
+    - `5-15`: ep dung subtype Noxious de test
+
+- Smoker Noxious bo sung warning instructor hint khi survivor an sat thuong dac biet:
+  - `l4d2_elite_smoker_noxious_warning_hint_enable`
+  - `l4d2_elite_smoker_noxious_warning_hint_cooldown`
+  - `l4d2_elite_smoker_noxious_warning_hint_color`
+  - `l4d2_elite_smoker_noxious_smoke_screen_hint_enable`
+
+- Instructor hint warning da doi sang tieng Anh va khong stack.
+  - Moi player chi co 1 hint active, hint moi se thay hint cu.
+
+- Module noxious expose native de plugin khac resolve kill/incap cause:
+  - `EliteSI_Noxious_GetRecentDamageCause(victim)`
+  - `EliteSI_Noxious_GetRecentDamageAttacker(victim)`
+
+- Tich hop vao `Tuan_l4d2_death_incap_red`:
+  - Resolve dung cause dac thu noxious thay vi gom chung `Smoker claws`.

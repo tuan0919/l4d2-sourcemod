@@ -58,8 +58,6 @@ bool g_bHasSmokerNoxiousModule;
 bool g_bAutoLoadQueued;
 int g_iAutoLoadAttempt;
 
-native int TuanNotify_PublishInfo(const char[] message);
-
 GlobalForward g_fwEliteAssigned;
 GlobalForward g_fwEliteCleared;
 
@@ -124,7 +122,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 	RegPluginLibrary("elite_si_core");
 	RegPluginLibrary("l4d2_elite_SI_reward");
- 	MarkNativeAsOptional("TuanNotify_PublishInfo");
 
 	return APLRes_Success;
 }
@@ -445,13 +442,6 @@ void AnnounceEliteSpawn(int client, int zClass, int subtype)
 	GetSubtypeDescription(subtype, typeDesc, sizeof(typeDesc));
 
 	CPrintToChatAll("{red}Elite %s has spawned - %s (%s).", classLabel, typeLabel, typeDesc);
-
-	if (GetFeatureStatus(FeatureType_Native, "TuanNotify_PublishInfo") == FeatureStatus_Available)
-	{
-		char hudLine[128];
-		Format(hudLine, sizeof(hudLine), "Elite %s spawn: %s", classLabel, typeLabel);
-		TuanNotify_PublishInfo(hudLine);
-	}
 }
 
 void GetSiClassLabel(int zClass, char[] buffer, int maxlen)

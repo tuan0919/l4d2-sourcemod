@@ -55,16 +55,12 @@ ConVar g_cvSpitterAbilityChance;
 ConVar g_cvChargerSteeringChance;
 ConVar g_cvChargerActionChance;
 ConVar g_cvSpawnAnnounce;
-ConVar g_cvAutoLoadSmokerNoxious;
 ConVar g_cvSmokerForceSubtype;
 
 bool g_bIsElite[MAXPLAYERS + 1];
 bool g_bIsFireImmune[MAXPLAYERS + 1];
 int g_iEliteSubtype[MAXPLAYERS + 1];
 float g_fNextEliteSpawnTime;
-bool g_bHasSmokerNoxiousModule;
-bool g_bAutoLoadQueued;
-int g_iAutoLoadAttempt;
 
 GlobalForward g_fwEliteAssigned;
 GlobalForward g_fwEliteCleared;
@@ -162,7 +158,6 @@ public void OnPluginStart()
 	g_cvChargerSteeringChance = CreateConVar("l4d2_elite_si_core_charger_steering_subtype_chance", "100", "Charger elite chance to roll ChargerSteering subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvChargerActionChance = CreateConVar("l4d2_elite_si_core_charger_action_subtype_chance", "0", "Charger elite chance to roll ChargerAction subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvAutoLoadSmokerNoxious = CreateConVar("l4d2_elite_si_core_auto_load_smoker_noxious", "1", "0=Off, 1=Auto-load l4d2_elite_si_smoker_noxious.smx if missing.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker noxious subtype, 5-15=force exact smoker subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 15.0);
 
 	CreateConVar("l4d2_elite_si_core_version", PLUGIN_VERSION, "Elite SI core version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
@@ -183,8 +178,6 @@ public void OnPluginStart()
 	}
 
 	LoadEliteTypeDescriptionsFromData();
-	RefreshSmokerNoxiousModuleState();
-	TryAutoLoadSmokerNoxious();
 	g_fNextEliteSpawnTime = 0.0;
 }
 
@@ -195,24 +188,6 @@ public void OnMapStart()
 
 public void OnAllPluginsLoaded()
 {
-	RefreshSmokerNoxiousModuleState();
-	TryAutoLoadSmokerNoxious();
-}
-
-public void OnLibraryAdded(const char[] name)
-{
-	if (StrEqual(name, "elite_si_smoker_noxious"))
-	{
-		RefreshSmokerNoxiousModuleState();
-	}
-}
-
-public void OnLibraryRemoved(const char[] name)
-{
-	if (StrEqual(name, "elite_si_smoker_noxious"))
-	{
-		RefreshSmokerNoxiousModuleState();
-	}
 }
 
 public void OnClientPutInServer(int client)
@@ -735,48 +710,6 @@ bool IsTrackableSiClass(int zClass)
 bool IsValidInfected(int client)
 {
 	return (client > 0 && client <= MaxClients && IsClientInGame(client) && GetClientTeam(client) == TEAM_INFECTED);
-}
-
-void RefreshSmokerNoxiousModuleState()
-{
-	g_bHasSmokerNoxiousModule = LibraryExists("elite_si_smoker_noxious");
-}
-
-void TryAutoLoadSmokerNoxious()
-{
-	if (!g_cvAutoLoadSmokerNoxious.BoolValue || g_bHasSmokerNoxiousModule || g_bAutoLoadQueued)
-	{
-		return;
-	}
-
-	g_iAutoLoadAttempt++;
-	g_bAutoLoadQueued = true;
-	ServerCommand("sm plugins load qol/l4d2_elite_si_smoker_noxious.smx");
-	CreateTimer(1.0, Timer_VerifyAutoLoad, _, TIMER_FLAG_NO_MAPCHANGE);
-}
-
-public Action Timer_VerifyAutoLoad(Handle timer)
-{
-	g_bAutoLoadQueued = false;
-	RefreshSmokerNoxiousModuleState();
-
-	if (!g_bHasSmokerNoxiousModule)
-	{
-		if (g_iAutoLoadAttempt <= 2)
-		{
-			PrintToServer("[EliteSI Core] Smoker Noxious module missing, trying auto-load attempt %d.", g_iAutoLoadAttempt + 1);
-			TryAutoLoadSmokerNoxious();
-		}
-
-		LogError("[EliteSI Core] Unable to auto-load qol/l4d2_elite_si_smoker_noxious.smx (attempt %d). Verify plugin exists in addons/sourcemod/plugins/qol/ and left4dhooks is loaded.", g_iAutoLoadAttempt);
-		PrintToServer("[EliteSI Core] Auto-load failed. Check errors log for details.");
-	}
-	else
-	{
-		PrintToServer("[EliteSI Core] Smoker Noxious module loaded successfully.");
-	}
-
-	return Plugin_Stop;
 }
 
 void NotifyEliteAssigned(int client, int zClass, int subtype)

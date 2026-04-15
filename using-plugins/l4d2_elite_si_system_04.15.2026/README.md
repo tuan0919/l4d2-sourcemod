@@ -144,10 +144,12 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Chat announce elite SI da doi sang mau theo `{red}` (colors include),
   dong bo voi he thong notify hien tai.
 
-- Core bo sung auto-load safeguard cho module noxious:
-  - `l4d2_elite_si_core_auto_load_smoker_noxious`
-    - `0`: khong auto-load
-    - `1`: auto `sm plugins load qol/l4d2_elite_si_smoker_noxious.smx` neu module chua load
+- Core khong con auto-load module noxious.
+  - Plugin `l4d2_elite_si_smoker_noxious.smx` can duoc load san trong plugin list.
+
+- HardSI director da fix cung duong dan aggressive cfg:
+  - `exec l4d2_elite_si_hardsi/aggressive_ai.cfg`
+  - Khong con cvar doi ten file aggressive cfg.
 
 - Co bo sung runtime cfg de de override tren server:
   - `cfg/sourcemod/l4d2_elite_si_smoker_noxious.cfg`
@@ -234,3 +236,26 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
   - `l4d2_elite_si_hardsi_tank`
   - `l4d2_elite_si_hardsi_director` (global `nb_assault` + aggressive cfg)
 - Cac cvar cua nhanh Abnormal behavior duoc doi prefix sang `l4d2_elite_si_hardsi_*` de dong bo he thong elite.
+
+### 15/04/2026 (Cvar cleanup + MainConfig UI)
+
+- Xoa cvar `l4d2_elite_si_core_auto_load_smoker_noxious` trong core.
+  - Core khong con auto-load module noxious; plugin noxious can load san trong plugin list.
+
+- Xoa cvar `l4d2_elite_smoker_noxious_enable` trong module noxious.
+  - Noxious module luon hoat dong khi plugin duoc load.
+
+- HardSI director khong con cvar doi ten aggressive cfg.
+  - Fix cung duong dan: `exec l4d2_elite_si_hardsi/aggressive_ai.cfg`.
+
+- Main Configurations (webapp) da bo 3 field UI tuong ung:
+  - HardSI Director Aggressive CFG
+  - Auto-load Noxious Module
+  - Enable Noxious Module
+
+- Main Configurations da bo tri lai phan Tank vao filter `Tank` rieng trong Elite Type.
+
+- Rename title section:
+  - `Common Smoker Noxious Settings` -> `Smoker Noxious - Common Settings`
+  - `HardSI (Abnormal Behavior)` -> `<SI> - Abnormal Behavior`
+  - Cac subtype noxious theo dang `Smoker Noxious - <Subtype>`

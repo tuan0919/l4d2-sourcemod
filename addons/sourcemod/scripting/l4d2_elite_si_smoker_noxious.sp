@@ -54,7 +54,6 @@ native int EliteSI_GetSubtype(int client);
 native bool L4D2_IsEliteSI(int client);
 native int L4D2_GetEliteSubtype(int client);
 
-ConVar g_cvEnable;
 ConVar g_cvThinkInterval;
 ConVar g_cvWarningHintEnable;
 ConVar g_cvWarningHintCooldown;
@@ -179,7 +178,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 public void OnPluginStart()
 {
-	g_cvEnable = CreateConVar("l4d2_elite_smoker_noxious_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvThinkInterval = CreateConVar("l4d2_elite_smoker_noxious_think_interval", "0.2", "Main think interval in seconds.", FCVAR_NOTIFY, true, 0.05, true, 1.0);
 	g_cvWarningHintEnable = CreateConVar("l4d2_elite_smoker_noxious_warning_hint_enable", "1", "0=Off, 1=Show instructor hint when survivor takes noxious damage.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvWarningHintCooldown = CreateConVar("l4d2_elite_smoker_noxious_warning_hint_cooldown", "1.8", "Cooldown between repeated warning hints per survivor.", FCVAR_NOTIFY, true, 0.0, true, 10.0);
@@ -324,7 +322,7 @@ public void OnWarningHintColorChanged(ConVar convar, const char[] oldValue, cons
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
 {
-	if (!g_cvEnable.BoolValue || !ShouldApplyAnySmokerSubtype(victim, true))
+	if (!ShouldApplyAnySmokerSubtype(victim, true))
 	{
 		return Plugin_Continue;
 	}
@@ -516,11 +514,6 @@ public Action Timer_MainThink(Handle timer)
 		return Plugin_Stop;
 	}
 
-	if (!g_cvEnable.BoolValue)
-	{
-		return Plugin_Continue;
-	}
-
 	float now = GetGameTime();
 
 	for (int smoker = 1; smoker <= MaxClients; smoker++)
@@ -562,11 +555,6 @@ public Action Timer_MainThink(Handle timer)
 
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 {
-	if (!g_cvEnable.BoolValue)
-	{
-		return;
-	}
-
 	if (client <= 0 || client > MaxClients || zclass != ZC_SMOKER)
 	{
 		return;

@@ -5,10 +5,10 @@
 #include <left4dhooks>
 
 #define PLUGIN_VERSION "1.0.0"
+#define AGGRESSIVE_CFG_PATH "l4d2_elite_si_hardsi/aggressive_ai.cfg"
 
 ConVar g_cvEnable;
 ConVar g_cvAssaultInterval;
-ConVar g_cvAggressiveCfg;
 
 Handle g_hAssaultTimer;
 
@@ -36,7 +36,6 @@ public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_si_hardsi_director_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvAssaultInterval = CreateConVar("l4d2_elite_si_hardsi_director_assault_interval", "2.0", "Frequency in seconds for nb_assault. 0=Off.", FCVAR_NOTIFY, true, 0.0, true, 30.0);
-	g_cvAggressiveCfg = CreateConVar("l4d2_elite_si_hardsi_director_aggressive_cfg", "aggressive_ai.cfg", "Cfg file in cfg/l4d2_elite_si_hardsi/ executed on config load.", FCVAR_NOTIFY);
 
 	CreateConVar("l4d2_elite_si_hardsi_director_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_hardsi_director");
@@ -58,12 +57,7 @@ public void OnConfigsExecuted()
 		return;
 	}
 
-	char cfgName[64];
-	g_cvAggressiveCfg.GetString(cfgName, sizeof(cfgName));
-	if (cfgName[0] != '\0')
-	{
-		ServerCommand("exec l4d2_elite_si_hardsi/%s", cfgName);
-	}
+	ServerCommand("exec %s", AGGRESSIVE_CFG_PATH);
 
 	if (L4D_HasAnySurvivorLeftSafeArea())
 	{

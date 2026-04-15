@@ -499,6 +499,24 @@ public Action Timer_MainThink(Handle timer)
 	return Plugin_Continue;
 }
 
+public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
+{
+	if (!g_cvEnable.BoolValue)
+	{
+		return;
+	}
+
+	if (zclass != ZC_SMOKER || !IsValidSmoker(client, false))
+	{
+		return;
+	}
+
+	if (subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET)
+	{
+		PrintToServer("[EliteSI Noxious] Assigned subtype %d to smoker #%d.", subtype, client);
+	}
+}
+
 void TickAsphyxiation(int smoker, float now)
 {
 	if (!g_cvAsphyxiationEnable.BoolValue)
@@ -1001,7 +1019,12 @@ bool IsValidSmoker(int client, bool requireAlive)
 		return false;
 	}
 
-	if (GetClientTeam(client) != TEAM_INFECTED || !IsFakeClient(client))
+	if (GetClientTeam(client) != TEAM_INFECTED)
+	{
+		return false;
+	}
+
+	if (GetEntProp(client, Prop_Send, "m_isGhost") == 1)
 	{
 		return false;
 	}

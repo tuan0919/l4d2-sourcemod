@@ -55,6 +55,7 @@ bool g_bIsFireImmune[MAXPLAYERS + 1];
 int g_iEliteSubtype[MAXPLAYERS + 1];
 bool g_bHasSmokerNoxiousModule;
 bool g_bAutoLoadQueued;
+int g_iAutoLoadAttempt;
 
 native int TuanNotify_PublishInfo(const char[] message);
 
@@ -527,8 +528,9 @@ void TryAutoLoadSmokerNoxious()
 		return;
 	}
 
+	g_iAutoLoadAttempt++;
 	g_bAutoLoadQueued = true;
-	ServerCommand("sm plugins load qol/l4d2_elite_si_smoker_noxious.smx");
+	ServerCommand("sm plugins load l4d2_elite_si_smoker_noxious.smx");
 	CreateTimer(1.0, Timer_VerifyAutoLoad, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
@@ -539,7 +541,18 @@ public Action Timer_VerifyAutoLoad(Handle timer)
 
 	if (!g_bHasSmokerNoxiousModule)
 	{
-		LogError("[EliteSI Core] Unable to auto-load l4d2_elite_si_smoker_noxious.smx. Verify plugin exists in addons/sourcemod/plugins/qol/ and left4dhooks is loaded.");
+		if (g_iAutoLoadAttempt <= 2)
+		{
+			PrintToServer("[EliteSI Core] Smoker Noxious module missing, trying auto-load attempt %d.", g_iAutoLoadAttempt + 1);
+			TryAutoLoadSmokerNoxious();
+		}
+
+		LogError("[EliteSI Core] Unable to auto-load l4d2_elite_si_smoker_noxious.smx (attempt %d). Verify plugin exists in addons/sourcemod/plugins/ and left4dhooks is loaded.", g_iAutoLoadAttempt);
+		PrintToServer("[EliteSI Core] Auto-load failed. Check errors log for details.");
+	}
+	else
+	{
+		PrintToServer("[EliteSI Core] Smoker Noxious module loaded successfully.");
 	}
 
 	return Plugin_Stop;

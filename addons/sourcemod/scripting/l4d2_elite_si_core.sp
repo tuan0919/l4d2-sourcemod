@@ -530,7 +530,7 @@ void TryAutoLoadSmokerNoxious()
 
 	g_iAutoLoadAttempt++;
 	g_bAutoLoadQueued = true;
-	ServerCommand("sm plugins load l4d2_elite_si_smoker_noxious.smx");
+	ServerCommand("sm plugins load qol/l4d2_elite_si_smoker_noxious.smx");
 	CreateTimer(1.0, Timer_VerifyAutoLoad, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
@@ -547,7 +547,7 @@ public Action Timer_VerifyAutoLoad(Handle timer)
 			TryAutoLoadSmokerNoxious();
 		}
 
-		LogError("[EliteSI Core] Unable to auto-load l4d2_elite_si_smoker_noxious.smx (attempt %d). Verify plugin exists in addons/sourcemod/plugins/ and left4dhooks is loaded.", g_iAutoLoadAttempt);
+		LogError("[EliteSI Core] Unable to auto-load qol/l4d2_elite_si_smoker_noxious.smx (attempt %d). Verify plugin exists in addons/sourcemod/plugins/qol/ and left4dhooks is loaded.", g_iAutoLoadAttempt);
 		PrintToServer("[EliteSI Core] Auto-load failed. Check errors log for details.");
 	}
 	else

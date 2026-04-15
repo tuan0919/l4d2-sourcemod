@@ -14,6 +14,7 @@
 #define ZC_SMOKER 1
 
 #define PARTICLE_METHANE_CLOUD "smoker_smokecloud"
+#define MODEL_EXPLOSION_SPRITE "sprites/zerogxplode.spr"
 
 enum
 {
@@ -37,6 +38,8 @@ enum
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
+native bool L4D2_IsEliteSI(int client);
+native int L4D2_GetEliteSubtype(int client);
 
 ConVar g_cvEnable;
 ConVar g_cvThinkInterval;
@@ -94,8 +97,14 @@ ConVar g_cvVoidPocketPull;
 ConVar g_cvVoidPocketDamage;
 
 bool g_bHasEliteApi;
+bool g_bHasEliteApiLegacy;
 bool g_bHasStaggerApi;
 bool g_bHasFlingApi;
+
+bool g_bEliteCache[MAXPLAYERS + 1];
+int g_iSubtypeCache[MAXPLAYERS + 1];
+
+int g_iExplosionSprite = -1;
 
 bool g_bIsChoking[MAXPLAYERS + 1];
 
@@ -220,8 +229,14 @@ public void OnPluginStart()
 		}
 	}
 
+	PrecacheNoxiousAssets();
 	RefreshApiState();
 	RestartThinkTimer();
+}
+
+public void OnMapStart()
+{
+	PrecacheNoxiousAssets();
 }
 
 public void OnAllPluginsLoaded()
@@ -274,7 +289,7 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 		return Plugin_Continue;
 	}
 
-	int subtype = EliteSI_GetSubtype(victim);
+	int subtype = GetSmokerSubtypeForClient(victim);
 
 	if (subtype == ELITE_SUBTYPE_SMOKER_RESTRAINED_HOSTAGE && g_cvRestrainedHostageEnable.BoolValue && g_bIsChoking[victim])
 	{
@@ -455,7 +470,7 @@ public Action Timer_MainThink(Handle timer)
 		return Plugin_Stop;
 	}
 
-	if (!g_cvEnable.BoolValue || !g_bHasEliteApi)
+	if (!g_cvEnable.BoolValue)
 	{
 		return Plugin_Continue;
 	}
@@ -469,7 +484,7 @@ public Action Timer_MainThink(Handle timer)
 			continue;
 		}
 
-		int subtype = EliteSI_GetSubtype(smoker);
+		int subtype = GetSmokerSubtypeForClient(smoker);
 		switch (subtype)
 		{
 			case ELITE_SUBTYPE_SMOKER_ASPHYXIATION:
@@ -506,15 +521,29 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 		return;
 	}
 
-	if (zclass != ZC_SMOKER || !IsValidSmoker(client, false))
+	if (client <= 0 || client > MaxClients || zclass != ZC_SMOKER)
 	{
 		return;
 	}
+
+	g_bEliteCache[client] = true;
+	g_iSubtypeCache[client] = subtype;
 
 	if (subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET)
 	{
 		PrintToServer("[EliteSI Noxious] Assigned subtype %d to smoker #%d.", subtype, client);
 	}
+}
+
+public void EliteSI_OnEliteCleared(int client)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	g_bEliteCache[client] = false;
+	g_iSubtypeCache[client] = ELITE_SUBTYPE_NONE;
 }
 
 void TickAsphyxiation(int smoker, float now)
@@ -717,6 +746,8 @@ void TriggerMethaneBlast(int smoker)
 	float innerPush = g_cvMethaneBlastInnerPush.FloatValue;
 	float outerPush = g_cvMethaneBlastOuterPush.FloatValue;
 
+	TriggerMethaneBlastEffects(smokerPos, outerRange, innerPush);
+
 	for (int survivor = 1; survivor <= MaxClients; survivor++)
 	{
 		if (!IsValidAliveSurvivor(survivor) || IsSurvivorPinned(survivor))
@@ -910,6 +941,36 @@ void DealDamage(int victim, int attacker, int amount)
 		return;
 	}
 
+	char targetName[32];
+	char damageStr[16];
+	Format(targetName, sizeof(targetName), "elite_noxious_hurt_%d", victim);
+	IntToString(amount, damageStr, sizeof(damageStr));
+
+	int pointHurt = CreateEntityByName("point_hurt");
+	if (pointHurt > MaxClients && IsValidEntity(pointHurt))
+	{
+		DispatchKeyValue(victim, "targetname", targetName);
+		DispatchKeyValue(pointHurt, "DamageTarget", targetName);
+		DispatchKeyValue(pointHurt, "Damage", damageStr);
+		DispatchKeyValue(pointHurt, "DamageType", "0");
+		DispatchSpawn(pointHurt);
+
+		float pos[3];
+		GetClientEyePosition(victim, pos);
+		TeleportEntity(pointHurt, pos, NULL_VECTOR, NULL_VECTOR);
+
+		int activator = -1;
+		if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
+		{
+			activator = attacker;
+		}
+
+		AcceptEntityInput(pointHurt, "Hurt", activator);
+		DispatchKeyValue(victim, "targetname", "null");
+		RemoveEntity(pointHurt);
+		return;
+	}
+
 	int attackerEntity = 0;
 	if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
 	{
@@ -945,6 +1006,9 @@ void ResetClientState(int client, bool resetSpeed)
 	g_iCollapsedSmokerUserId[client] = 0;
 	g_fCollapsedNextTick[client] = 0.0;
 
+	g_bEliteCache[client] = false;
+	g_iSubtypeCache[client] = ELITE_SUBTYPE_NONE;
+
 	g_vecMethaneCloudPos[client][0] = 0.0;
 	g_vecMethaneCloudPos[client][1] = 0.0;
 	g_vecMethaneCloudPos[client][2] = 0.0;
@@ -969,6 +1033,8 @@ void RefreshApiState()
 {
 	g_bHasEliteApi = (GetFeatureStatus(FeatureType_Native, "EliteSI_IsElite") == FeatureStatus_Available)
 		&& (GetFeatureStatus(FeatureType_Native, "EliteSI_GetSubtype") == FeatureStatus_Available);
+	g_bHasEliteApiLegacy = (GetFeatureStatus(FeatureType_Native, "L4D2_IsEliteSI") == FeatureStatus_Available)
+		&& (GetFeatureStatus(FeatureType_Native, "L4D2_GetEliteSubtype") == FeatureStatus_Available);
 
 	g_bHasStaggerApi = (GetFeatureStatus(FeatureType_Native, "L4D_StaggerPlayer") == FeatureStatus_Available);
 	g_bHasFlingApi = (GetFeatureStatus(FeatureType_Native, "L4D2_CTerrorPlayer_Fling") == FeatureStatus_Available);
@@ -993,23 +1059,59 @@ void RestartThinkTimer()
 
 bool ShouldApplyAnySmokerSubtype(int client, bool requireAlive)
 {
-	if (!IsValidSmoker(client, requireAlive) || !g_bHasEliteApi || !EliteSI_IsElite(client))
+	if (!IsValidSmoker(client, requireAlive))
 	{
 		return false;
 	}
 
-	int subtype = EliteSI_GetSubtype(client);
+	int subtype = GetSmokerSubtypeForClient(client);
 	return subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET;
 }
 
 bool ShouldApplySubtype(int client, int subtype, bool requireAlive)
 {
-	if (!ShouldApplyAnySmokerSubtype(client, requireAlive))
+	return ShouldApplyAnySmokerSubtype(client, requireAlive) && GetSmokerSubtypeForClient(client) == subtype;
+}
+
+int GetSmokerSubtypeForClient(int client)
+{
+	if (client <= 0 || client > MaxClients)
 	{
-		return false;
+		return ELITE_SUBTYPE_NONE;
 	}
 
-	return EliteSI_GetSubtype(client) == subtype;
+	if (g_bHasEliteApi && IsClientInGame(client) && EliteSI_IsElite(client))
+	{
+		int subtype = EliteSI_GetSubtype(client);
+		if (subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET)
+		{
+			g_bEliteCache[client] = true;
+			g_iSubtypeCache[client] = subtype;
+			return subtype;
+		}
+	}
+
+	if (g_bHasEliteApiLegacy && IsClientInGame(client) && L4D2_IsEliteSI(client))
+	{
+		int subtype = L4D2_GetEliteSubtype(client);
+		if (subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET)
+		{
+			g_bEliteCache[client] = true;
+			g_iSubtypeCache[client] = subtype;
+			return subtype;
+		}
+	}
+
+	if (g_bEliteCache[client])
+	{
+		int cachedSubtype = g_iSubtypeCache[client];
+		if (cachedSubtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && cachedSubtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET)
+		{
+			return cachedSubtype;
+		}
+	}
+
+	return ELITE_SUBTYPE_NONE;
 }
 
 bool IsValidSmoker(int client, bool requireAlive)
@@ -1024,17 +1126,64 @@ bool IsValidSmoker(int client, bool requireAlive)
 		return false;
 	}
 
-	if (GetEntProp(client, Prop_Send, "m_isGhost") == 1)
+	if (requireAlive)
 	{
-		return false;
-	}
+		if (!IsPlayerAlive(client))
+		{
+			return false;
+		}
 
-	if (requireAlive && !IsPlayerAlive(client))
-	{
-		return false;
+		if (GetEntProp(client, Prop_Send, "m_isGhost") == 1)
+		{
+			return false;
+		}
 	}
 
 	return GetEntProp(client, Prop_Send, "m_zombieClass") == ZC_SMOKER;
+}
+
+void PrecacheNoxiousAssets()
+{
+	PrecacheParticle(PARTICLE_METHANE_CLOUD);
+	g_iExplosionSprite = PrecacheModel(MODEL_EXPLOSION_SPRITE, true);
+}
+
+void TriggerMethaneBlastEffects(const float origin[3], float radius, float push)
+{
+	if (g_iExplosionSprite > 0)
+	{
+		TE_SetupExplosion(origin, g_iExplosionSprite, 1.2, 1, 0, RoundToNearest(radius), RoundToNearest(push));
+		TE_SendToAll();
+	}
+
+	int exPhys = CreateEntityByName("env_physexplosion");
+	if (exPhys > MaxClients && IsValidEntity(exPhys))
+	{
+		char sRadius[16];
+		char sPower[16];
+		IntToString(RoundToNearest(radius), sRadius, sizeof(sRadius));
+		IntToString(RoundToNearest(push), sPower, sizeof(sPower));
+
+		DispatchKeyValue(exPhys, "radius", sRadius);
+		DispatchKeyValue(exPhys, "magnitude", sPower);
+		DispatchSpawn(exPhys);
+		TeleportEntity(exPhys, origin, NULL_VECTOR, NULL_VECTOR);
+		AcceptEntityInput(exPhys, "Explode");
+		AcceptEntityInput(exPhys, "Kill");
+	}
+}
+
+void PrecacheParticle(const char[] effectName)
+{
+	int table = FindStringTable("ParticleEffectNames");
+	if (table == INVALID_STRING_TABLE)
+	{
+		return;
+	}
+
+	bool save = LockStringTables(false);
+	AddToStringTable(table, effectName);
+	LockStringTables(save);
 }
 
 bool IsValidAliveSurvivor(int client)

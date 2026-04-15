@@ -112,6 +112,10 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
     - `0`: tat thong bao spawn elite SI
     - `1`: thong bao chat mau do, kem type + mo ta ngan
 
+  - `l4d2_elite_si_core_spawn_cooldown`
+    - Cooldown global giua 2 lan roll spawn Elite SI thanh cong
+    - Mac dinh: `20.0` giay
+
 - Smoker elite khong con roll qua `l4d2_elite_si_core_smoker_ability_subtype_chance`.
   Thay vao do roll ngau nhien 1 trong 11 Noxious subtype.
 
@@ -187,3 +191,7 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 
 - Tich hop vao `Tuan_l4d2_death_incap_red`:
   - Resolve dung cause dac thu noxious thay vi gom chung `Smoker claws`.
+
+- Core bo sung cooldown spawn elite de tranh burst nhieu elite cung luc:
+  - `l4d2_elite_si_core_spawn_cooldown`
+    - Mac dinh `20.0`s

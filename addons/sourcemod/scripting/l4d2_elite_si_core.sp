@@ -42,6 +42,7 @@ enum
 
 ConVar g_cvEnable;
 ConVar g_cvEliteChance;
+ConVar g_cvEliteSpawnCooldown;
 ConVar g_cvEliteHpMultiplier;
 ConVar g_cvEliteFireChance;
 ConVar g_cvSpitterAbilityChance;
@@ -54,6 +55,7 @@ ConVar g_cvSmokerForceSubtype;
 bool g_bIsElite[MAXPLAYERS + 1];
 bool g_bIsFireImmune[MAXPLAYERS + 1];
 int g_iEliteSubtype[MAXPLAYERS + 1];
+float g_fNextEliteSpawnTime;
 bool g_bHasSmokerNoxiousModule;
 bool g_bAutoLoadQueued;
 int g_iAutoLoadAttempt;
@@ -130,6 +132,7 @@ public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_si_core_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvEliteChance = CreateConVar("l4d2_elite_si_core_spawn_chance", "30", "Chance (0-100) that a spawned SI becomes Elite.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvEliteFireChance = CreateConVar("l4d2_elite_si_core_fire_ignite_chance", "20", "Chance (0-100) for elite SI to ignite itself and gain fire immunity.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvSpitterAbilityChance = CreateConVar("l4d2_elite_si_core_spitter_ability_subtype_chance", "50", "Spitter elite chance to roll Strange Movement subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
@@ -158,6 +161,7 @@ public void OnPluginStart()
 
 	RefreshSmokerNoxiousModuleState();
 	TryAutoLoadSmokerNoxious();
+	g_fNextEliteSpawnTime = 0.0;
 }
 
 public void OnAllPluginsLoaded()
@@ -196,6 +200,8 @@ public void OnClientDisconnect(int client)
 
 public Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
+	g_fNextEliteSpawnTime = 0.0;
+
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (IsClientInGame(i))
@@ -241,6 +247,13 @@ public Action Timer_ProcessSpawn(Handle timer, int userId)
 		return Plugin_Stop;
 	}
 
+	float now = GetGameTime();
+	float eliteCooldown = g_cvEliteSpawnCooldown.FloatValue;
+	if (eliteCooldown > 0.0 && now < g_fNextEliteSpawnTime)
+	{
+		return Plugin_Stop;
+	}
+
 	if (GetRandomInt(1, 100) > g_cvEliteChance.IntValue)
 	{
 		return Plugin_Stop;
@@ -261,6 +274,12 @@ public Action Timer_ProcessSpawn(Handle timer, int userId)
 
 	NotifyEliteAssigned(client, zClass, g_iEliteSubtype[client]);
 	AnnounceEliteSpawn(client, zClass, g_iEliteSubtype[client]);
+
+	if (eliteCooldown > 0.0)
+	{
+		g_fNextEliteSpawnTime = now + eliteCooldown;
+	}
+
 	return Plugin_Stop;
 }
 

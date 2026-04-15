@@ -8,6 +8,7 @@
 #include <left4dhooks>
 
 native int L4D2_IsEliteSI(int client);
+native bool L4D2_GetEliteTypeName(int client, char[] buffer, int maxlen);
 native int EliteSI_Noxious_GetRecentDamageCause(int victim);
 native int EliteSI_Noxious_GetRecentDamageAttacker(int victim);
 

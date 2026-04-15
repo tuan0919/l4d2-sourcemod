@@ -10,6 +10,12 @@
 
 #define TEAM_INFECTED 3
 
+#define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
+#define ELITE_CLASS_COUNT 6
+#define ELITE_SUBTYPE_COUNT 16
+#define ELITE_TYPE_NAME_LEN 48
+#define ELITE_TYPE_DESC_LEN 192
+
 enum
 {
 	ELITE_SUBTYPE_NONE = 0,
@@ -98,6 +104,19 @@ static const int ELITE_SMOKER_NOXIOUS_COLORS[11][3] =
 	{100, 255, 255}
 };
 
+static const char g_sEliteClassKeys[ELITE_CLASS_COUNT][] =
+{
+	"smoker",
+	"boomer",
+	"hunter",
+	"spitter",
+	"jockey",
+	"charger"
+};
+
+char g_sEliteTypeNames[ELITE_CLASS_COUNT][ELITE_SUBTYPE_COUNT][ELITE_TYPE_NAME_LEN];
+char g_sEliteTypeDescs[ELITE_CLASS_COUNT][ELITE_SUBTYPE_COUNT][ELITE_TYPE_DESC_LEN];
+
 public Plugin myinfo =
 {
 	name = "[L4D2] Elite SI Core",
@@ -118,9 +137,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 	CreateNative("EliteSI_IsElite", Native_EliteSI_IsElite);
 	CreateNative("EliteSI_GetSubtype", Native_EliteSI_GetSubtype);
 	CreateNative("EliteSI_IsFireImmune", Native_EliteSI_IsFireImmune);
+	CreateNative("EliteSI_GetTypeName", Native_EliteSI_GetTypeName);
+	CreateNative("EliteSI_GetTypeDescription", Native_EliteSI_GetTypeDescription);
 
 	CreateNative("L4D2_IsEliteSI", Native_EliteSI_IsElite);
 	CreateNative("L4D2_GetEliteSubtype", Native_EliteSI_GetSubtype);
+	CreateNative("L4D2_GetEliteTypeName", Native_EliteSI_GetTypeName);
+	CreateNative("L4D2_GetEliteTypeDescription", Native_EliteSI_GetTypeDescription);
 
 	RegPluginLibrary("elite_si_core");
 	RegPluginLibrary("l4d2_elite_SI_reward");
@@ -159,9 +182,15 @@ public void OnPluginStart()
 		}
 	}
 
+	LoadEliteTypeDescriptionsFromData();
 	RefreshSmokerNoxiousModuleState();
 	TryAutoLoadSmokerNoxious();
 	g_fNextEliteSpawnTime = 0.0;
+}
+
+public void OnMapStart()
+{
+	LoadEliteTypeDescriptionsFromData();
 }
 
 public void OnAllPluginsLoaded()
@@ -457,10 +486,64 @@ void AnnounceEliteSpawn(int client, int zClass, int subtype)
 	char typeLabel[48];
 	char typeDesc[192];
 	GetSiClassLabel(zClass, classLabel, sizeof(classLabel));
-	GetSubtypeLabel(subtype, typeLabel, sizeof(typeLabel));
-	GetSubtypeDescription(subtype, typeDesc, sizeof(typeDesc));
+	GetEliteTypeNameByClassSubtype(zClass, subtype, typeLabel, sizeof(typeLabel));
+	GetEliteTypeDescriptionByClassSubtype(zClass, subtype, typeDesc, sizeof(typeDesc));
 
 	CPrintToChatAll("{red}Elite %s has spawned - %s (%s).", classLabel, typeLabel, typeDesc);
+}
+
+void GetEliteTypeNameByClassSubtype(int zClass, int subtype, char[] buffer, int maxlen)
+{
+	if (TryGetConfiguredEliteTypeName(zClass, subtype, buffer, maxlen))
+	{
+		return;
+	}
+
+	GetSubtypeLabelDefault(subtype, buffer, maxlen);
+}
+
+void GetEliteTypeDescriptionByClassSubtype(int zClass, int subtype, char[] buffer, int maxlen)
+{
+	if (TryGetConfiguredEliteTypeDescription(zClass, subtype, buffer, maxlen))
+	{
+		return;
+	}
+
+	GetSubtypeDescriptionDefault(subtype, buffer, maxlen);
+}
+
+bool TryGetConfiguredEliteTypeName(int zClass, int subtype, char[] buffer, int maxlen)
+{
+	int classIndex = GetSiClassIndex(zClass);
+	if (classIndex == -1 || !IsValidSubtypeForConfig(subtype))
+	{
+		return false;
+	}
+
+	if (g_sEliteTypeNames[classIndex][subtype][0] == '\0')
+	{
+		return false;
+	}
+
+	strcopy(buffer, maxlen, g_sEliteTypeNames[classIndex][subtype]);
+	return true;
+}
+
+bool TryGetConfiguredEliteTypeDescription(int zClass, int subtype, char[] buffer, int maxlen)
+{
+	int classIndex = GetSiClassIndex(zClass);
+	if (classIndex == -1 || !IsValidSubtypeForConfig(subtype))
+	{
+		return false;
+	}
+
+	if (g_sEliteTypeDescs[classIndex][subtype][0] == '\0')
+	{
+		return false;
+	}
+
+	strcopy(buffer, maxlen, g_sEliteTypeDescs[classIndex][subtype]);
+	return true;
 }
 
 void GetSiClassLabel(int zClass, char[] buffer, int maxlen)
@@ -477,7 +560,7 @@ void GetSiClassLabel(int zClass, char[] buffer, int maxlen)
 	}
 }
 
-void GetSubtypeLabel(int subtype, char[] buffer, int maxlen)
+void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 {
 	switch (subtype)
 	{
@@ -500,7 +583,7 @@ void GetSubtypeLabel(int subtype, char[] buffer, int maxlen)
 	}
 }
 
-void GetSubtypeDescription(int subtype, char[] buffer, int maxlen)
+void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 {
 	switch (subtype)
 	{
@@ -521,6 +604,127 @@ void GetSubtypeDescription(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SMOKER_VOID_POCKET: strcopy(buffer, maxlen, "pulls nearby Survivors violently toward itself");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
+}
+
+int GetSiClassIndex(int zClass)
+{
+	if (zClass < ZC_SMOKER || zClass > ZC_CHARGER)
+	{
+		return -1;
+	}
+
+	return zClass - ZC_SMOKER;
+}
+
+bool IsValidSubtypeForConfig(int subtype)
+{
+	return subtype >= ELITE_SUBTYPE_HARDSI && subtype < ELITE_SUBTYPE_COUNT;
+}
+
+void ResetEliteTypeDescriptionCache()
+{
+	for (int c = 0; c < ELITE_CLASS_COUNT; c++)
+	{
+		for (int s = 0; s < ELITE_SUBTYPE_COUNT; s++)
+		{
+			g_sEliteTypeNames[c][s][0] = '\0';
+			g_sEliteTypeDescs[c][s][0] = '\0';
+		}
+	}
+}
+
+void LoadEliteTypeDescriptionsFromData()
+{
+	ResetEliteTypeDescriptionCache();
+
+	char path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), ELITE_TYPE_DATA_FILE);
+
+	if (!FileExists(path))
+	{
+		WriteDefaultEliteTypeDescriptionFile(path);
+	}
+
+	KeyValues kv = new KeyValues("elite_type_descriptions");
+	if (!kv.ImportFromFile(path))
+	{
+		LogError("[EliteSI Core] Failed to load %s", path);
+		delete kv;
+		return;
+	}
+
+	for (int classIdx = 0; classIdx < ELITE_CLASS_COUNT; classIdx++)
+	{
+		if (!kv.JumpToKey(g_sEliteClassKeys[classIdx], false))
+		{
+			continue;
+		}
+
+		for (int subtype = ELITE_SUBTYPE_HARDSI; subtype < ELITE_SUBTYPE_COUNT; subtype++)
+		{
+			char defaultName[ELITE_TYPE_NAME_LEN];
+			char defaultDesc[ELITE_TYPE_DESC_LEN];
+			GetSubtypeLabelDefault(subtype, defaultName, sizeof(defaultName));
+			GetSubtypeDescriptionDefault(subtype, defaultDesc, sizeof(defaultDesc));
+
+			char keyName[16];
+			IntToString(subtype, keyName, sizeof(keyName));
+			if (!kv.JumpToKey(keyName, false))
+			{
+				continue;
+			}
+
+			kv.GetString("name", g_sEliteTypeNames[classIdx][subtype], ELITE_TYPE_NAME_LEN, defaultName);
+			kv.GetString("description", g_sEliteTypeDescs[classIdx][subtype], ELITE_TYPE_DESC_LEN, defaultDesc);
+			kv.GoBack();
+		}
+
+		kv.GoBack();
+	}
+
+	delete kv;
+}
+
+void WriteDefaultEliteTypeDescriptionFile(const char[] path)
+{
+	KeyValues kv = new KeyValues("elite_type_descriptions");
+
+	for (int classIdx = 0; classIdx < ELITE_CLASS_COUNT; classIdx++)
+	{
+		if (!kv.JumpToKey(g_sEliteClassKeys[classIdx], true))
+		{
+			continue;
+		}
+
+		for (int subtype = ELITE_SUBTYPE_HARDSI; subtype < ELITE_SUBTYPE_COUNT; subtype++)
+		{
+			char keyName[16];
+			char name[ELITE_TYPE_NAME_LEN];
+			char desc[ELITE_TYPE_DESC_LEN];
+
+			IntToString(subtype, keyName, sizeof(keyName));
+			GetSubtypeLabelDefault(subtype, name, sizeof(name));
+			GetSubtypeDescriptionDefault(subtype, desc, sizeof(desc));
+
+			if (!kv.JumpToKey(keyName, true))
+			{
+				continue;
+			}
+
+			kv.SetString("name", name);
+			kv.SetString("description", desc);
+			kv.GoBack();
+		}
+
+		kv.GoBack();
+	}
+
+	if (!kv.ExportToFile(path))
+	{
+		LogError("[EliteSI Core] Failed to write default elite type data file: %s", path);
+	}
+
+	delete kv;
 }
 
 bool IsTrackableSiClass(int zClass)
@@ -647,4 +851,68 @@ public any Native_EliteSI_IsFireImmune(Handle plugin, int numParams)
 	}
 
 	return g_bIsFireImmune[client];
+}
+
+public any Native_EliteSI_GetTypeName(Handle plugin, int numParams)
+{
+	if (numParams < 3)
+	{
+		return false;
+	}
+
+	int client = GetNativeCell(1);
+	int maxlen = GetNativeCell(3);
+
+	if (maxlen > 0)
+	{
+		SetNativeString(2, "", maxlen, false);
+	}
+
+	if (!IsValidInfected(client) || !g_bIsElite[client])
+	{
+		return false;
+	}
+
+	int zClass = GetEntProp(client, Prop_Send, "m_zombieClass");
+	char typeName[ELITE_TYPE_NAME_LEN];
+	GetEliteTypeNameByClassSubtype(zClass, g_iEliteSubtype[client], typeName, sizeof(typeName));
+
+	if (maxlen > 0)
+	{
+		SetNativeString(2, typeName, maxlen, false);
+	}
+
+	return true;
+}
+
+public any Native_EliteSI_GetTypeDescription(Handle plugin, int numParams)
+{
+	if (numParams < 3)
+	{
+		return false;
+	}
+
+	int client = GetNativeCell(1);
+	int maxlen = GetNativeCell(3);
+
+	if (maxlen > 0)
+	{
+		SetNativeString(2, "", maxlen, false);
+	}
+
+	if (!IsValidInfected(client) || !g_bIsElite[client])
+	{
+		return false;
+	}
+
+	int zClass = GetEntProp(client, Prop_Send, "m_zombieClass");
+	char typeDesc[ELITE_TYPE_DESC_LEN];
+	GetEliteTypeDescriptionByClassSubtype(zClass, g_iEliteSubtype[client], typeDesc, sizeof(typeDesc));
+
+	if (maxlen > 0)
+	{
+		SetNativeString(2, typeDesc, maxlen, false);
+	}
+
+	return true;
 }

@@ -46,6 +46,7 @@ enum
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
+native bool EliteSI_GetTypeName(int client, char[] buffer, int maxlen);
 
 ConVar g_cvEnable;
 ConVar g_cvEnableSiRewards;
@@ -132,6 +133,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 	MarkNativeAsOptional("EliteSI_IsElite");
 	MarkNativeAsOptional("EliteSI_GetSubtype");
+	MarkNativeAsOptional("EliteSI_GetTypeName");
 
 	g_fwRewardGranted = new GlobalForward("EliteSIReward_OnGranted", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell);
 	RegPluginLibrary("elite_si_rewards");
@@ -255,10 +257,9 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		char text[160];
 		if (isEliteKill)
 		{
-			int subtype = GetSafeEliteSubtype(victim);
-			char subtypeText[24];
-			GetSubtypeLabel(subtype, subtypeText, sizeof(subtypeText));
-			Format(text, sizeof(text), "%s Elite %s [%s] +%d Temp HP", headshot ? "Headshot" : "Killed", g_siNames[zClass], subtypeText, added);
+			char typeText[48];
+			GetEliteTypeNameSafe(victim, zClass, typeText, sizeof(typeText));
+			Format(text, sizeof(text), "%s Elite %s [%s] +%d Temp HP", headshot ? "Headshot" : "Killed", g_siNames[zClass], typeText, added);
 			DisplayInstructorHint(attacker, text, g_siIcons[zClass], g_sHintColorEliteSi);
 		}
 		else
@@ -389,6 +390,25 @@ int GetSafeEliteSubtype(int client)
 	}
 
 	return EliteSI_GetSubtype(client);
+}
+
+void GetEliteTypeNameSafe(int client, int zClass, char[] buffer, int maxlen)
+{
+	if (GetFeatureStatus(FeatureType_Native, "EliteSI_GetTypeName") == FeatureStatus_Available && EliteSI_GetTypeName(client, buffer, maxlen))
+	{
+		if (buffer[0] != '\0')
+		{
+			return;
+		}
+	}
+
+	int subtype = GetSafeEliteSubtype(client);
+	GetSubtypeLabel(subtype, buffer, maxlen);
+
+	if (buffer[0] == '\0' || StrEqual(buffer, "Unknown", false))
+	{
+		strcopy(buffer, maxlen, g_siNames[zClass]);
+	}
 }
 
 int GetSiClassReward(int zClass)

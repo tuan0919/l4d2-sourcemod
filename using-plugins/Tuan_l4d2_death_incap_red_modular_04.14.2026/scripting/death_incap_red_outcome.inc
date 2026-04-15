@@ -623,7 +623,17 @@ void GetSpecialInfectedName(int client, char[] outName, int maxlen, bool include
 
     if (includeEliteTag && IsEliteSI(client))
     {
-        Format(outName, maxlen, "Elite %s", baseName);
+        char eliteTypeName[64];
+        eliteTypeName[0] = '\0';
+
+        if (GetFeatureStatus(FeatureType_Native, "L4D2_GetEliteTypeName") == FeatureStatus_Available && L4D2_GetEliteTypeName(client, eliteTypeName, sizeof(eliteTypeName)) && eliteTypeName[0] != '\0')
+        {
+            Format(outName, maxlen, "Elite %s (%s)", baseName, eliteTypeName);
+        }
+        else
+        {
+            Format(outName, maxlen, "Elite %s", baseName);
+        }
     }
     else
     {

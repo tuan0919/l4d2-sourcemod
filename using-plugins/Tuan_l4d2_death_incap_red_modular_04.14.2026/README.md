@@ -100,3 +100,18 @@ Hang so moi lien quan den resolver:
 
 - Ket qua:
   - Giam truong hop chat do bao gom chung chung `Smoker claws` voi cac noxious damage.
+
+## Update 16/04/2026 - Elite type name in kill/incap target
+
+- Tich hop native optional moi tu elite core:
+  - `L4D2_GetEliteTypeName(client, buffer, maxlen)`
+
+- Neu target SI la elite, ten target trong kill/incap se hien theo dang:
+  - `Elite <Class> (<TypeName>)`
+
+- Vi du:
+  - `Elite Smoker (Asphyxiation)`
+  - `Elite Charger (Abnormal behavior)`
+
+- Muc tieu:
+  - Khi log chat, nhin phat biet ngay nguoi choi vua kill/incap dung elite type nao.

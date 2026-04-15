@@ -119,6 +119,15 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Smoker elite khong con roll qua `l4d2_elite_si_core_smoker_ability_subtype_chance`.
   Thay vao do roll ngau nhien 1 trong 11 Noxious subtype.
 
+- Elite type text da ho tro custom theo tung SI class + subtype qua file data:
+  - `addons/sourcemod/data/elite_si_type_descriptions.cfg`
+  - Vi du HardSI cua Charger co the dat mo ta khac HardSI cua Smoker.
+
+- Core expose native moi de plugin khac lay ten/desc type dang active:
+  - `EliteSI_GetTypeName(client, buffer, maxlen)`
+  - `EliteSI_GetTypeDescription(client, buffer, maxlen)`
+  - Legacy alias: `L4D2_GetEliteTypeName`, `L4D2_GetEliteTypeDescription`
+
 - Chat announce elite SI da doi sang mau theo `{red}` (colors include),
   dong bo voi he thong notify hien tai.
 
@@ -191,6 +200,9 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 
 - Tich hop vao `Tuan_l4d2_death_incap_red`:
   - Resolve dung cause dac thu noxious thay vi gom chung `Smoker claws`.
+  - Ten victim SI elite trong kill/incap message da doi sang dang:
+    - `Elite <Class> (<TypeName>)`
+    - khong con chi hien chung chung `Elite <Class>`.
 
 - Core bo sung cooldown spawn elite de tranh burst nhieu elite cung luc:
   - `l4d2_elite_si_core_spawn_cooldown`

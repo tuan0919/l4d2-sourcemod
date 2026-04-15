@@ -115,6 +115,17 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Smoker elite khong con roll qua `l4d2_elite_si_core_smoker_ability_subtype_chance`.
   Thay vao do roll ngau nhien 1 trong 11 Noxious subtype.
 
+- Chat announce elite SI da doi sang mau theo `{red}` (colors include),
+  dong bo voi he thong notify hien tai.
+
+- Core bo sung auto-load safeguard cho module noxious:
+  - `l4d2_elite_si_core_auto_load_smoker_noxious`
+    - `0`: khong auto-load
+    - `1`: auto `sm plugins load qol/l4d2_elite_si_smoker_noxious.smx` neu module chua load
+
+- Co bo sung runtime cfg de de override tren server:
+  - `cfg/sourcemod/l4d2_elite_si_smoker_noxious.cfg`
+
 ## Tich hop giua plugin
 
 - Core cap du lieu subtype bang native

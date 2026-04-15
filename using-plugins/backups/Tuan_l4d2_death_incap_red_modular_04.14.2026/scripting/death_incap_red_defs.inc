@@ -8,6 +8,8 @@
 #include <left4dhooks>
 
 native int L4D2_IsEliteSI(int client);
+native int EliteSI_Noxious_GetRecentDamageCause(int victim);
+native int EliteSI_Noxious_GetRecentDamageAttacker(int victim);
 
 #define PLUGIN_VERSION "1.0.0"
 #define ANCHOR_NAME "SI_RedAnchor"

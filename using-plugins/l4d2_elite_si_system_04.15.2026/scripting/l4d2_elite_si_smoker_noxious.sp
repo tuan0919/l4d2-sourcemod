@@ -15,6 +15,7 @@
 
 #define PARTICLE_METHANE_CLOUD "smoker_smokecloud"
 #define MODEL_EXPLOSION_SPRITE "sprites/zerogxplode.spr"
+#define NOXIOUS_DAMAGE_CAUSE_WINDOW 2.0
 
 enum
 {
@@ -36,6 +37,18 @@ enum
 	ELITE_SUBTYPE_SMOKER_VOID_POCKET
 }
 
+enum NoxiousDamageCause
+{
+	NOXIOUS_DAMAGE_NONE = 0,
+	NOXIOUS_DAMAGE_ASPHYXIATION,
+	NOXIOUS_DAMAGE_COLLAPSED_LUNG,
+	NOXIOUS_DAMAGE_METHANE_BLAST,
+	NOXIOUS_DAMAGE_METHANE_LEAK,
+	NOXIOUS_DAMAGE_TONGUE_WHIP,
+	NOXIOUS_DAMAGE_VOID_POCKET,
+	NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE
+}
+
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
 native bool L4D2_IsEliteSI(int client);
@@ -43,6 +56,10 @@ native int L4D2_GetEliteSubtype(int client);
 
 ConVar g_cvEnable;
 ConVar g_cvThinkInterval;
+ConVar g_cvWarningHintEnable;
+ConVar g_cvWarningHintCooldown;
+ConVar g_cvWarningHintColor;
+ConVar g_cvSmokeScreenHintEnable;
 
 ConVar g_cvAsphyxiationEnable;
 ConVar g_cvAsphyxiationDamage;
@@ -105,8 +122,15 @@ bool g_bEliteCache[MAXPLAYERS + 1];
 int g_iSubtypeCache[MAXPLAYERS + 1];
 
 int g_iExplosionSprite = -1;
+char g_sWarningHintColor[24];
 
 bool g_bIsChoking[MAXPLAYERS + 1];
+
+int g_iLastNoxiousDamageCause[MAXPLAYERS + 1];
+int g_iLastNoxiousAttackerUserId[MAXPLAYERS + 1];
+float g_fLastNoxiousDamageTime[MAXPLAYERS + 1];
+float g_fNextWarningHintTime[MAXPLAYERS + 1];
+float g_fNextSmokeScreenHintTime[MAXPLAYERS + 1];
 
 float g_fNextAsphyxiationTick[MAXPLAYERS + 1];
 
@@ -145,6 +169,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 	MarkNativeAsOptional("L4D_StaggerPlayer");
 	MarkNativeAsOptional("L4D2_CTerrorPlayer_Fling");
 
+	CreateNative("EliteSI_Noxious_GetRecentDamageCause", Native_GetRecentDamageCause);
+	CreateNative("EliteSI_Noxious_GetRecentDamageAttacker", Native_GetRecentDamageAttacker);
+
 	RegPluginLibrary("elite_si_smoker_noxious");
 	return APLRes_Success;
 }
@@ -153,6 +180,10 @@ public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_smoker_noxious_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvThinkInterval = CreateConVar("l4d2_elite_smoker_noxious_think_interval", "0.2", "Main think interval in seconds.", FCVAR_NOTIFY, true, 0.05, true, 1.0);
+	g_cvWarningHintEnable = CreateConVar("l4d2_elite_smoker_noxious_warning_hint_enable", "1", "0=Off, 1=Show instructor hint when survivor takes noxious damage.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvWarningHintCooldown = CreateConVar("l4d2_elite_smoker_noxious_warning_hint_cooldown", "1.8", "Cooldown between repeated warning hints per survivor.", FCVAR_NOTIFY, true, 0.0, true, 10.0);
+	g_cvWarningHintColor = CreateConVar("l4d2_elite_smoker_noxious_warning_hint_color", "255 120 60", "Warning hint color in format 'R G B'.", FCVAR_NOTIFY);
+	g_cvSmokeScreenHintEnable = CreateConVar("l4d2_elite_smoker_noxious_smoke_screen_hint_enable", "1", "0=Off, 1=Show hint to attacker when Smoke Screen causes miss.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	g_cvAsphyxiationEnable = CreateConVar("l4d2_elite_smoker_noxious_asphyxiation_enable", "1", "Enable Asphyxiation subtype logic.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvAsphyxiationDamage = CreateConVar("l4d2_elite_smoker_noxious_asphyxiation_damage", "5", "Asphyxiation damage per tick.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
@@ -220,6 +251,7 @@ public void OnPluginStart()
 	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 
 	g_cvThinkInterval.AddChangeHook(OnThinkIntervalChanged);
+	g_cvWarningHintColor.AddChangeHook(OnWarningHintColorChanged);
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -230,6 +262,7 @@ public void OnPluginStart()
 	}
 
 	PrecacheNoxiousAssets();
+	RefreshWarningHintColor();
 	RefreshApiState();
 	RestartThinkTimer();
 }
@@ -282,6 +315,11 @@ public void OnThinkIntervalChanged(ConVar convar, const char[] oldValue, const c
 	RestartThinkTimer();
 }
 
+public void OnWarningHintColorChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	RefreshWarningHintColor();
+}
+
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
 {
 	if (!g_cvEnable.BoolValue || !ShouldApplyAnySmokerSubtype(victim, true))
@@ -299,12 +337,17 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 			scale = 0.0;
 		}
 
+		if (damage > 0.0)
+		{
+			MarkNoxiousDamage(victim, victim, NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE);
+		}
+
 		damage *= scale;
 
 		int hostage = GetEntPropEnt(victim, Prop_Send, "m_tongueVictim");
 		if (IsValidAliveSurvivor(hostage))
 		{
-			DealDamage(hostage, victim, g_cvRestrainedHostageDamage.IntValue);
+			DealDamage(hostage, victim, g_cvRestrainedHostageDamage.IntValue, NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE);
 		}
 
 		return Plugin_Changed;
@@ -316,6 +359,7 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 		if (GetRandomInt(1, 100) <= chance)
 		{
 			damage = 0.0;
+			ShowSmokeScreenHint(attacker, victim);
 			return Plugin_Changed;
 		}
 	}
@@ -583,7 +627,7 @@ void TickAsphyxiation(int smoker, float now)
 
 		if (GetVectorDistance(smokerEye, victimEye) <= range)
 		{
-			DealDamage(survivor, smoker, damage);
+			DealDamage(survivor, smoker, damage, NOXIOUS_DAMAGE_ASPHYXIATION);
 		}
 	}
 }
@@ -643,7 +687,7 @@ void TickMethaneLeak(int smoker, float now)
 		GetClientEyePosition(survivor, pos);
 		if (GetVectorDistance(pos, g_vecMethaneCloudPos[smoker]) <= radius)
 		{
-			DealDamage(survivor, smoker, damage);
+			DealDamage(survivor, smoker, damage, NOXIOUS_DAMAGE_METHANE_LEAK);
 		}
 	}
 }
@@ -714,7 +758,7 @@ void TickVoidPocket(int smoker, float now)
 
 		if (damage > 0)
 		{
-			DealDamage(survivor, smoker, damage);
+			DealDamage(survivor, smoker, damage, NOXIOUS_DAMAGE_VOID_POCKET);
 		}
 
 		affected++;
@@ -764,14 +808,14 @@ void TriggerMethaneBlast(int smoker)
 			float dir[3];
 			MakeVectorFromPoints(smokerPos, survivorPos, dir);
 			ApplyFling(survivor, smoker, dir, innerPush);
-			DealDamage(survivor, smoker, innerDamage);
+			DealDamage(survivor, smoker, innerDamage, NOXIOUS_DAMAGE_METHANE_BLAST);
 		}
 		else if (distance <= outerRange)
 		{
 			float dir[3];
 			MakeVectorFromPoints(smokerPos, survivorPos, dir);
 			ApplyFling(survivor, smoker, dir, outerPush);
-			DealDamage(survivor, smoker, outerDamage);
+			DealDamage(survivor, smoker, outerDamage, NOXIOUS_DAMAGE_METHANE_BLAST);
 		}
 	}
 }
@@ -822,7 +866,7 @@ void TickCollapsedLung(float now)
 			smoker = 0;
 		}
 
-		DealDamage(victim, smoker, damage);
+		DealDamage(victim, smoker, damage, NOXIOUS_DAMAGE_COLLAPSED_LUNG);
 		g_iCollapsedTicks[victim]--;
 		g_fCollapsedNextTick[victim] = now + 1.0;
 	}
@@ -898,7 +942,7 @@ void TriggerTongueWhip(int smoker, int releasedVictim)
 		float dir[3];
 		MakeVectorFromPoints(smokerPos, targetPos, dir);
 		ApplyFling(target, smoker, dir, push);
-		DealDamage(target, smoker, damage);
+		DealDamage(target, smoker, damage, NOXIOUS_DAMAGE_TONGUE_WHIP);
 	}
 }
 
@@ -934,11 +978,16 @@ void ApplyFling(int target, int attacker, float vecDirection[3], float strength)
 	TeleportEntity(target, NULL_VECTOR, NULL_VECTOR, currentVelocity);
 }
 
-void DealDamage(int victim, int attacker, int amount)
+void DealDamage(int victim, int attacker, int amount, NoxiousDamageCause cause = NOXIOUS_DAMAGE_NONE)
 {
 	if (amount <= 0 || victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || !IsPlayerAlive(victim))
 	{
 		return;
+	}
+
+	if (cause != NOXIOUS_DAMAGE_NONE)
+	{
+		MarkNoxiousDamage(victim, attacker, cause);
 	}
 
 	char targetName[32];
@@ -1005,6 +1054,12 @@ void ResetClientState(int client, bool resetSpeed)
 	g_iCollapsedTicks[client] = 0;
 	g_iCollapsedSmokerUserId[client] = 0;
 	g_fCollapsedNextTick[client] = 0.0;
+
+	g_iLastNoxiousDamageCause[client] = NOXIOUS_DAMAGE_NONE;
+	g_iLastNoxiousAttackerUserId[client] = 0;
+	g_fLastNoxiousDamageTime[client] = 0.0;
+	g_fNextWarningHintTime[client] = 0.0;
+	g_fNextSmokeScreenHintTime[client] = 0.0;
 
 	g_bEliteCache[client] = false;
 	g_iSubtypeCache[client] = ELITE_SUBTYPE_NONE;
@@ -1241,6 +1296,175 @@ int ClampInt(int value, int minValue, int maxValue)
 	return value;
 }
 
+void RefreshWarningHintColor()
+{
+	g_cvWarningHintColor.GetString(g_sWarningHintColor, sizeof(g_sWarningHintColor));
+	TrimString(g_sWarningHintColor);
+	if (g_sWarningHintColor[0] == '\0')
+	{
+		strcopy(g_sWarningHintColor, sizeof(g_sWarningHintColor), "255 120 60");
+	}
+}
+
+void MarkNoxiousDamage(int victim, int attacker, NoxiousDamageCause cause)
+{
+	if (!IsValidAliveSurvivor(victim) || cause == NOXIOUS_DAMAGE_NONE)
+	{
+		return;
+	}
+
+	g_iLastNoxiousDamageCause[victim] = view_as<int>(cause);
+	g_fLastNoxiousDamageTime[victim] = GetGameTime();
+	g_iLastNoxiousAttackerUserId[victim] = (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker)) ? GetClientUserId(attacker) : 0;
+
+	ShowNoxiousWarningHint(victim, cause);
+}
+
+void ShowNoxiousWarningHint(int victim, NoxiousDamageCause cause)
+{
+	if (!g_cvWarningHintEnable.BoolValue || !IsValidAliveSurvivor(victim))
+	{
+		return;
+	}
+
+	float now = GetGameTime();
+	if (now < g_fNextWarningHintTime[victim])
+	{
+		return;
+	}
+
+	float cooldown = g_cvWarningHintCooldown.FloatValue;
+	if (cooldown < 0.0)
+	{
+		cooldown = 0.0;
+	}
+	g_fNextWarningHintTime[victim] = now + cooldown;
+
+	char caption[192];
+	GetNoxiousDamageCaption(cause, caption, sizeof(caption));
+
+	DisplayInstructorHint(victim, caption, "icon_alert", g_sWarningHintColor, 3.5, true);
+}
+
+void ShowSmokeScreenHint(int attacker, int smoker)
+{
+	if (!g_cvSmokeScreenHintEnable.BoolValue || !IsValidAliveSurvivor(attacker))
+	{
+		return;
+	}
+
+	float now = GetGameTime();
+	if (now < g_fNextSmokeScreenHintTime[attacker])
+	{
+		return;
+	}
+
+	g_fNextSmokeScreenHintTime[attacker] = now + 1.2;
+
+	char caption[192];
+	if (smoker > 0 && smoker <= MaxClients && IsClientInGame(smoker))
+	{
+		Format(caption, sizeof(caption), "Smoke Screen: dot ban da bi Smoker Elite lam truot.");
+	}
+	else
+	{
+		strcopy(caption, sizeof(caption), "Smoke Screen: dot ban vua bi bo qua.");
+	}
+
+	DisplayInstructorHint(attacker, caption, "icon_alert", "170 170 170", 2.5, true);
+}
+
+void GetNoxiousDamageCaption(NoxiousDamageCause cause, char[] buffer, int maxlen)
+{
+	switch (cause)
+	{
+		case NOXIOUS_DAMAGE_ASPHYXIATION:
+		{
+			strcopy(buffer, maxlen, "Asphyxiation: khong khi doc dang lam ban nghet tho.");
+		}
+		case NOXIOUS_DAMAGE_COLLAPSED_LUNG:
+		{
+			strcopy(buffer, maxlen, "Collapsed Lung: phe bi ton thuong, sat thuong theo thoi gian.");
+		}
+		case NOXIOUS_DAMAGE_METHANE_BLAST:
+		{
+			strcopy(buffer, maxlen, "Methane Blast: Smoker no gay sat thuong dien rong.");
+		}
+		case NOXIOUS_DAMAGE_METHANE_LEAK:
+		{
+			strcopy(buffer, maxlen, "Methane Leak: ban dang dung trong vung khi methane.");
+		}
+		case NOXIOUS_DAMAGE_TONGUE_WHIP:
+		{
+			strcopy(buffer, maxlen, "Tongue Whip: luoi quat trung muc tieu gan do.");
+		}
+		case NOXIOUS_DAMAGE_VOID_POCKET:
+		{
+			strcopy(buffer, maxlen, "Void Pocket: luc hut cua Smoker keo ban vao tam.");
+		}
+		case NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE:
+		{
+			strcopy(buffer, maxlen, "Restrained Hostage: sat thuong bi chuyen huong tu Smoker.");
+		}
+		default:
+		{
+			strcopy(buffer, maxlen, "Noxious effect: ban vua nhan sat thuong dac biet.");
+		}
+	}
+}
+
+void DisplayInstructorHint(int target, const char[] text, const char[] icon, const char[] color, float timeout, bool pulse)
+{
+	if (!IsValidAliveSurvivor(target))
+	{
+		return;
+	}
+
+	int entity = CreateEntityByName("env_instructor_hint");
+	if (entity <= 0)
+	{
+		return;
+	}
+
+	char key[32];
+	FormatEx(key, sizeof(key), "hintEliteNoxious%d", target);
+	DispatchKeyValue(target, "targetname", key);
+	DispatchKeyValue(entity, "hint_target", key);
+	DispatchKeyValue(entity, "hint_static", "false");
+
+	char timeoutStr[16];
+	FormatEx(timeoutStr, sizeof(timeoutStr), "%.1f", timeout);
+	DispatchKeyValue(entity, "hint_timeout", timeoutStr);
+
+	DispatchKeyValue(entity, "hint_icon_offset", "0.1");
+	DispatchKeyValue(entity, "hint_range", "0.1");
+	DispatchKeyValue(entity, "hint_nooffscreen", "true");
+	DispatchKeyValue(entity, "hint_icon_onscreen", icon);
+	DispatchKeyValue(entity, "hint_icon_offscreen", icon);
+	DispatchKeyValue(entity, "hint_forcecaption", "true");
+	DispatchKeyValue(entity, "hint_allow_nodraw_target", "1");
+	DispatchKeyValue(entity, "hint_instance_type", "0");
+	DispatchKeyValue(entity, "hint_color", color);
+	if (pulse)
+	{
+		DispatchKeyValue(entity, "hint_pulseoption", "1");
+	}
+	else
+	{
+		DispatchKeyValue(entity, "hint_pulseoption", "0");
+	}
+	DispatchKeyValue(entity, "hint_alphaoption", "1");
+
+	char hintText[192];
+	strcopy(hintText, sizeof(hintText), text);
+	ReplaceString(hintText, sizeof(hintText), "\n", " ");
+	DispatchKeyValue(entity, "hint_caption", hintText);
+
+	DispatchSpawn(entity);
+	AcceptEntityInput(entity, "ShowHint", target);
+	CreateTimer(timeout, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+}
+
 void ShowParticleAt(const float pos[3], const char[] particleName, float lifetime)
 {
 	int particle = CreateEntityByName("info_particle_system");
@@ -1273,4 +1497,46 @@ public Action Timer_KillEntity(Handle timer, int entityRef)
 	}
 
 	return Plugin_Stop;
+}
+
+public any Native_GetRecentDamageCause(Handle plugin, int numParams)
+{
+	if (numParams < 1)
+	{
+		return NOXIOUS_DAMAGE_NONE;
+	}
+
+	int victim = GetNativeCell(1);
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+	{
+		return NOXIOUS_DAMAGE_NONE;
+	}
+
+	if ((GetGameTime() - g_fLastNoxiousDamageTime[victim]) > NOXIOUS_DAMAGE_CAUSE_WINDOW)
+	{
+		return NOXIOUS_DAMAGE_NONE;
+	}
+
+	return g_iLastNoxiousDamageCause[victim];
+}
+
+public any Native_GetRecentDamageAttacker(Handle plugin, int numParams)
+{
+	if (numParams < 1)
+	{
+		return 0;
+	}
+
+	int victim = GetNativeCell(1);
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+	{
+		return 0;
+	}
+
+	if ((GetGameTime() - g_fLastNoxiousDamageTime[victim]) > NOXIOUS_DAMAGE_CAUSE_WINDOW)
+	{
+		return 0;
+	}
+
+	return GetClientOfUserId(g_iLastNoxiousAttackerUserId[victim]);
 }

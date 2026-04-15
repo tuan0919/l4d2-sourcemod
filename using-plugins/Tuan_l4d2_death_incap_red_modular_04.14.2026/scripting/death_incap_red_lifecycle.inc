@@ -1,6 +1,8 @@
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
     MarkNativeAsOptional("L4D2_IsEliteSI");
+    MarkNativeAsOptional("EliteSI_Noxious_GetRecentDamageCause");
+    MarkNativeAsOptional("EliteSI_Noxious_GetRecentDamageAttacker");
     return APLRes_Success;
 }
 

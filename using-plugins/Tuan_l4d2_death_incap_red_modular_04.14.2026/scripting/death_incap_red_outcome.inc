@@ -471,6 +471,64 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
 bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
 {
+    int noxiousCause = 0;
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_Noxious_GetRecentDamageCause") == FeatureStatus_Available)
+    {
+        noxiousCause = EliteSI_Noxious_GetRecentDamageCause(victim);
+        if (noxiousCause > 0)
+        {
+            int noxiousAttacker = 0;
+            if (GetFeatureStatus(FeatureType_Native, "EliteSI_Noxious_GetRecentDamageAttacker") == FeatureStatus_Available)
+            {
+                noxiousAttacker = EliteSI_Noxious_GetRecentDamageAttacker(victim);
+            }
+
+            if (noxiousAttacker > 0 && noxiousAttacker <= MaxClients && IsClientInGame(noxiousAttacker) && GetClientTeam(noxiousAttacker) == 3)
+            {
+                attackerClient = noxiousAttacker;
+            }
+
+            switch (noxiousCause)
+            {
+                case 1:
+                {
+                    strcopy(cause, maxlen, "Smoker Asphyxiation");
+                    return true;
+                }
+                case 2:
+                {
+                    strcopy(cause, maxlen, "Smoker Collapsed Lung");
+                    return true;
+                }
+                case 3:
+                {
+                    strcopy(cause, maxlen, "Smoker Methane Blast");
+                    return true;
+                }
+                case 4:
+                {
+                    strcopy(cause, maxlen, "Smoker Methane Leak");
+                    return true;
+                }
+                case 5:
+                {
+                    strcopy(cause, maxlen, "Smoker Tongue Whip");
+                    return true;
+                }
+                case 6:
+                {
+                    strcopy(cause, maxlen, "Smoker Void Pocket");
+                    return true;
+                }
+                case 7:
+                {
+                    strcopy(cause, maxlen, "Smoker Restrained Hostage");
+                    return true;
+                }
+            }
+        }
+    }
+
     if (StrEqual(eventWeapon, "tank_rock", false))
     {
         strcopy(cause, maxlen, "Tank rock");

@@ -131,6 +131,7 @@ int g_iLastNoxiousAttackerUserId[MAXPLAYERS + 1];
 float g_fLastNoxiousDamageTime[MAXPLAYERS + 1];
 float g_fNextWarningHintTime[MAXPLAYERS + 1];
 float g_fNextSmokeScreenHintTime[MAXPLAYERS + 1];
+int g_iActiveHintRef[MAXPLAYERS + 1];
 
 float g_fNextAsphyxiationTick[MAXPLAYERS + 1];
 
@@ -1061,6 +1062,16 @@ void ResetClientState(int client, bool resetSpeed)
 	g_fNextWarningHintTime[client] = 0.0;
 	g_fNextSmokeScreenHintTime[client] = 0.0;
 
+	if (g_iActiveHintRef[client] != INVALID_ENT_REFERENCE)
+	{
+		int hint = EntRefToEntIndex(g_iActiveHintRef[client]);
+		if (hint != INVALID_ENT_REFERENCE && IsValidEntity(hint))
+		{
+			AcceptEntityInput(hint, "Kill");
+		}
+		g_iActiveHintRef[client] = INVALID_ENT_REFERENCE;
+	}
+
 	g_bEliteCache[client] = false;
 	g_iSubtypeCache[client] = ELITE_SUBTYPE_NONE;
 
@@ -1364,11 +1375,11 @@ void ShowSmokeScreenHint(int attacker, int smoker)
 	char caption[192];
 	if (smoker > 0 && smoker <= MaxClients && IsClientInGame(smoker))
 	{
-		Format(caption, sizeof(caption), "Smoke Screen: dot ban da bi Smoker Elite lam truot.");
+		Format(caption, sizeof(caption), "Smoke Screen: your attack missed Elite Smoker.");
 	}
 	else
 	{
-		strcopy(caption, sizeof(caption), "Smoke Screen: dot ban vua bi bo qua.");
+		strcopy(caption, sizeof(caption), "Smoke Screen: your attack was negated.");
 	}
 
 	DisplayInstructorHint(attacker, caption, "icon_alert", "170 170 170", 2.5, true);
@@ -1376,41 +1387,41 @@ void ShowSmokeScreenHint(int attacker, int smoker)
 
 void GetNoxiousDamageCaption(NoxiousDamageCause cause, char[] buffer, int maxlen)
 {
-	switch (cause)
-	{
-		case NOXIOUS_DAMAGE_ASPHYXIATION:
+		switch (cause)
 		{
-			strcopy(buffer, maxlen, "Asphyxiation: khong khi doc dang lam ban nghet tho.");
+			case NOXIOUS_DAMAGE_ASPHYXIATION:
+			{
+				strcopy(buffer, maxlen, "Asphyxiation: toxic air is suffocating you.");
+			}
+			case NOXIOUS_DAMAGE_COLLAPSED_LUNG:
+			{
+				strcopy(buffer, maxlen, "Collapsed Lung: your chest is crushed, taking DoT.");
+			}
+			case NOXIOUS_DAMAGE_METHANE_BLAST:
+			{
+				strcopy(buffer, maxlen, "Methane Blast: you were hit by toxic explosion.");
+			}
+			case NOXIOUS_DAMAGE_METHANE_LEAK:
+			{
+				strcopy(buffer, maxlen, "Methane Leak: you are standing in toxic cloud.");
+			}
+			case NOXIOUS_DAMAGE_TONGUE_WHIP:
+			{
+				strcopy(buffer, maxlen, "Tongue Whip: lash shockwave hit nearby targets.");
+			}
+			case NOXIOUS_DAMAGE_VOID_POCKET:
+			{
+				strcopy(buffer, maxlen, "Void Pocket: you were pulled by vacuum force.");
+			}
+			case NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE:
+			{
+				strcopy(buffer, maxlen, "Restrained Hostage: damage redirected through hostage.");
+			}
+			default:
+			{
+				strcopy(buffer, maxlen, "Noxious effect: special smoker damage received.");
+			}
 		}
-		case NOXIOUS_DAMAGE_COLLAPSED_LUNG:
-		{
-			strcopy(buffer, maxlen, "Collapsed Lung: phe bi ton thuong, sat thuong theo thoi gian.");
-		}
-		case NOXIOUS_DAMAGE_METHANE_BLAST:
-		{
-			strcopy(buffer, maxlen, "Methane Blast: Smoker no gay sat thuong dien rong.");
-		}
-		case NOXIOUS_DAMAGE_METHANE_LEAK:
-		{
-			strcopy(buffer, maxlen, "Methane Leak: ban dang dung trong vung khi methane.");
-		}
-		case NOXIOUS_DAMAGE_TONGUE_WHIP:
-		{
-			strcopy(buffer, maxlen, "Tongue Whip: luoi quat trung muc tieu gan do.");
-		}
-		case NOXIOUS_DAMAGE_VOID_POCKET:
-		{
-			strcopy(buffer, maxlen, "Void Pocket: luc hut cua Smoker keo ban vao tam.");
-		}
-		case NOXIOUS_DAMAGE_RESTRAINED_HOSTAGE:
-		{
-			strcopy(buffer, maxlen, "Restrained Hostage: sat thuong bi chuyen huong tu Smoker.");
-		}
-		default:
-		{
-			strcopy(buffer, maxlen, "Noxious effect: ban vua nhan sat thuong dac biet.");
-		}
-	}
 }
 
 void DisplayInstructorHint(int target, const char[] text, const char[] icon, const char[] color, float timeout, bool pulse)
@@ -1418,6 +1429,16 @@ void DisplayInstructorHint(int target, const char[] text, const char[] icon, con
 	if (!IsValidAliveSurvivor(target))
 	{
 		return;
+	}
+
+	if (g_iActiveHintRef[target] != INVALID_ENT_REFERENCE)
+	{
+		int activeHint = EntRefToEntIndex(g_iActiveHintRef[target]);
+		if (activeHint != INVALID_ENT_REFERENCE && IsValidEntity(activeHint))
+		{
+			AcceptEntityInput(activeHint, "Kill");
+		}
+		g_iActiveHintRef[target] = INVALID_ENT_REFERENCE;
 	}
 
 	int entity = CreateEntityByName("env_instructor_hint");
@@ -1462,6 +1483,7 @@ void DisplayInstructorHint(int target, const char[] text, const char[] icon, con
 
 	DispatchSpawn(entity);
 	AcceptEntityInput(entity, "ShowHint", target);
+	g_iActiveHintRef[target] = EntIndexToEntRef(entity);
 	CreateTimer(timeout, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
 }
 
@@ -1494,6 +1516,14 @@ public Action Timer_KillEntity(Handle timer, int entityRef)
 	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
 	{
 		AcceptEntityInput(entity, "Kill");
+	}
+
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (g_iActiveHintRef[i] == entityRef)
+		{
+			g_iActiveHintRef[i] = INVALID_ENT_REFERENCE;
+		}
 	}
 
 	return Plugin_Stop;

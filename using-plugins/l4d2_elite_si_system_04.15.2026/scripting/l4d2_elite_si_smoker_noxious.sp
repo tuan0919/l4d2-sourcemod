@@ -256,6 +256,7 @@ public void OnPluginStart()
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
+		g_iActiveHintRef[i] = INVALID_ENT_REFERENCE;
 		if (IsClientInGame(i))
 		{
 			OnClientPutInServer(i);
@@ -1065,7 +1066,7 @@ void ResetClientState(int client, bool resetSpeed)
 	if (g_iActiveHintRef[client] != INVALID_ENT_REFERENCE)
 	{
 		int hint = EntRefToEntIndex(g_iActiveHintRef[client]);
-		if (hint != INVALID_ENT_REFERENCE && IsValidEntity(hint))
+		if (hint > MaxClients && IsValidEntity(hint))
 		{
 			AcceptEntityInput(hint, "Kill");
 		}
@@ -1434,7 +1435,7 @@ void DisplayInstructorHint(int target, const char[] text, const char[] icon, con
 	if (g_iActiveHintRef[target] != INVALID_ENT_REFERENCE)
 	{
 		int activeHint = EntRefToEntIndex(g_iActiveHintRef[target]);
-		if (activeHint != INVALID_ENT_REFERENCE && IsValidEntity(activeHint))
+		if (activeHint > MaxClients && IsValidEntity(activeHint))
 		{
 			AcceptEntityInput(activeHint, "Kill");
 		}

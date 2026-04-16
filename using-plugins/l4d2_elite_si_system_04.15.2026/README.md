@@ -1,4 +1,4 @@
-# l4d2_elite_si_system (rewrite 13/04/2026, update 15/04/2026)
+# l4d2_elite_si_system (rewrite 13/04/2026, update 16/04/2026)
 
 ## Muc tieu rewrite
 
@@ -6,7 +6,7 @@ Rewrite lai he thong Elite SI + reward HP theo huong module, giam chong cheo log
 
 ## Kien truc moi
 
-He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 14 plugin nho, load doc lap:
+He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin nho, load doc lap:
 
 1. `scripting/l4d2_elite_si_core.sp`
    - Nguon su that cho Elite SI (roll elite, HP multiplier, mau render, fire immunity)
@@ -66,6 +66,12 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 14 plugin n
      Methane Strike, Moon Walk, Restrained Hostage, Smoke Screen, Tongue Strip,
      Tongue Whip, Void Pocket
 
+8. `scripting/l4d2_elite_si_boomer_nauseating.sp`
+   - Nhanh subtype rieng cho Boomer elite theo bo Nauseating Boomer
+   - Moi Boomer elite chi roll dung 1 subtype Nauseating, khong stack nhieu subtype
+   - Hien thuc cac type: Bile Belly, Bile Blast, Bile Feet, Bile Mask, Bile Pimple,
+     Bile Shower, Bile Swipe, Bile Throw, Explosive Diarrhea, Flatulence
+
 ## Subtype mapping
 
 - `0`: none
@@ -84,6 +90,16 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 14 plugin n
 - `13`: Tongue Strip
 - `14`: Tongue Whip
 - `15`: Void Pocket
+- `16`: Bile Belly
+- `17`: Bile Blast
+- `18`: Bile Feet
+- `19`: Bile Mask
+- `20`: Bile Pimple
+- `21`: Bile Shower
+- `22`: Bile Swipe
+- `23`: Bile Throw
+- `24`: Explosive Diarrhea
+- `25`: Flatulence
 
 ## Cvar moi (khong tai su dung key cu)
 
@@ -96,6 +112,7 @@ Tat ca cvar moi su dung prefix:
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_smoker_noxious_*`
+- `l4d2_elite_boomer_nauseating_*`
 
 ### Reward update 14/04/2026
 
@@ -130,6 +147,10 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
     - Cooldown global giua 2 lan roll spawn Elite SI thanh cong
     - Mac dinh: `20.0` giay
 
+  - `l4d2_elite_si_core_boomer_force_subtype`
+    - `0`: random boomer nauseating subtype
+    - `16-25`: ep dung subtype boomer de test
+
 - Smoker elite khong con roll qua `l4d2_elite_si_core_smoker_ability_subtype_chance`.
   Thay vao do roll ngau nhien 1 trong 11 Noxious subtype.
 
@@ -138,7 +159,7 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
   - Vi du Abnormal behavior cua Charger co the dat mo ta khac Abnormal behavior cua Smoker.
   - Tu 16/04/2026: file data chi dung key subtype hop le theo tung SI class, de tranh lan mo ta giua cac class.
     - `smoker`: `5..15`
-    - `boomer`: `1`
+    - `boomer`: `1, 16..25`
     - `hunter`: `1`
     - `spitter`: `1, 2`
     - `jockey`: `1`
@@ -158,13 +179,14 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - HardSI director chi con control nhac `nb_assault` qua cvar rieng.
 - Khong con doc/exec aggressive cfg dung chung tu folder `cfg/l4d2_elite_si_hardsi/`.
 
-- Co bo sung runtime cfg de de override tren server:
+  - Co bo sung runtime cfg de de override tren server:
   - `cfg/sourcemod/l4d2_elite_si_smoker_noxious.cfg`
+  - `cfg/sourcemod/l4d2_elite_si_boomer_nauseating.cfg`
 
 ## Tich hop giua plugin
 
 - Core cap du lieu subtype bang native
-- Cac nhanh behavior (Abnormal behavior / Strange Movement / ChargerSteering / ChargerAction / Smoker Noxious)
+- Cac nhanh behavior (Abnormal behavior / Strange Movement / ChargerSteering / ChargerAction / Smoker Noxious / Boomer Nauseating)
   doc native de gate dung subtype
 - Core + Reward expose global forward de plugin khac co the subscribe event
 
@@ -237,6 +259,15 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 - Core bo sung cooldown spawn elite de tranh burst nhieu elite cung luc:
   - `l4d2_elite_si_core_spawn_cooldown`
     - Mac dinh `20.0`s
+
+### 16/04/2026 (Boomer Nauseating migration)
+
+- Tich hop bo Nauseating Boomer vao he thong elite subtype.
+- Them plugin moi `l4d2_elite_si_boomer_nauseating`.
+- Boomer elite roll random 1 subtype boomer trong nhom `16..25`.
+- Bo sung cvar force subtype boomer de test:
+  - `l4d2_elite_si_core_boomer_force_subtype`
+- Bo sung map CVAR + Main Config UI cho toan bo cvar boomer nauseating.
 
 ### 15/04/2026 (Abnormal split)
 

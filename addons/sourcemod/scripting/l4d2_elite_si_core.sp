@@ -46,6 +46,16 @@ enum
 	ZC_CHARGER
 }
 
+enum
+{
+	ELITE_CLASS_SMOKER = 0,
+	ELITE_CLASS_BOOMER,
+	ELITE_CLASS_HUNTER,
+	ELITE_CLASS_SPITTER,
+	ELITE_CLASS_JOCKEY,
+	ELITE_CLASS_CHARGER
+}
+
 ConVar g_cvEnable;
 ConVar g_cvEliteChance;
 ConVar g_cvEliteSpawnCooldown;
@@ -596,6 +606,39 @@ bool IsValidSubtypeForConfig(int subtype)
 	return subtype >= ELITE_SUBTYPE_ABNORMAL_BEHAVIOR && subtype < ELITE_SUBTYPE_COUNT;
 }
 
+bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
+{
+	if (classIdx < 0 || classIdx >= ELITE_CLASS_COUNT || !IsValidSubtypeForConfig(subtype))
+	{
+		return false;
+	}
+
+	switch (classIdx)
+	{
+		case ELITE_CLASS_SMOKER:
+		{
+			return IsSmokerNoxiousSubtype(subtype);
+		}
+
+		case ELITE_CLASS_BOOMER, ELITE_CLASS_HUNTER, ELITE_CLASS_JOCKEY:
+		{
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
+		}
+
+		case ELITE_CLASS_SPITTER:
+		{
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT;
+		}
+
+		case ELITE_CLASS_CHARGER:
+		{
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_CHARGER_STEERING || subtype == ELITE_SUBTYPE_CHARGER_ACTION;
+		}
+	}
+
+	return false;
+}
+
 void ResetEliteTypeDescriptionCache()
 {
 	for (int c = 0; c < ELITE_CLASS_COUNT; c++)
@@ -637,6 +680,11 @@ void LoadEliteTypeDescriptionsFromData()
 
 		for (int subtype = ELITE_SUBTYPE_ABNORMAL_BEHAVIOR; subtype < ELITE_SUBTYPE_COUNT; subtype++)
 		{
+			if (!IsSubtypeSupportedByClassIndex(classIdx, subtype))
+			{
+				continue;
+			}
+
 			char defaultName[ELITE_TYPE_NAME_LEN];
 			char defaultDesc[ELITE_TYPE_DESC_LEN];
 			GetSubtypeLabelDefault(subtype, defaultName, sizeof(defaultName));
@@ -673,6 +721,11 @@ void WriteDefaultEliteTypeDescriptionFile(const char[] path)
 
 		for (int subtype = ELITE_SUBTYPE_ABNORMAL_BEHAVIOR; subtype < ELITE_SUBTYPE_COUNT; subtype++)
 		{
+			if (!IsSubtypeSupportedByClassIndex(classIdx, subtype))
+			{
+				continue;
+			}
+
 			char keyName[16];
 			char name[ELITE_TYPE_NAME_LEN];
 			char desc[ELITE_TYPE_DESC_LEN];

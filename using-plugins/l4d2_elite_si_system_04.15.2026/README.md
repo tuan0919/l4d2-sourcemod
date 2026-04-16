@@ -30,7 +30,8 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 14 plugin n
 
 3. Nhanh `Abnormal behavior` (tach theo tung SI + 1 module director):
    - `scripting/l4d2_elite_si_hardsi_director.sp`
-     - Nhanh global cho `nb_assault` + exec aggressive cfg (`cfg/l4d2_elite_si_hardsi/aggressive_ai.cfg`)
+     - Nhanh global cho nhac `nb_assault`.
+     - Khong con exec file aggressive cfg dung chung trong `cfg/l4d2_elite_si_hardsi/`.
    - `scripting/l4d2_elite_si_hardsi_smoker.sp`
      - Smoker action hook de tranh bug `nb_assault`
    - `scripting/l4d2_elite_si_hardsi_boomer.sp`
@@ -135,6 +136,13 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Elite type text da ho tro custom theo tung SI class + subtype qua file data:
   - `addons/sourcemod/data/elite_si_type_descriptions.cfg`
   - Vi du Abnormal behavior cua Charger co the dat mo ta khac Abnormal behavior cua Smoker.
+  - Tu 16/04/2026: file data chi dung key subtype hop le theo tung SI class, de tranh lan mo ta giua cac class.
+    - `smoker`: `5..15`
+    - `boomer`: `1`
+    - `hunter`: `1`
+    - `spitter`: `1, 2`
+    - `jockey`: `1`
+    - `charger`: `1, 3, 4`
 
 - Core expose native moi de plugin khac lay ten/desc type dang active:
   - `EliteSI_GetTypeName(client, buffer, maxlen)`
@@ -147,9 +155,8 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Core khong con auto-load module noxious.
   - Plugin `l4d2_elite_si_smoker_noxious.smx` can duoc load san trong plugin list.
 
-- HardSI director da fix cung duong dan aggressive cfg:
-  - `exec l4d2_elite_si_hardsi/aggressive_ai.cfg`
-  - Khong con cvar doi ten file aggressive cfg.
+- HardSI director chi con control nhac `nb_assault` qua cvar rieng.
+- Khong con doc/exec aggressive cfg dung chung tu folder `cfg/l4d2_elite_si_hardsi/`.
 
 - Co bo sung runtime cfg de de override tren server:
   - `cfg/sourcemod/l4d2_elite_si_smoker_noxious.cfg`
@@ -213,6 +220,14 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
   - `EliteSI_Noxious_GetRecentDamageCause(victim)`
   - `EliteSI_Noxious_GetRecentDamageAttacker(victim)`
 
+- HardSI director bo hoan toan dependency vao `cfg/l4d2_elite_si_hardsi/aggressive_ai.cfg`.
+  - Moi plugin trong he `l4d2_elite_si_*` tu quan ly cfg rieng thong qua `AutoExecConfig`.
+  - Khong con can folder `cfg/l4d2_elite_si_hardsi/`.
+
+- Elite type description data da duoc siet lai theo mapping subtype hop le cho tung SI class.
+  - Core bo qua cac key subtype khong hop le cho class do.
+  - Fix triet de truong hop file `elite_si_type_descriptions.cfg` cua 1 SI class lai chua mo ta cua class khac.
+
 - Tich hop vao `Tuan_l4d2_death_incap_red`:
   - Resolve dung cause dac thu noxious thay vi gom chung `Smoker claws`.
   - Ten victim SI elite trong kill/incap message da doi sang dang:
@@ -234,7 +249,7 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
   - `l4d2_elite_si_hardsi_jockey`
   - `l4d2_elite_si_hardsi_charger`
   - `l4d2_elite_si_hardsi_tank`
-  - `l4d2_elite_si_hardsi_director` (global `nb_assault` + aggressive cfg)
+  - `l4d2_elite_si_hardsi_director` (global `nb_assault`)
 - Cac cvar cua nhanh Abnormal behavior duoc doi prefix sang `l4d2_elite_si_hardsi_*` de dong bo he thong elite.
 
 ### 15/04/2026 (Cvar cleanup + MainConfig UI)
@@ -245,8 +260,8 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 - Xoa cvar `l4d2_elite_smoker_noxious_enable` trong module noxious.
   - Noxious module luon hoat dong khi plugin duoc load.
 
-- HardSI director khong con cvar doi ten aggressive cfg.
-  - Fix cung duong dan: `exec l4d2_elite_si_hardsi/aggressive_ai.cfg`.
+- HardSI director khong con dung aggressive cfg dung chung.
+  - Chi giu cvar dieu khien nhac `nb_assault`.
 
 - Main Configurations (webapp) da bo 3 field UI tuong ung:
   - HardSI Director Aggressive CFG

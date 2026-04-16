@@ -4,8 +4,7 @@
 #include <sourcemod>
 #include <left4dhooks>
 
-#define PLUGIN_VERSION "1.0.0"
-#define AGGRESSIVE_CFG_PATH "l4d2_elite_si_hardsi/aggressive_ai.cfg"
+#define PLUGIN_VERSION "1.0.1"
 
 ConVar g_cvEnable;
 ConVar g_cvAssaultInterval;
@@ -56,8 +55,6 @@ public void OnConfigsExecuted()
 		StopAssaultTimer();
 		return;
 	}
-
-	ServerCommand("exec %s", AGGRESSIVE_CFG_PATH);
 
 	if (L4D_HasAnySurvivorLeftSafeArea())
 	{

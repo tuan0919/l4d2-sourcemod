@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -13,6 +13,7 @@
 #define ZC_SMOKER 1
 
 #define ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP 28
+#define PULL_WEAPON_DROP_DELAY 0.15
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -91,13 +92,42 @@ public void Event_TongueGrab(Event event, const char[] name, bool dontBroadcast)
 		return;
 	}
 
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(attacker));
+	pack.WriteCell(GetClientUserId(victim));
+	CreateTimer(PULL_WEAPON_DROP_DELAY, Timer_DropVictimWeapon, pack, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action Timer_DropVictimWeapon(Handle timer, DataPack pack)
+{
+	pack.Reset();
+	int attacker = GetClientOfUserId(pack.ReadCell());
+	int victim = GetClientOfUserId(pack.ReadCell());
+	delete pack;
+
+	if (!ShouldApplySubtype(attacker) || !IsValidAliveSurvivor(victim))
+	{
+		return Plugin_Stop;
+	}
+
+	if (GetEntPropEnt(attacker, Prop_Send, "m_tongueVictim") != victim)
+	{
+		return Plugin_Stop;
+	}
+
+	if (GetEntPropEnt(victim, Prop_Send, "m_tongueOwner") != attacker)
+	{
+		return Plugin_Stop;
+	}
+
 	int weapon = GetClientDroppableWeapon(victim);
 	if (weapon == -1)
 	{
-		return;
+		return Plugin_Stop;
 	}
 
 	DropVictimWeapon(victim, weapon);
+	return Plugin_Stop;
 }
 
 bool ShouldApplySubtype(int client)

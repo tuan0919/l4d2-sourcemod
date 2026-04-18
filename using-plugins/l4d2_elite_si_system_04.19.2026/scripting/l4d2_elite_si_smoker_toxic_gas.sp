@@ -4,6 +4,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#include <actions>
 
 #define PLUGIN_VERSION "1.0.0"
 
@@ -196,16 +197,125 @@ public void OnSmokerThinkPost(int client)
 	}
 	}
 
-public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
+public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 {
-	if (!ShouldApplyToxicGas(client, true))
+	if (!g_cvEnable.BoolValue)
+	{
+		return;
+	}
+
+	if (strncmp(name, "Smoker", 6) != 0 || strcmp(name[6], "Attack") != 0)
+	{
+		return;
+	}
+
+	if (!ShouldApplyToxicGas(actor, false))
+	{
+		return;
+	}
+
+	action.OnCommandAssault = ToxicGas_OnCommandAssault;
+	action.OnCommandAttack = ToxicGas_OnCommandAttack;
+	action.OnCommandApproachByEntity = ToxicGas_OnCommandApproachByEntity;
+	action.ShouldAttack = ToxicGas_ShouldAttack;
+	action.ShouldRetreat = ToxicGas_ShouldRetreat;
+	action.OnShoved = ToxicGas_OnShoved;
+	action.OnKilled = ToxicGas_OnKilled;
+	action.OnUpdate = ToxicGas_OnUpdate;
+}
+
+Action ToxicGas_OnCommandAssault(any action, int actor, ActionDesiredResult result)
+{
+	if (!ShouldApplyToxicGas(actor, true))
 	{
 		return Plugin_Continue;
 	}
 
-	buttons &= ~IN_ATTACK2;
-	buttons |= IN_ATTACK;
-	return Plugin_Changed;
+	return Plugin_Handled;
+}
+
+Action ToxicGas_OnCommandAttack(any action, int actor, int entity, ActionDesiredResult result)
+{
+	if (!ShouldApplyToxicGas(actor, true))
+	{
+		return Plugin_Continue;
+	}
+
+	return Plugin_Handled;
+}
+
+Action ToxicGas_OnCommandApproachByEntity(any action, int actor, int goal, ActionDesiredResult result)
+{
+	if (!ShouldApplyToxicGas(actor, true))
+	{
+		return Plugin_Continue;
+	}
+
+	return Plugin_Handled;
+}
+
+Action ToxicGas_ShouldAttack(any action, any nextbot, any knownEntity, QueryResultType &result)
+{
+	int actor = view_as<int>(nextbot);
+	if (!ShouldApplyToxicGas(actor, true))
+	{
+		return Plugin_Continue;
+	}
+
+	result = ANSWER_YES;
+	return Plugin_Handled;
+}
+
+Action ToxicGas_ShouldRetreat(any action, any nextbot, QueryResultType &result)
+{
+	int actor = view_as<int>(nextbot);
+	if (!ShouldApplyToxicGas(actor, true))
+	{
+		return Plugin_Continue;
+	}
+
+	result = ANSWER_NO;
+	return Plugin_Handled;
+}
+
+Action ToxicGas_OnShoved(any action, int actor, int entity, ActionDesiredResult result)
+{
+	if (!ShouldApplyToxicGas(actor, true) || !IsValidAliveSurvivor(entity))
+	{
+		return Plugin_Continue;
+	}
+
+	float now = GetGameTime();
+	if (now >= g_fNextCloudAt[actor])
+	{
+		ReleaseToxicCloud(actor, false);
+		g_fNextCloudAt[actor] = now + g_cvCloudCooldown.FloatValue;
+	}
+
+	return Plugin_Continue;
+}
+
+Action ToxicGas_OnKilled(any action, int actor, any takedamageinfo, ActionDesiredResult result)
+{
+	if (!ShouldApplyToxicGas(actor, false))
+	{
+		return Plugin_Continue;
+	}
+
+	ReleaseToxicCloud(actor, true);
+	g_fNextCloudAt[actor] = 0.0;
+	return Plugin_Continue;
+}
+
+Action ToxicGas_OnUpdate(any action, int actor, float interval, ActionResult result)
+{
+	if (!ShouldApplyToxicGas(actor, true))
+	{
+		return Plugin_Continue;
+	}
+
+	TryApproachClosestSurvivor(actor);
+	return Plugin_Continue;
 }
 
 public Action Timer_ToxicGasThink(Handle timer)
@@ -226,6 +336,12 @@ public Action Timer_ToxicGasThink(Handle timer)
 			continue;
 		}
 
+		int damageSource = 0;
+		if (smoker > 0 && smoker <= MaxClients && IsClientInGame(smoker) && IsPlayerAlive(smoker))
+		{
+			damageSource = smoker;
+		}
+
 		for (int survivor = 1; survivor <= MaxClients; survivor++)
 		{
 			if (!IsValidAliveSurvivor(survivor))
@@ -240,7 +356,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 				continue;
 			}
 
-			SDKHooks_TakeDamage(survivor, smoker, smoker, damage, DMG_POISON);
+			SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage, DMG_POISON);
 			MaybeDisplayGasHint(survivor, now);
 		}
 	}
@@ -256,6 +372,65 @@ void ReleaseToxicCloud(int smoker, bool onDeath)
 	g_fCloudUntil[smoker] = GetGameTime() + g_cvCloudDuration.FloatValue;
 
 	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
+}
+
+void TryApproachClosestSurvivor(int smoker)
+{
+	int target = FindClosestSurvivor(smoker);
+	if (target <= 0)
+	{
+		return;
+	}
+
+	float smokerOrigin[3];
+	float targetOrigin[3];
+	GetClientAbsOrigin(smoker, smokerOrigin);
+	GetClientAbsOrigin(target, targetOrigin);
+
+	float distance = GetVectorDistance(smokerOrigin, targetOrigin);
+	if (distance <= 90.0)
+	{
+		return;
+	}
+
+	float direction[3];
+	MakeVectorFromPoints(smokerOrigin, targetOrigin, direction);
+	NormalizeVector(direction, direction);
+
+	float speed = 250.0 * g_cvSpeedMultiplier.FloatValue;
+	float velocity[3];
+	velocity[0] = direction[0] * speed;
+	velocity[1] = direction[1] * speed;
+	velocity[2] = 0.0;
+	TeleportEntity(smoker, NULL_VECTOR, NULL_VECTOR, velocity);
+}
+
+int FindClosestSurvivor(int smoker)
+{
+	float smokerOrigin[3];
+	GetClientAbsOrigin(smoker, smokerOrigin);
+
+	int closest = 0;
+	float closestDistance = 999999.0;
+
+	for (int survivor = 1; survivor <= MaxClients; survivor++)
+	{
+		if (!IsValidAliveSurvivor(survivor))
+		{
+			continue;
+		}
+
+		float survivorOrigin[3];
+		GetClientAbsOrigin(survivor, survivorOrigin);
+		float distance = GetVectorDistance(smokerOrigin, survivorOrigin);
+		if (distance < closestDistance)
+		{
+			closestDistance = distance;
+			closest = survivor;
+		}
+	}
+
+	return closest;
 }
 
 void CreateSmokeParticle(const float origin[3], float lifetime)

@@ -31,6 +31,7 @@ ConVar g_cvHintColor;
 ConVar g_cvHintInterval;
 
 bool g_bHasEliteApi;
+bool g_bTrackedToxicGas[MAXPLAYERS + 1];
 float g_fNextCloudAt[MAXPLAYERS + 1];
 float g_fCloudUntil[MAXPLAYERS + 1];
 float g_vecCloudOrigin[MAXPLAYERS + 1][3];
@@ -99,12 +100,14 @@ public void OnPluginStart()
 public void OnAllPluginsLoaded()
 {
 	RefreshEliteState();
+	SyncTrackedSubtypeState();
 }
 
 public void OnClientPutInServer(int client)
 {
 	ResetClientState(client);
 	SDKHook(client, SDKHook_PreThinkPost, OnSmokerThinkPost);
+	SyncTrackedSubtypeForClient(client);
 }
 
 public void OnClientDisconnect(int client)
@@ -116,6 +119,29 @@ public void OnClientDisconnect(int client)
 public void OnMapStart()
 {
 	ResetAllState();
+}
+
+public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	g_bTrackedToxicGas[client] = (zclass == ZC_SMOKER && subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS);
+}
+
+public void EliteSI_OnEliteCleared(int client)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	if (IsClientInGame(client) && IsPlayerAlive(client))
+	{
+		g_bTrackedToxicGas[client] = false;
+	}
 }
 
 public void OnLibraryAdded(const char[] name)
@@ -148,7 +174,7 @@ public void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcas
 
 	int smoker = GetClientOfUserId(event.GetInt("userid"));
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	if (!IsValidAliveSurvivor(attacker) || !ShouldApplyToxicGas(smoker, true))
+	if (!IsValidAliveSurvivor(attacker) || !IsToxicGasSmoker(smoker, true))
 	{
 		return;
 	}
@@ -171,7 +197,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	}
 
 	int smoker = GetClientOfUserId(event.GetInt("userid"));
-	if (!ShouldApplyToxicGas(smoker, false))
+	if (!IsToxicGasSmoker(smoker, false))
 	{
 		return;
 	}
@@ -182,7 +208,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 
 public void OnSmokerThinkPost(int client)
 {
-	if (!ShouldApplyToxicGas(client, true))
+	if (!IsToxicGasSmoker(client, true))
 	{
 		return;
 	}
@@ -209,7 +235,7 @@ public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 		return;
 	}
 
-	if (!ShouldApplyToxicGas(actor, false))
+	if (!IsToxicGasSmoker(actor, false))
 	{
 		return;
 	}
@@ -226,7 +252,7 @@ public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 
 Action ToxicGas_OnCommandAssault(any action, int actor, ActionDesiredResult result)
 {
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -236,7 +262,7 @@ Action ToxicGas_OnCommandAssault(any action, int actor, ActionDesiredResult resu
 
 Action ToxicGas_OnCommandAttack(any action, int actor, int entity, ActionDesiredResult result)
 {
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -246,7 +272,7 @@ Action ToxicGas_OnCommandAttack(any action, int actor, int entity, ActionDesired
 
 Action ToxicGas_OnCommandApproachByEntity(any action, int actor, int goal, ActionDesiredResult result)
 {
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -257,7 +283,7 @@ Action ToxicGas_OnCommandApproachByEntity(any action, int actor, int goal, Actio
 Action ToxicGas_ShouldAttack(any action, any nextbot, any knownEntity, QueryResultType &result)
 {
 	int actor = view_as<int>(nextbot);
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -269,7 +295,7 @@ Action ToxicGas_ShouldAttack(any action, any nextbot, any knownEntity, QueryResu
 Action ToxicGas_ShouldRetreat(any action, any nextbot, QueryResultType &result)
 {
 	int actor = view_as<int>(nextbot);
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -280,7 +306,7 @@ Action ToxicGas_ShouldRetreat(any action, any nextbot, QueryResultType &result)
 
 Action ToxicGas_OnShoved(any action, int actor, int entity, ActionDesiredResult result)
 {
-	if (!ShouldApplyToxicGas(actor, true) || !IsValidAliveSurvivor(entity))
+	if (!IsToxicGasSmoker(actor, true) || !IsValidAliveSurvivor(entity))
 	{
 		return Plugin_Continue;
 	}
@@ -297,7 +323,7 @@ Action ToxicGas_OnShoved(any action, int actor, int entity, ActionDesiredResult 
 
 Action ToxicGas_OnKilled(any action, int actor, any takedamageinfo, ActionDesiredResult result)
 {
-	if (!ShouldApplyToxicGas(actor, false))
+	if (!IsToxicGasSmoker(actor, false))
 	{
 		return Plugin_Continue;
 	}
@@ -309,7 +335,7 @@ Action ToxicGas_OnKilled(any action, int actor, any takedamageinfo, ActionDesire
 
 Action ToxicGas_OnUpdate(any action, int actor, float interval, ActionResult result)
 {
-	if (!ShouldApplyToxicGas(actor, true))
+	if (!IsToxicGasSmoker(actor, true))
 	{
 		return Plugin_Continue;
 	}
@@ -550,6 +576,7 @@ void ResetClientState(int client)
 		return;
 	}
 
+	g_bTrackedToxicGas[client] = false;
 	g_fNextCloudAt[client] = 0.0;
 	g_fCloudUntil[client] = 0.0;
 	g_fLastHintAt[client] = 0.0;
@@ -558,7 +585,7 @@ void ResetClientState(int client)
 	g_vecCloudOrigin[client][2] = 0.0;
 }
 
-bool ShouldApplyToxicGas(int client, bool requireAlive)
+bool IsToxicGasSmoker(int client, bool requireAlive)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
 	{
@@ -580,12 +607,12 @@ bool ShouldApplyToxicGas(int client, bool requireAlive)
 		return false;
 	}
 
-	if (!g_bHasEliteApi || !EliteSI_IsElite(client))
+	if (!g_bTrackedToxicGas[client])
 	{
 		return false;
 	}
 
-	return EliteSI_GetSubtype(client) == ELITE_SUBTYPE_SMOKER_TOXIC_GAS;
+	return true;
 }
 
 bool IsValidAliveSurvivor(int client)
@@ -601,4 +628,33 @@ void RefreshEliteState()
 {
 	g_bHasEliteApi = (GetFeatureStatus(FeatureType_Native, "EliteSI_IsElite") == FeatureStatus_Available)
 		&& (GetFeatureStatus(FeatureType_Native, "EliteSI_GetSubtype") == FeatureStatus_Available);
+}
+
+void SyncTrackedSubtypeState()
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		SyncTrackedSubtypeForClient(i);
+	}
+}
+
+void SyncTrackedSubtypeForClient(int client)
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
+		return;
+	}
+
+	if (!g_bHasEliteApi)
+	{
+		return;
+	}
+
+	if (GetClientTeam(client) != TEAM_INFECTED || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SMOKER)
+	{
+		g_bTrackedToxicGas[client] = false;
+		return;
+	}
+
+	g_bTrackedToxicGas[client] = EliteSI_IsElite(client) && EliteSI_GetSubtype(client) == ELITE_SUBTYPE_SMOKER_TOXIC_GAS;
 }

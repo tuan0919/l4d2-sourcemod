@@ -6,7 +6,7 @@ Rewrite lai he thong Elite SI + reward HP theo huong module, giam chong cheo log
 
 ## Kien truc moi
 
-He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin nho, load doc lap:
+He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 17 plugin nho, load doc lap:
 
 1. `scripting/l4d2_elite_si_core.sp`
    - Nguon su that cho Elite SI (roll elite, HP multiplier, mau render, fire immunity)
@@ -36,8 +36,10 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin n
      - Smoker action hook de tranh bug `nb_assault`
    - `scripting/l4d2_elite_si_hardsi_boomer.sp`
      - Boomer bhop + vomit pressure movement
-   - `scripting/l4d2_elite_si_hardsi_hunter.sp`
-     - Hunter fast pounce + pounce angle tuning + leap-away gate
+    - `scripting/l4d2_elite_si_hardsi_hunter.sp`
+      - Hunter fast pounce + pounce angle tuning + leap-away gate
+    - `scripting/l4d2_elite_si_hunter_target_switch.sp`
+      - Hunter se roi victim da incap va retarget sang survivor con dung
    - `scripting/l4d2_elite_si_hardsi_spitter.sp`
      - Spitter bhop pressure
    - `scripting/l4d2_elite_si_hardsi_jockey.sp`
@@ -71,10 +73,14 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin n
      Tongue Whip, Void Pocket
 
 8. `scripting/l4d2_elite_si_boomer_nauseating.sp`
-   - Nhanh subtype rieng cho Boomer elite theo bo Nauseating Boomer
-   - Moi Boomer elite chi roll dung 1 subtype Nauseating, khong stack nhieu subtype
-   - Hien thuc cac type: Bile Belly, Bile Blast, Bile Feet, Bile Mask, Bile Pimple,
-     Bile Shower, Bile Swipe, Bile Throw, Explosive Diarrhea, Flatulence
+    - Nhanh subtype rieng cho Boomer elite theo bo Nauseating Boomer
+    - Moi Boomer elite chi roll dung 1 subtype Nauseating, khong stack nhieu subtype
+    - Hien thuc cac type: Bile Belly, Bile Blast, Bile Feet, Bile Mask, Bile Pimple,
+      Bile Shower, Bile Swipe, Bile Throw, Explosive Diarrhea, Flatulence
+
+9. `scripting/l4d2_elite_si_boomer_flashbang.sp`
+   - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
+   - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
 
 ## Subtype mapping
 
@@ -104,6 +110,8 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin n
 - `23`: Bile Throw
 - `24`: Explosive Diarrhea
 - `25`: Flatulence
+- `26`: Target Switch
+- `27`: Flashbang
 
 ## Cvar moi (khong tai su dung key cu)
 
@@ -113,10 +121,12 @@ Tat ca cvar moi su dung prefix:
 - `l4d2_elite_reward_*`
 - `l4d2_elite_si_hardsi_*`
 - `l4d2_elite_si_infected_movement_*`
+- `l4d2_elite_si_hunter_target_switch_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_smoker_noxious_*`
 - `l4d2_elite_boomer_nauseating_*`
+- `l4d2_elite_si_boomer_flashbang_*`
 
 ### Reward update 14/04/2026
 
@@ -152,19 +162,23 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
     - Mac dinh: `20.0` giay
 
   - `l4d2_elite_si_core_boomer_force_subtype`
-    - `0`: random boomer nauseating subtype
-    - `16-25`: ep dung subtype boomer de test
+    - `0`: random boomer subtype
+    - `1`, `16-25`, `27`: ep dung subtype boomer de test
 
-- Smoker elite khong con roll qua `l4d2_elite_si_core_smoker_ability_subtype_chance`.
-  Thay vao do roll ngau nhien 1 trong 11 Noxious subtype.
+  - Cac cvar `l4d2_elite_si_core_*_subtype_chance`
+    - Moi subtype hop le cua tung SI class co 1 trong so roll rieng
+    - `0` = loai subtype khoi random pool
+    - Gia tri lon hon = de ra hon tuong doi trong cung class
+
+- Da bo hoan toan logic `self-ignite` va cvar `l4d2_elite_si_core_fire_ignite_chance`.
 
 - Elite type text da ho tro custom theo tung SI class + subtype qua file data:
   - `addons/sourcemod/data/elite_si_type_descriptions.cfg`
   - Vi du Abnormal behavior cua Charger co the dat mo ta khac Abnormal behavior cua Smoker.
   - Tu 16/04/2026: file data chi dung key subtype hop le theo tung SI class, de tranh lan mo ta giua cac class.
     - `smoker`: `5..15`
-    - `boomer`: `1, 16..25`
-    - `hunter`: `1`
+    - `boomer`: `1, 16..25, 27`
+    - `hunter`: `1, 26`
     - `spitter`: `1, 2`
     - `jockey`: `1`
     - `charger`: `1, 3, 4`
@@ -190,7 +204,7 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 ## Tich hop giua plugin
 
 - Core cap du lieu subtype bang native
-- Cac nhanh behavior (Abnormal behavior / Strange Movement / ChargerSteering / ChargerAction / Smoker Noxious / Boomer Nauseating)
+- Cac nhanh behavior (Abnormal behavior / Strange Movement / Target Switch / ChargerSteering / ChargerAction / Smoker Noxious / Boomer Nauseating / Flashbang)
   doc native de gate dung subtype
 - Core + Reward expose global forward de plugin khac co the subscribe event
 
@@ -268,7 +282,8 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 
 - Tich hop bo Nauseating Boomer vao he thong elite subtype.
 - Them plugin moi `l4d2_elite_si_boomer_nauseating`.
-- Boomer elite roll random 1 subtype boomer trong nhom `16..25`.
+- Boomer elite khong con roll random deu trong nhom `16..25`.
+  Thay vao do roll theo trong so tung subtype boomer trong core.
 - Bo sung cvar force subtype boomer de test:
   - `l4d2_elite_si_core_boomer_force_subtype`
 - Bo sung map CVAR + Main Config UI cho toan bo cvar boomer nauseating.
@@ -280,11 +295,10 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
   - `l4d2_elite_si_infected_movement_smoker`
   - `l4d2_elite_si_infected_movement_spitter`
   - `l4d2_elite_si_infected_movement_tank`
-- Core bo sung chance roll rieng cho movement subtype:
-  - `l4d2_elite_si_core_smoker_movement_subtype_chance`
-  - `l4d2_elite_si_core_spitter_ability_subtype_chance`
-  - `l4d2_elite_si_core_tank_movement_subtype_chance`
-- Smoker co the roll giua `Strange Movement` va bo Noxious.
+- Core da doi sang flow roll moi:
+  - SI roll thanh Elite theo `l4d2_elite_si_core_spawn_chance`
+  - neu thanh cong va khong bi cooldown chan, core se roll subtype theo trong so cvar cua class do
+- Smoker, Boomer, Hunter, Spitter, Jockey, Charger, Tank deu da co bo `*_subtype_chance` rieng.
 - Tank da duoc dua vao mapping elite subtype cua core va Main Configurations UI.
 
 ### 15/04/2026 (Abnormal split)

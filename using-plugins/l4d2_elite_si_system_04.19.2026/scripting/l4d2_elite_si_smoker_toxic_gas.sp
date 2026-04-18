@@ -32,6 +32,7 @@ ConVar g_cvHintInterval;
 
 bool g_bHasEliteApi;
 bool g_bTrackedToxicGas[MAXPLAYERS + 1];
+bool g_bDeathCloudTriggered[MAXPLAYERS + 1];
 float g_fNextCloudAt[MAXPLAYERS + 1];
 float g_fCloudUntil[MAXPLAYERS + 1];
 float g_vecCloudOrigin[MAXPLAYERS + 1][3];
@@ -107,6 +108,7 @@ public void OnClientPutInServer(int client)
 {
 	ResetClientState(client);
 	SDKHook(client, SDKHook_PreThinkPost, OnSmokerThinkPost);
+	SDKHook(client, SDKHook_OnTakeDamageAlive, OnSmokerTakeDamageAlive);
 	SyncTrackedSubtypeForClient(client);
 }
 
@@ -114,6 +116,7 @@ public void OnClientDisconnect(int client)
 {
 	ResetClientState(client);
 	SDKUnhook(client, SDKHook_PreThinkPost, OnSmokerThinkPost);
+	SDKUnhook(client, SDKHook_OnTakeDamageAlive, OnSmokerTakeDamageAlive);
 }
 
 public void OnMapStart()
@@ -202,8 +205,29 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	ReleaseToxicCloud(smoker, true);
+	TryReleaseDeathToxicCloud(smoker);
 	g_fNextCloudAt[smoker] = 0.0;
+}
+
+public Action OnSmokerTakeDamageAlive(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
+{
+	if (!IsToxicGasSmoker(victim, true))
+	{
+		return Plugin_Continue;
+	}
+
+	if (g_bDeathCloudTriggered[victim] || damage <= 0.0)
+	{
+		return Plugin_Continue;
+	}
+
+	int currentHealth = GetClientHealth(victim);
+	if (currentHealth > 0 && float(currentHealth) <= damage)
+	{
+		TryReleaseDeathToxicCloud(victim);
+	}
+
+	return Plugin_Continue;
 }
 
 public void OnSmokerThinkPost(int client)
@@ -328,7 +352,7 @@ Action ToxicGas_OnKilled(any action, int actor, any takedamageinfo, ActionDesire
 		return Plugin_Continue;
 	}
 
-	ReleaseToxicCloud(actor, true);
+	TryReleaseDeathToxicCloud(actor);
 	g_fNextCloudAt[actor] = 0.0;
 	return Plugin_Continue;
 }
@@ -407,6 +431,17 @@ void ReleaseToxicCloud(int smoker, bool onDeath)
 	g_fCloudUntil[smoker] = GetGameTime() + g_cvCloudDuration.FloatValue;
 
 	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
+}
+
+void TryReleaseDeathToxicCloud(int smoker)
+{
+	if (smoker <= 0 || smoker > MaxClients || g_bDeathCloudTriggered[smoker])
+	{
+		return;
+	}
+
+	g_bDeathCloudTriggered[smoker] = true;
+	ReleaseToxicCloud(smoker, true);
 }
 
 void ApplyWorldToxicDamage(int survivor, float damage)
@@ -577,6 +612,7 @@ void ResetClientState(int client)
 	}
 
 	g_bTrackedToxicGas[client] = false;
+	g_bDeathCloudTriggered[client] = false;
 	g_fNextCloudAt[client] = 0.0;
 	g_fCloudUntil[client] = 0.0;
 	g_fLastHintAt[client] = 0.0;

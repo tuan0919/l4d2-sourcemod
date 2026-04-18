@@ -1,4 +1,4 @@
-# l4d2_elite_si_system (rewrite 13/04/2026, update 18/04/2026)
+# l4d2_elite_si_system (rewrite 13/04/2026, update 19/04/2026)
 
 ## Muc tieu rewrite
 
@@ -48,15 +48,21 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Nhanh subtype rieng cho Smoker elite theo trait `Pull Weapon Drop`
    - Khi `tongue_grab` thanh cong, survivor bi keo se rot vu khi dang cam tren tay
 
-6. `scripting/l4d2_elite_si_charger_steering.sp`
+6. `scripting/l4d2_elite_si_smoker_toxic_gas.sp`
+   - Nhanh subtype rieng cho Smoker elite theo trait `Toxic Gas`
+   - Khong dung tongue pull, uu tien ap sat va danh tay
+   - Toc do di chuyen nhanh hon mac dinh
+   - Khi bi shove hoac bi giet se tha lan khoi den gay sat thuong lien tuc cho survivor dung trong vung khoi
+
+7. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge
    - Gate theo subtype `ChargerSteering`
 
-7. `scripting/l4d2_elite_si_charger_action.sp`
+8. `scripting/l4d2_elite_si_charger_action.sp`
    - Wrapper gate cho nhanh `ChargerAction` (subtype rieng)
    - Export native `EliteSI_IsChargerAction(client)` de plugin charger action logic goi truc tiep
 
-8. `scripting/l4d2_elite_si_boomer_flashbang.sp`
+9. `scripting/l4d2_elite_si_boomer_flashbang.sp`
    - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
    - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
 
@@ -70,6 +76,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `26`: Target Switch
 - `27`: Flashbang
 - `28`: Pull Weapon Drop
+- `29`: Toxic Gas
 
 ## Rule gan subtype hien tai
 
@@ -79,7 +86,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Gia tri lon hon chi lam subtype de ra hon tuong doi, khong phai phan tram tuyet doi
 
 - `Smoker`
-	- Roll trong so giua `Strange Movement` va `Pull Weapon Drop`
+	- Roll trong so giua `Strange Movement`, `Pull Weapon Drop`, `Toxic Gas`
 
 - `Boomer`
   - Roll trong so giua `Abnormal behavior` va `Flashbang`
@@ -107,6 +114,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_infected_movement_*`
 - `l4d2_elite_si_hunter_target_switch_*`
 - `l4d2_elite_si_smoker_pull_weapon_drop_*`
+- `l4d2_elite_si_smoker_toxic_gas_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_si_boomer_flashbang_*`
@@ -130,6 +138,11 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khong con giu force subtype, UI card, config map hoac doc tham chieu cho 2 nhanh tren.
 
 ## Changelog tom tat
+
+### 19/04/2026
+
+- Them `Smoker Toxic Gas`: Smoker AI khong dung tongue pull, lao vao danh tay, tang toc do di chuyen, va tha khoi doc khi bi shove hoac bi giet.
+- Them module runtime + cvar + web UI cho `Smoker Toxic Gas`.
 
 ### 18/04/2026
 

@@ -390,26 +390,9 @@ void ApplyWorldToxicDamage(int survivor, float damage)
 		return;
 	}
 
-	int currentHealth = GetClientHealth(survivor);
-	if (currentHealth <= 1)
-	{
-		SDKHooks_TakeDamage(survivor, 0, 0, float(currentHealth), DMG_POISON);
-		return;
-	}
-
-	int damageInt = RoundToCeil(damage);
-	if (damageInt < 1)
-	{
-		damageInt = 1;
-	}
-
-	int nextHealth = currentHealth - damageInt;
-	if (nextHealth < 1)
-	{
-		nextHealth = 1;
-	}
-
-	SetEntityHealth(survivor, nextHealth);
+	// Match the reference smoker cloud plugin pattern: use the victim as a valid
+	// attacker/inflictor so the engine still applies damage even after the smoker died.
+	SDKHooks_TakeDamage(survivor, survivor, survivor, damage, DMG_POISON);
 }
 
 void TryApproachClosestSurvivor(int smoker)

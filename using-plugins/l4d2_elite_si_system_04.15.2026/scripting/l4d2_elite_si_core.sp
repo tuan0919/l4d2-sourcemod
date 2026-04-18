@@ -189,14 +189,14 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_si_core_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvEliteChance = CreateConVar("l4d2_elite_si_core_spawn_chance", "30", "Chance (0-100) that a spawned SI becomes Elite.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_cvEliteChance = CreateConVar("l4d2_elite_si_core_spawn_chance", "50", "Chance (0-100) that a spawned SI becomes Elite.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2 or 5-15=force exact smoker subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 15.0);
 	g_cvBoomerForceSubtype = CreateConVar("l4d2_elite_si_core_boomer_force_subtype", "0", "0=random boomer subtype, 1, 16-25 or 27=force exact boomer subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 27.0);
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_smoker_movement_subtype_chance", "0", "Relative weight for Smoker elite to roll Strange Movement.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_smoker_movement_subtype_chance", "1", "Relative weight for Smoker elite to roll Strange Movement.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_ASPHYXIATION, "l4d2_elite_si_core_smoker_asphyxiation_subtype_chance", "1", "Relative weight for Smoker elite to roll Asphyxiation.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_COLLAPSED_LUNG, "l4d2_elite_si_core_smoker_collapsed_lung_subtype_chance", "1", "Relative weight for Smoker elite to roll Collapsed Lung.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_METHANE_BLAST, "l4d2_elite_si_core_smoker_methane_blast_subtype_chance", "1", "Relative weight for Smoker elite to roll Methane Blast.");
@@ -209,33 +209,33 @@ public void OnPluginStart()
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_TONGUE_WHIP, "l4d2_elite_si_core_smoker_tongue_whip_subtype_chance", "1", "Relative weight for Smoker elite to roll Tongue Whip.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_VOID_POCKET, "l4d2_elite_si_core_smoker_void_pocket_subtype_chance", "1", "Relative weight for Smoker elite to roll Void Pocket.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_boomer_abnormal_subtype_chance", "0", "Relative weight for Boomer elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BELLY, "l4d2_elite_si_core_boomer_bile_belly_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Belly.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BLAST, "l4d2_elite_si_core_boomer_bile_blast_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Blast.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_FEET, "l4d2_elite_si_core_boomer_bile_feet_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Feet.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_MASK, "l4d2_elite_si_core_boomer_bile_mask_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Mask.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_PIMPLE, "l4d2_elite_si_core_boomer_bile_pimple_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Pimple.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SHOWER, "l4d2_elite_si_core_boomer_bile_shower_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Shower.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SWIPE, "l4d2_elite_si_core_boomer_bile_swipe_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Swipe.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_THROW, "l4d2_elite_si_core_boomer_bile_throw_subtype_chance", "8", "Relative weight for Boomer elite to roll Bile Throw.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA, "l4d2_elite_si_core_boomer_explosive_diarrhea_subtype_chance", "8", "Relative weight for Boomer elite to roll Explosive Diarrhea.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLATULENCE, "l4d2_elite_si_core_boomer_flatulence_subtype_chance", "8", "Relative weight for Boomer elite to roll Flatulence.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLASHBANG, "l4d2_elite_si_core_boomer_flashbang_subtype_chance", "20", "Relative weight for Boomer elite to roll Flashbang.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_boomer_abnormal_subtype_chance", "1", "Relative weight for Boomer elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BELLY, "l4d2_elite_si_core_boomer_bile_belly_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Belly.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BLAST, "l4d2_elite_si_core_boomer_bile_blast_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Blast.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_FEET, "l4d2_elite_si_core_boomer_bile_feet_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Feet.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_MASK, "l4d2_elite_si_core_boomer_bile_mask_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Mask.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_PIMPLE, "l4d2_elite_si_core_boomer_bile_pimple_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Pimple.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SHOWER, "l4d2_elite_si_core_boomer_bile_shower_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Shower.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SWIPE, "l4d2_elite_si_core_boomer_bile_swipe_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Swipe.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_THROW, "l4d2_elite_si_core_boomer_bile_throw_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Throw.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA, "l4d2_elite_si_core_boomer_explosive_diarrhea_subtype_chance", "1", "Relative weight for Boomer elite to roll Explosive Diarrhea.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLATULENCE, "l4d2_elite_si_core_boomer_flatulence_subtype_chance", "1", "Relative weight for Boomer elite to roll Flatulence.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLASHBANG, "l4d2_elite_si_core_boomer_flashbang_subtype_chance", "1", "Relative weight for Boomer elite to roll Flashbang.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_hunter_abnormal_subtype_chance", "50", "Relative weight for Hunter elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_HUNTER_TARGET_SWITCH, "l4d2_elite_si_core_hunter_target_switch_subtype_chance", "50", "Relative weight for Hunter elite to roll Target Switch.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_hunter_abnormal_subtype_chance", "1", "Relative weight for Hunter elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_HUNTER_TARGET_SWITCH, "l4d2_elite_si_core_hunter_target_switch_subtype_chance", "1", "Relative weight for Hunter elite to roll Target Switch.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_spitter_abnormal_subtype_chance", "50", "Relative weight for Spitter elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_spitter_ability_subtype_chance", "50", "Relative weight for Spitter elite to roll Strange Movement.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_spitter_abnormal_subtype_chance", "1", "Relative weight for Spitter elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_spitter_ability_subtype_chance", "1", "Relative weight for Spitter elite to roll Strange Movement.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_JOCKEY, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_jockey_abnormal_subtype_chance", "100", "Relative weight for Jockey elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_JOCKEY, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_jockey_abnormal_subtype_chance", "1", "Relative weight for Jockey elite to roll Abnormal behavior.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_charger_abnormal_subtype_chance", "0", "Relative weight for Charger elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_CHARGER_STEERING, "l4d2_elite_si_core_charger_steering_subtype_chance", "100", "Relative weight for Charger elite to roll ChargerSteering.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_CHARGER_ACTION, "l4d2_elite_si_core_charger_action_subtype_chance", "0", "Relative weight for Charger elite to roll ChargerAction.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_charger_abnormal_subtype_chance", "1", "Relative weight for Charger elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_CHARGER_STEERING, "l4d2_elite_si_core_charger_steering_subtype_chance", "1", "Relative weight for Charger elite to roll ChargerSteering.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_CHARGER, ELITE_SUBTYPE_CHARGER_ACTION, "l4d2_elite_si_core_charger_action_subtype_chance", "1", "Relative weight for Charger elite to roll ChargerAction.");
 
-	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_tank_abnormal_subtype_chance", "50", "Relative weight for Tank elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_tank_movement_subtype_chance", "50", "Relative weight for Tank elite to roll Strange Movement.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_tank_abnormal_subtype_chance", "1", "Relative weight for Tank elite to roll Abnormal behavior.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_tank_movement_subtype_chance", "1", "Relative weight for Tank elite to roll Strange Movement.");
 
 	CreateConVar("l4d2_elite_si_core_version", PLUGIN_VERSION, "Elite SI core version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_core");

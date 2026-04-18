@@ -108,7 +108,7 @@ public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
 public void Event_ResetState(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if (!IsClientInGame(client))
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
 	{
 		return;
 	}

@@ -6,10 +6,10 @@ Rewrite lai he thong Elite SI + reward HP theo huong module, giam chong cheo log
 
 ## Kien truc moi
 
-He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 17 plugin nho, load doc lap:
+He thong moi da tach thanh bo module nho, load doc lap:
 
 1. `scripting/l4d2_elite_si_core.sp`
-   - Nguon su that cho Elite SI (roll elite, HP multiplier, mau render, fire immunity)
+   - Nguon su that cho Elite SI (roll elite, HP multiplier, mau render, subtype API)
    - Expose native:
      - `EliteSI_IsElite(client)`
      - `EliteSI_GetSubtype(client)`
@@ -165,12 +165,22 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
     - `0`: random boomer subtype
     - `1`, `16-25`, `27`: ep dung subtype boomer de test
 
+  - `l4d2_elite_si_core_smoker_force_subtype`
+    - `0`: random smoker subtype
+    - `2`, `5-15`: ep dung subtype smoker de test
+
   - Cac cvar `l4d2_elite_si_core_*_subtype_chance`
     - Moi subtype hop le cua tung SI class co 1 trong so roll rieng
     - `0` = loai subtype khoi random pool
     - Gia tri lon hon = de ra hon tuong doi trong cung class
+    - Mac dinh hien tai: tat ca bang `1`
+
+  - `l4d2_elite_si_core_spawn_chance`
+    - Ty le SI spawn ra tro thanh Elite
+    - Mac dinh hien tai: `50`
 
 - Da bo hoan toan logic `self-ignite` va cvar `l4d2_elite_si_core_fire_ignite_chance`.
+- Native `EliteSI_IsFireImmune()` duoc giu lai de tuong thich, nhung hien tai core khong con set fire immunity runtime.
 
 - Elite type text da ho tro custom theo tung SI class + subtype qua file data:
   - `addons/sourcemod/data/elite_si_type_descriptions.cfg`
@@ -207,6 +217,17 @@ Neu tat cvar nay thi ca elite SI va normal SI deu khong duoc thuong.
 - Cac nhanh behavior (Abnormal behavior / Strange Movement / Target Switch / ChargerSteering / ChargerAction / Smoker Noxious / Boomer Nauseating / Flashbang)
   doc native de gate dung subtype
 - Core + Reward expose global forward de plugin khac co the subscribe event
+
+## Flow hien tai
+
+1. SI spawn.
+2. Core check `l4d2_elite_si_core_spawn_cooldown`.
+3. Neu khong bi cooldown chan, core roll `l4d2_elite_si_core_spawn_chance`.
+4. Neu thanh Elite:
+   - buff HP theo `l4d2_elite_si_core_hp_multiplier`
+   - chon 1 subtype hop le theo bo `*_subtype_chance` cua dung SI class do
+   - apply render color theo class/subtype
+   - plugin nhanh theo subtype tiep quan ly logic rieng
 
 ## Compile
 
@@ -245,6 +266,7 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 - Bo sung cvar test force subtype Smoker:
   - `l4d2_elite_si_core_smoker_force_subtype`
     - `0`: random nhu binh thuong
+    - `2`: ep `Strange Movement`
     - `5-15`: ep dung subtype Noxious de test
 
 - Smoker Noxious bo sung warning instructor hint khi survivor an sat thuong dac biet:

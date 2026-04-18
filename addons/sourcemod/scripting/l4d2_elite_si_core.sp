@@ -6,13 +6,13 @@
 #include <sdkhooks>
 #include <colors>
 
-#define PLUGIN_VERSION "1.4.0"
+#define PLUGIN_VERSION "1.5.0"
 
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 28
+#define ELITE_SUBTYPE_COUNT 29
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -45,7 +45,8 @@ enum
 	ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA,
 	ELITE_SUBTYPE_BOOMER_FLATULENCE,
 	ELITE_SUBTYPE_HUNTER_TARGET_SWITCH,
-	ELITE_SUBTYPE_BOOMER_FLASHBANG
+	ELITE_SUBTYPE_BOOMER_FLASHBANG,
+	ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP
 }
 
 enum
@@ -109,35 +110,6 @@ static const int ELITE_ABILITY_COLORS[ELITE_CLASS_COUNT][3] =
 	{255, 170, 60}
 };
 
-static const int ELITE_SMOKER_NOXIOUS_COLORS[11][3] =
-{
-	{255, 20, 20},
-	{255, 70, 40},
-	{255, 120, 20},
-	{220, 255, 40},
-	{255, 95, 0},
-	{120, 180, 255},
-	{255, 55, 95},
-	{150, 150, 150},
-	{255, 180, 0},
-	{230, 110, 255},
-	{100, 255, 255}
-};
-
-static const int ELITE_BOOMER_NAUSEATING_COLORS[10][3] =
-{
-	{120, 255, 70},
-	{255, 170, 50},
-	{90, 220, 255},
-	{255, 255, 120},
-	{255, 95, 150},
-	{255, 130, 60},
-	{255, 80, 80},
-	{200, 255, 120},
-	{255, 210, 90},
-	{165, 225, 110}
-};
-
 static const char g_sEliteClassKeys[ELITE_CLASS_COUNT][] =
 {
 	"smoker",
@@ -193,33 +165,13 @@ public void OnPluginStart()
 	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2 or 5-15=force exact smoker subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 15.0);
-	g_cvBoomerForceSubtype = CreateConVar("l4d2_elite_si_core_boomer_force_subtype", "0", "0=random boomer subtype, 1, 16-25 or 27=force exact boomer subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 27.0);
+	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2=force Strange Movement, 28=force Pull Weapon Drop for test.", FCVAR_NOTIFY, true, 0.0, true, 28.0);
+	g_cvBoomerForceSubtype = CreateConVar("l4d2_elite_si_core_boomer_force_subtype", "0", "0=random boomer subtype, 1 or 27=force exact boomer subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 27.0);
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_smoker_movement_subtype_chance", "1", "Relative weight for Smoker elite to roll Strange Movement.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_ASPHYXIATION, "l4d2_elite_si_core_smoker_asphyxiation_subtype_chance", "1", "Relative weight for Smoker elite to roll Asphyxiation.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_COLLAPSED_LUNG, "l4d2_elite_si_core_smoker_collapsed_lung_subtype_chance", "1", "Relative weight for Smoker elite to roll Collapsed Lung.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_METHANE_BLAST, "l4d2_elite_si_core_smoker_methane_blast_subtype_chance", "1", "Relative weight for Smoker elite to roll Methane Blast.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_METHANE_LEAK, "l4d2_elite_si_core_smoker_methane_leak_subtype_chance", "1", "Relative weight for Smoker elite to roll Methane Leak.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_METHANE_STRIKE, "l4d2_elite_si_core_smoker_methane_strike_subtype_chance", "1", "Relative weight for Smoker elite to roll Methane Strike.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_MOON_WALK, "l4d2_elite_si_core_smoker_moon_walk_subtype_chance", "1", "Relative weight for Smoker elite to roll Moon Walk.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_RESTRAINED_HOSTAGE, "l4d2_elite_si_core_smoker_restrained_hostage_subtype_chance", "1", "Relative weight for Smoker elite to roll Restrained Hostage.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_SMOKE_SCREEN, "l4d2_elite_si_core_smoker_smoke_screen_subtype_chance", "1", "Relative weight for Smoker elite to roll Smoke Screen.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_TONGUE_STRIP, "l4d2_elite_si_core_smoker_tongue_strip_subtype_chance", "1", "Relative weight for Smoker elite to roll Tongue Strip.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_TONGUE_WHIP, "l4d2_elite_si_core_smoker_tongue_whip_subtype_chance", "1", "Relative weight for Smoker elite to roll Tongue Whip.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_VOID_POCKET, "l4d2_elite_si_core_smoker_void_pocket_subtype_chance", "1", "Relative weight for Smoker elite to roll Void Pocket.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP, "l4d2_elite_si_core_smoker_pull_weapon_drop_subtype_chance", "1", "Relative weight for Smoker elite to roll Pull Weapon Drop.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_boomer_abnormal_subtype_chance", "1", "Relative weight for Boomer elite to roll Abnormal behavior.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BELLY, "l4d2_elite_si_core_boomer_bile_belly_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Belly.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_BLAST, "l4d2_elite_si_core_boomer_bile_blast_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Blast.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_FEET, "l4d2_elite_si_core_boomer_bile_feet_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Feet.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_MASK, "l4d2_elite_si_core_boomer_bile_mask_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Mask.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_PIMPLE, "l4d2_elite_si_core_boomer_bile_pimple_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Pimple.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SHOWER, "l4d2_elite_si_core_boomer_bile_shower_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Shower.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_SWIPE, "l4d2_elite_si_core_boomer_bile_swipe_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Swipe.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_BILE_THROW, "l4d2_elite_si_core_boomer_bile_throw_subtype_chance", "1", "Relative weight for Boomer elite to roll Bile Throw.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA, "l4d2_elite_si_core_boomer_explosive_diarrhea_subtype_chance", "1", "Relative weight for Boomer elite to roll Explosive Diarrhea.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLATULENCE, "l4d2_elite_si_core_boomer_flatulence_subtype_chance", "1", "Relative weight for Boomer elite to roll Flatulence.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLASHBANG, "l4d2_elite_si_core_boomer_flashbang_subtype_chance", "1", "Relative weight for Boomer elite to roll Flashbang.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_hunter_abnormal_subtype_chance", "1", "Relative weight for Hunter elite to roll Abnormal behavior.");
@@ -435,20 +387,6 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 	}
 	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
 
-	if (zClass == ZC_SMOKER && IsSmokerNoxiousSubtype(subtype))
-	{
-		int noxiousIndex = subtype - ELITE_SUBTYPE_SMOKER_ASPHYXIATION;
-		SetEntityRenderColor(client, ELITE_SMOKER_NOXIOUS_COLORS[noxiousIndex][0], ELITE_SMOKER_NOXIOUS_COLORS[noxiousIndex][1], ELITE_SMOKER_NOXIOUS_COLORS[noxiousIndex][2], 255);
-		return;
-	}
-
-	if (zClass == ZC_BOOMER && IsBoomerNauseatingSubtype(subtype))
-	{
-		int boomerIndex = subtype - ELITE_SUBTYPE_BOOMER_BILE_BELLY;
-		SetEntityRenderColor(client, ELITE_BOOMER_NAUSEATING_COLORS[boomerIndex][0], ELITE_BOOMER_NAUSEATING_COLORS[boomerIndex][1], ELITE_BOOMER_NAUSEATING_COLORS[boomerIndex][2], 255);
-		return;
-	}
-
 	if (subtype == ELITE_SUBTYPE_HUNTER_TARGET_SWITCH)
 	{
 		SetEntityRenderColor(client, 80, 235, 255, 255);
@@ -458,6 +396,12 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 	if (subtype == ELITE_SUBTYPE_BOOMER_FLASHBANG)
 	{
 		SetEntityRenderColor(client, 180, 255, 235, 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP)
+	{
+		SetEntityRenderColor(client, 150, 110, 255, 255);
 		return;
 	}
 
@@ -500,7 +444,7 @@ int GetForcedSubtypeForClass(int zClass)
 		case ZC_SMOKER:
 		{
 			int forcedSubtype = g_cvSmokerForceSubtype.IntValue;
-			if (forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || (forcedSubtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && forcedSubtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET))
+			if (forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || forcedSubtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP)
 			{
 				return forcedSubtype;
 			}
@@ -509,7 +453,7 @@ int GetForcedSubtypeForClass(int zClass)
 		case ZC_BOOMER:
 		{
 			int forcedSubtype = g_cvBoomerForceSubtype.IntValue;
-			if (forcedSubtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || forcedSubtype == ELITE_SUBTYPE_BOOMER_FLASHBANG || (forcedSubtype >= ELITE_SUBTYPE_BOOMER_BILE_BELLY && forcedSubtype <= ELITE_SUBTYPE_BOOMER_FLATULENCE))
+			if (forcedSubtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || forcedSubtype == ELITE_SUBTYPE_BOOMER_FLASHBANG)
 			{
 				return forcedSubtype;
 			}
@@ -594,16 +538,6 @@ int GetDefaultSubtypeForClass(int zClass)
 void RegisterSubtypeChanceConVar(int classIdx, int subtype, const char[] name, const char[] defaultValue, const char[] description)
 {
 	g_cvSubtypeChance[classIdx][subtype] = CreateConVar(name, defaultValue, description, FCVAR_NOTIFY, true, 0.0, true, 100.0);
-}
-
-bool IsSmokerNoxiousSubtype(int subtype)
-{
-	return subtype >= ELITE_SUBTYPE_SMOKER_ASPHYXIATION && subtype <= ELITE_SUBTYPE_SMOKER_VOID_POCKET;
-}
-
-bool IsBoomerNauseatingSubtype(int subtype)
-{
-	return subtype >= ELITE_SUBTYPE_BOOMER_BILE_BELLY && subtype <= ELITE_SUBTYPE_BOOMER_FLATULENCE;
 }
 
 void AnnounceEliteSpawn(int client, int zClass, int subtype)
@@ -705,29 +639,9 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_ABILITY_MOVEMENT: strcopy(buffer, maxlen, "Strange Movement");
 		case ELITE_SUBTYPE_CHARGER_STEERING: strcopy(buffer, maxlen, "ChargerSteering");
 		case ELITE_SUBTYPE_CHARGER_ACTION: strcopy(buffer, maxlen, "ChargerAction");
-		case ELITE_SUBTYPE_SMOKER_ASPHYXIATION: strcopy(buffer, maxlen, "Asphyxiation");
-		case ELITE_SUBTYPE_SMOKER_COLLAPSED_LUNG: strcopy(buffer, maxlen, "Collapsed Lung");
-		case ELITE_SUBTYPE_SMOKER_METHANE_BLAST: strcopy(buffer, maxlen, "Methane Blast");
-		case ELITE_SUBTYPE_SMOKER_METHANE_LEAK: strcopy(buffer, maxlen, "Methane Leak");
-		case ELITE_SUBTYPE_SMOKER_METHANE_STRIKE: strcopy(buffer, maxlen, "Methane Strike");
-		case ELITE_SUBTYPE_SMOKER_MOON_WALK: strcopy(buffer, maxlen, "Moon Walk");
-		case ELITE_SUBTYPE_SMOKER_RESTRAINED_HOSTAGE: strcopy(buffer, maxlen, "Restrained Hostage");
-		case ELITE_SUBTYPE_SMOKER_SMOKE_SCREEN: strcopy(buffer, maxlen, "Smoke Screen");
-		case ELITE_SUBTYPE_SMOKER_TONGUE_STRIP: strcopy(buffer, maxlen, "Tongue Strip");
-		case ELITE_SUBTYPE_SMOKER_TONGUE_WHIP: strcopy(buffer, maxlen, "Tongue Whip");
-		case ELITE_SUBTYPE_SMOKER_VOID_POCKET: strcopy(buffer, maxlen, "Void Pocket");
-		case ELITE_SUBTYPE_BOOMER_BILE_BELLY: strcopy(buffer, maxlen, "Bile Belly");
-		case ELITE_SUBTYPE_BOOMER_BILE_BLAST: strcopy(buffer, maxlen, "Bile Blast");
-		case ELITE_SUBTYPE_BOOMER_BILE_FEET: strcopy(buffer, maxlen, "Bile Feet");
-		case ELITE_SUBTYPE_BOOMER_BILE_MASK: strcopy(buffer, maxlen, "Bile Mask");
-		case ELITE_SUBTYPE_BOOMER_BILE_PIMPLE: strcopy(buffer, maxlen, "Bile Pimple");
-		case ELITE_SUBTYPE_BOOMER_BILE_SHOWER: strcopy(buffer, maxlen, "Bile Shower");
-		case ELITE_SUBTYPE_BOOMER_BILE_SWIPE: strcopy(buffer, maxlen, "Bile Swipe");
-		case ELITE_SUBTYPE_BOOMER_BILE_THROW: strcopy(buffer, maxlen, "Bile Throw");
-		case ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA: strcopy(buffer, maxlen, "Explosive Diarrhea");
-		case ELITE_SUBTYPE_BOOMER_FLATULENCE: strcopy(buffer, maxlen, "Flatulence");
 		case ELITE_SUBTYPE_HUNTER_TARGET_SWITCH: strcopy(buffer, maxlen, "Target Switch");
 		case ELITE_SUBTYPE_BOOMER_FLASHBANG: strcopy(buffer, maxlen, "Flashbang");
+		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "Pull Weapon Drop");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -740,29 +654,9 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_ABILITY_MOVEMENT: strcopy(buffer, maxlen, "maintains momentum while casting special abilities");
 		case ELITE_SUBTYPE_CHARGER_STEERING: strcopy(buffer, maxlen, "can steer aggressively during a charge");
 		case ELITE_SUBTYPE_CHARGER_ACTION: strcopy(buffer, maxlen, "uses dedicated charger action routines");
-		case ELITE_SUBTYPE_SMOKER_ASPHYXIATION: strcopy(buffer, maxlen, "causes nearby Survivors to struggle to breathe");
-		case ELITE_SUBTYPE_SMOKER_COLLAPSED_LUNG: strcopy(buffer, maxlen, "tongue trauma inflicts lingering internal damage");
-		case ELITE_SUBTYPE_SMOKER_METHANE_BLAST: strcopy(buffer, maxlen, "explodes on death and blasts nearby Survivors");
-		case ELITE_SUBTYPE_SMOKER_METHANE_LEAK: strcopy(buffer, maxlen, "periodically releases a damaging methane cloud");
-		case ELITE_SUBTYPE_SMOKER_METHANE_STRIKE: strcopy(buffer, maxlen, "shoving it can trigger an instant stagger gas strike");
-		case ELITE_SUBTYPE_SMOKER_MOON_WALK: strcopy(buffer, maxlen, "can backpedal while maintaining tongue pressure");
-		case ELITE_SUBTYPE_SMOKER_RESTRAINED_HOSTAGE: strcopy(buffer, maxlen, "uses its victim as a shield and redirects pain");
-		case ELITE_SUBTYPE_SMOKER_SMOKE_SCREEN: strcopy(buffer, maxlen, "smoke veil can make incoming attacks miss");
-		case ELITE_SUBTYPE_SMOKER_TONGUE_STRIP: strcopy(buffer, maxlen, "tongue grab can strip away the victim's item");
-		case ELITE_SUBTYPE_SMOKER_TONGUE_WHIP: strcopy(buffer, maxlen, "tongue snap lashes and flings nearby Survivors");
-		case ELITE_SUBTYPE_SMOKER_VOID_POCKET: strcopy(buffer, maxlen, "pulls nearby Survivors violently toward itself");
-		case ELITE_SUBTYPE_BOOMER_BILE_BELLY: strcopy(buffer, maxlen, "takes reduced incoming damage due to bloated bile armor");
-		case ELITE_SUBTYPE_BOOMER_BILE_BLAST: strcopy(buffer, maxlen, "dies with a methane shockwave that damages and flings survivors");
-		case ELITE_SUBTYPE_BOOMER_BILE_FEET: strcopy(buffer, maxlen, "moves faster with slick bile-coated mobility");
-		case ELITE_SUBTYPE_BOOMER_BILE_MASK: strcopy(buffer, maxlen, "vomit can heavily mask survivor HUD vision");
-		case ELITE_SUBTYPE_BOOMER_BILE_PIMPLE: strcopy(buffer, maxlen, "periodic bile pimple bursts damage nearby survivors");
-		case ELITE_SUBTYPE_BOOMER_BILE_SHOWER: strcopy(buffer, maxlen, "successful vomit calls an extra common infected mob");
-		case ELITE_SUBTYPE_BOOMER_BILE_SWIPE: strcopy(buffer, maxlen, "claw hits can inflict lingering bile wound damage");
-		case ELITE_SUBTYPE_BOOMER_BILE_THROW: strcopy(buffer, maxlen, "can lob bile globs at visible survivors");
-		case ELITE_SUBTYPE_BOOMER_EXPLOSIVE_DIARRHEA: strcopy(buffer, maxlen, "vomiting also sprays bile to survivors behind it");
-		case ELITE_SUBTYPE_BOOMER_FLATULENCE: strcopy(buffer, maxlen, "periodically releases damaging bile gas clouds");
 		case ELITE_SUBTYPE_HUNTER_TARGET_SWITCH: strcopy(buffer, maxlen, "abandons incapacitated prey and pounces a new target");
 		case ELITE_SUBTYPE_BOOMER_FLASHBANG: strcopy(buffer, maxlen, "detonates with a blinding flash when killed");
+		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "forces the grabbed survivor to drop the weapon currently in hand");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -799,12 +693,12 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 	{
 		case ELITE_CLASS_SMOKER:
 		{
-			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || IsSmokerNoxiousSubtype(subtype);
+			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP;
 		}
 
 		case ELITE_CLASS_BOOMER:
 		{
-			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_BOOMER_FLASHBANG || IsBoomerNauseatingSubtype(subtype);
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_BOOMER_FLASHBANG;
 		}
 
 		case ELITE_CLASS_HUNTER:

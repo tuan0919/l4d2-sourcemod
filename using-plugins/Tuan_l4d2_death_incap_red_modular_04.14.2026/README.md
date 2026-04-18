@@ -83,23 +83,10 @@ Hang so moi lien quan den resolver:
 - `FIRE_ENTITY_RECHECK_DELAY`
 - `FIRE_ENTITY_LINK_SCAN_MAX`
 
-## Update 16/04/2026 - Elite Smoker Noxious cause
+## Update 18/04/2026 - Elite subtype cleanup
 
-- Tich hop native optional tu module noxious:
-  - `EliteSI_Noxious_GetRecentDamageCause(victim)`
-  - `EliteSI_Noxious_GetRecentDamageAttacker(victim)`
-
-- Khi victim bi ha guc/chet boi noxious damage, plugin uu tien resolve cause cu the:
-  - `Smoker Asphyxiation`
-  - `Smoker Collapsed Lung`
-  - `Smoker Methane Blast`
-  - `Smoker Methane Leak`
-  - `Smoker Tongue Whip`
-  - `Smoker Void Pocket`
-  - `Smoker Restrained Hostage`
-
-- Ket qua:
-  - Giam truong hop chat do bao gom chung chung `Smoker claws` voi cac noxious damage.
+- Elite system hien tai da go hoan toan nhanh `Smoker Noxious`.
+- Module chat do khong con tai lieu tich hop native `EliteSI_Noxious_*` trong workflow hien tai.
 
 ## Update 16/04/2026 - Elite type name in kill/incap target
 

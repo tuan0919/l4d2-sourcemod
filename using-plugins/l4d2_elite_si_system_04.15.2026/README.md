@@ -47,9 +47,13 @@ He thong moi da tach nhanh Abnormal Behavior theo tung SI, tong cong 15 plugin n
    - `scripting/l4d2_elite_si_hardsi_tank.sp`
      - Tank bhop + smart rock + allow/deny rock throw
 
-4. `scripting/l4d2_elite_si_ability_movement.sp`
-   - Nhanh movement ability cho subtype `Strange Movement`
-   - Giu toc do khi cast `ability_tongue`, `ability_spit`, `ability_throw`
+4. Nhanh `Strange Movement` (tach theo tung SI):
+   - `scripting/l4d2_elite_si_infected_movement_smoker.sp`
+     - Giu toc do cho Smoker elite bot khi cast `ability_tongue`
+   - `scripting/l4d2_elite_si_infected_movement_spitter.sp`
+     - Giu toc do cho Spitter elite bot khi cast `ability_spit`
+   - `scripting/l4d2_elite_si_infected_movement_tank.sp`
+     - Giu toc do cho Tank elite bot khi cast `ability_throw`
 
 5. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge
@@ -108,7 +112,7 @@ Tat ca cvar moi su dung prefix:
 - `l4d2_elite_si_core_*`
 - `l4d2_elite_reward_*`
 - `l4d2_elite_si_hardsi_*`
-- `l4d2_elite_ability_move_*`
+- `l4d2_elite_si_infected_movement_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_smoker_noxious_*`
@@ -268,6 +272,20 @@ Da compile thanh cong cac file `.sp` trong bo module rewrite.
 - Bo sung cvar force subtype boomer de test:
   - `l4d2_elite_si_core_boomer_force_subtype`
 - Bo sung map CVAR + Main Config UI cho toan bo cvar boomer nauseating.
+
+### 18/04/2026 (Strange Movement split)
+
+- Remove plugin tong `l4d2_elite_si_ability_movement.sp`.
+- Tach `Strange Movement` thanh 3 plugin rieng:
+  - `l4d2_elite_si_infected_movement_smoker`
+  - `l4d2_elite_si_infected_movement_spitter`
+  - `l4d2_elite_si_infected_movement_tank`
+- Core bo sung chance roll rieng cho movement subtype:
+  - `l4d2_elite_si_core_smoker_movement_subtype_chance`
+  - `l4d2_elite_si_core_spitter_ability_subtype_chance`
+  - `l4d2_elite_si_core_tank_movement_subtype_chance`
+- Smoker co the roll giua `Strange Movement` va bo Noxious.
+- Tank da duoc dua vao mapping elite subtype cua core va Main Configurations UI.
 
 ### 15/04/2026 (Abnormal split)
 

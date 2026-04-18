@@ -11,7 +11,7 @@
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
-#define ELITE_CLASS_COUNT 6
+#define ELITE_CLASS_COUNT 7
 #define ELITE_SUBTYPE_COUNT 26
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
@@ -53,7 +53,8 @@ enum
 	ZC_HUNTER,
 	ZC_SPITTER,
 	ZC_JOCKEY,
-	ZC_CHARGER
+	ZC_CHARGER,
+	ZC_TANK = 8
 }
 
 enum
@@ -63,7 +64,8 @@ enum
 	ELITE_CLASS_HUNTER,
 	ELITE_CLASS_SPITTER,
 	ELITE_CLASS_JOCKEY,
-	ELITE_CLASS_CHARGER
+	ELITE_CLASS_CHARGER,
+	ELITE_CLASS_TANK
 }
 
 ConVar g_cvEnable;
@@ -71,7 +73,9 @@ ConVar g_cvEliteChance;
 ConVar g_cvEliteSpawnCooldown;
 ConVar g_cvEliteHpMultiplier;
 ConVar g_cvEliteFireChance;
+ConVar g_cvSmokerMovementChance;
 ConVar g_cvSpitterAbilityChance;
+ConVar g_cvTankMovementChance;
 ConVar g_cvChargerSteeringChance;
 ConVar g_cvChargerActionChance;
 ConVar g_cvSpawnAnnounce;
@@ -86,24 +90,26 @@ float g_fNextEliteSpawnTime;
 GlobalForward g_fwEliteAssigned;
 GlobalForward g_fwEliteCleared;
 
-static const int ELITE_ABNORMAL_BEHAVIOR_COLORS[6][3] =
+static const int ELITE_ABNORMAL_BEHAVIOR_COLORS[ELITE_CLASS_COUNT][3] =
 {
 	{180, 0, 255},
 	{0, 255, 80},
 	{0, 220, 255},
 	{255, 140, 0},
 	{255, 255, 0},
-	{255, 30, 30}
+	{255, 30, 30},
+	{255, 110, 40}
 };
 
-static const int ELITE_ABILITY_COLORS[6][3] =
+static const int ELITE_ABILITY_COLORS[ELITE_CLASS_COUNT][3] =
 {
 	{255, 80, 255},
 	{0, 255, 80},
 	{0, 220, 255},
 	{255, 215, 0},
 	{255, 255, 0},
-	{255, 30, 30}
+	{255, 30, 30},
+	{255, 170, 60}
 };
 
 static const int ELITE_SMOKER_NOXIOUS_COLORS[11][3] =
@@ -142,7 +148,8 @@ static const char g_sEliteClassKeys[ELITE_CLASS_COUNT][] =
 	"hunter",
 	"spitter",
 	"jockey",
-	"charger"
+	"charger",
+	"tank"
 };
 
 char g_sEliteTypeNames[ELITE_CLASS_COUNT][ELITE_SUBTYPE_COUNT][ELITE_TYPE_NAME_LEN];
@@ -189,7 +196,9 @@ public void OnPluginStart()
 	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvEliteFireChance = CreateConVar("l4d2_elite_si_core_fire_ignite_chance", "20", "Chance (0-100) for elite SI to ignite itself and gain fire immunity.", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_cvSmokerMovementChance = CreateConVar("l4d2_elite_si_core_smoker_movement_subtype_chance", "0", "Smoker elite chance to roll Strange Movement subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvSpitterAbilityChance = CreateConVar("l4d2_elite_si_core_spitter_ability_subtype_chance", "50", "Spitter elite chance to roll Strange Movement subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
+	g_cvTankMovementChance = CreateConVar("l4d2_elite_si_core_tank_movement_subtype_chance", "50", "Tank elite chance to roll Strange Movement subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvChargerSteeringChance = CreateConVar("l4d2_elite_si_core_charger_steering_subtype_chance", "100", "Charger elite chance to roll ChargerSteering subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvChargerActionChance = CreateConVar("l4d2_elite_si_core_charger_action_subtype_chance", "0", "Charger elite chance to roll ChargerAction subtype (0-100).", FCVAR_NOTIFY, true, 0.0, true, 100.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -393,7 +402,11 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 		return;
 	}
 
-	int colorIndex = zClass - 1;
+	int colorIndex = GetSiClassIndex(zClass);
+	if (colorIndex < 0)
+	{
+		return;
+	}
 	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
 
 	if (zClass == ZC_SMOKER && IsSmokerNoxiousSubtype(subtype))
@@ -437,6 +450,11 @@ int RollSubtypeByClass(int zClass)
 	{
 		case ZC_SMOKER:
 		{
+			if (GetRandomInt(1, 100) <= g_cvSmokerMovementChance.IntValue)
+			{
+				return ELITE_SUBTYPE_ABILITY_MOVEMENT;
+			}
+
 			return RollSmokerNoxiousSubtype();
 		}
 		case ZC_BOOMER:
@@ -470,6 +488,10 @@ int RollSubtypeByClass(int zClass)
 			}
 
 			return ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
+		}
+		case ZC_TANK:
+		{
+			return GetRandomInt(1, 100) <= g_cvTankMovementChance.IntValue ? ELITE_SUBTYPE_ABILITY_MOVEMENT : ELITE_SUBTYPE_ABNORMAL_BEHAVIOR;
 		}
 	}
 
@@ -586,16 +608,17 @@ bool TryGetConfiguredEliteTypeDescription(int zClass, int subtype, char[] buffer
 
 void GetSiClassLabel(int zClass, char[] buffer, int maxlen)
 {
-	switch (zClass)
-	{
-		case ZC_SMOKER: strcopy(buffer, maxlen, "Smoker");
-		case ZC_BOOMER: strcopy(buffer, maxlen, "Boomer");
-		case ZC_HUNTER: strcopy(buffer, maxlen, "Hunter");
-		case ZC_SPITTER: strcopy(buffer, maxlen, "Spitter");
-		case ZC_JOCKEY: strcopy(buffer, maxlen, "Jockey");
-		case ZC_CHARGER: strcopy(buffer, maxlen, "Charger");
-		default: strcopy(buffer, maxlen, "SI");
-	}
+		switch (zClass)
+		{
+			case ZC_SMOKER: strcopy(buffer, maxlen, "Smoker");
+			case ZC_BOOMER: strcopy(buffer, maxlen, "Boomer");
+			case ZC_HUNTER: strcopy(buffer, maxlen, "Hunter");
+			case ZC_SPITTER: strcopy(buffer, maxlen, "Spitter");
+			case ZC_JOCKEY: strcopy(buffer, maxlen, "Jockey");
+			case ZC_CHARGER: strcopy(buffer, maxlen, "Charger");
+			case ZC_TANK: strcopy(buffer, maxlen, "Tank");
+			default: strcopy(buffer, maxlen, "SI");
+		}
 }
 
 void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
@@ -666,12 +689,18 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 
 int GetSiClassIndex(int zClass)
 {
-	if (zClass < ZC_SMOKER || zClass > ZC_CHARGER)
+	switch (zClass)
 	{
-		return -1;
+		case ZC_SMOKER: return ELITE_CLASS_SMOKER;
+		case ZC_BOOMER: return ELITE_CLASS_BOOMER;
+		case ZC_HUNTER: return ELITE_CLASS_HUNTER;
+		case ZC_SPITTER: return ELITE_CLASS_SPITTER;
+		case ZC_JOCKEY: return ELITE_CLASS_JOCKEY;
+		case ZC_CHARGER: return ELITE_CLASS_CHARGER;
+		case ZC_TANK: return ELITE_CLASS_TANK;
 	}
 
-	return zClass - ZC_SMOKER;
+	return -1;
 }
 
 bool IsValidSubtypeForConfig(int subtype)
@@ -690,7 +719,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 	{
 		case ELITE_CLASS_SMOKER:
 		{
-			return IsSmokerNoxiousSubtype(subtype);
+			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || IsSmokerNoxiousSubtype(subtype);
 		}
 
 		case ELITE_CLASS_BOOMER:
@@ -711,6 +740,11 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 		case ELITE_CLASS_CHARGER:
 		{
 			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_CHARGER_STEERING || subtype == ELITE_SUBTYPE_CHARGER_ACTION;
+		}
+
+		case ELITE_CLASS_TANK:
+		{
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT;
 		}
 	}
 
@@ -835,7 +869,7 @@ void WriteDefaultEliteTypeDescriptionFile(const char[] path)
 
 bool IsTrackableSiClass(int zClass)
 {
-	return zClass >= ZC_SMOKER && zClass <= ZC_CHARGER;
+	return (zClass >= ZC_SMOKER && zClass <= ZC_CHARGER) || zClass == ZC_TANK;
 }
 
 bool IsValidInfected(int client)

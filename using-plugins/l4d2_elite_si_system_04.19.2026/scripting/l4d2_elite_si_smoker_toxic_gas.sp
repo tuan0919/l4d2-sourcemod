@@ -386,7 +386,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 
 			if (hasLiveOwner)
 			{
-				SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage, DMG_POISON);
+				SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage);
 			}
 			else
 			{
@@ -418,7 +418,7 @@ void ApplyWorldToxicDamage(int survivor, float damage)
 
 	// Match the reference smoker cloud plugin pattern: use the victim as a valid
 	// attacker/inflictor so the engine still applies damage even after the smoker died.
-	SDKHooks_TakeDamage(survivor, survivor, survivor, damage, DMG_POISON);
+	SDKHooks_TakeDamage(survivor, survivor, survivor, damage);
 }
 
 void TryApproachClosestSurvivor(int smoker)

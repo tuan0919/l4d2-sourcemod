@@ -337,9 +337,11 @@ public Action Timer_ToxicGasThink(Handle timer)
 		}
 
 		int damageSource = 0;
+		bool hasLiveOwner = false;
 		if (smoker > 0 && smoker <= MaxClients && IsClientInGame(smoker) && IsPlayerAlive(smoker))
 		{
 			damageSource = smoker;
+			hasLiveOwner = true;
 		}
 
 		for (int survivor = 1; survivor <= MaxClients; survivor++)
@@ -356,7 +358,14 @@ public Action Timer_ToxicGasThink(Handle timer)
 				continue;
 			}
 
-			SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage, DMG_POISON);
+			if (hasLiveOwner)
+			{
+				SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage, DMG_POISON);
+			}
+			else
+			{
+				ApplyWorldToxicDamage(survivor, damage);
+			}
 			MaybeDisplayGasHint(survivor, now);
 		}
 	}
@@ -372,6 +381,35 @@ void ReleaseToxicCloud(int smoker, bool onDeath)
 	g_fCloudUntil[smoker] = GetGameTime() + g_cvCloudDuration.FloatValue;
 
 	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
+}
+
+void ApplyWorldToxicDamage(int survivor, float damage)
+{
+	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
+	{
+		return;
+	}
+
+	int currentHealth = GetClientHealth(survivor);
+	if (currentHealth <= 1)
+	{
+		SDKHooks_TakeDamage(survivor, 0, 0, float(currentHealth), DMG_POISON);
+		return;
+	}
+
+	int damageInt = RoundToCeil(damage);
+	if (damageInt < 1)
+	{
+		damageInt = 1;
+	}
+
+	int nextHealth = currentHealth - damageInt;
+	if (nextHealth < 1)
+	{
+		nextHealth = 1;
+	}
+
+	SetEntityHealth(survivor, nextHealth);
 }
 
 void TryApproachClosestSurvivor(int smoker)

@@ -6,13 +6,13 @@
 #include <sdkhooks>
 #include <colors>
 
-#define PLUGIN_VERSION "2.1.0"
+#define PLUGIN_VERSION "2.0.1"
 
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 35
+#define ELITE_SUBTYPE_COUNT 34
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -51,8 +51,7 @@ enum
 	ELITE_SUBTYPE_SMOKER_IGNITOR,
 	ELITE_SUBTYPE_SPITTER_ACID_POOL,
 	ELITE_SUBTYPE_SPITTER_SNEAKY,
-	ELITE_SUBTYPE_BOOMER_LEAKER,
-	ELITE_SUBTYPE_HUNTER_HEROIC
+	ELITE_SUBTYPE_BOOMER_LEAKER
 }
 
 enum
@@ -186,7 +185,6 @@ public void OnPluginStart()
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_hunter_abnormal_subtype_chance", "1", "Relative weight for Hunter elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_HUNTER_TARGET_SWITCH, "l4d2_elite_si_core_hunter_target_switch_subtype_chance", "1", "Relative weight for Hunter elite to roll Target Switch.");
-	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_HUNTER_HEROIC, "l4d2_elite_si_core_hunter_heroic_subtype_chance", "1", "Relative weight for Hunter elite to roll Heroic.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_spitter_abnormal_subtype_chance", "1", "Relative weight for Spitter elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_spitter_ability_subtype_chance", "1", "Relative weight for Spitter elite to roll Strange Movement.");
@@ -448,12 +446,6 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 		return;
 	}
 
-	if (subtype == ELITE_SUBTYPE_HUNTER_HEROIC)
-	{
-		SetEntityRenderColor(client, 255, 235, 120, 255);
-		return;
-	}
-
 	if (subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT)
 	{
 		SetEntityRenderColor(client, ELITE_ABILITY_COLORS[colorIndex][0], ELITE_ABILITY_COLORS[colorIndex][1], ELITE_ABILITY_COLORS[colorIndex][2], 255);
@@ -696,7 +688,6 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "Acid Pool");
 		case ELITE_SUBTYPE_SPITTER_SNEAKY: strcopy(buffer, maxlen, "Sneaky");
 		case ELITE_SUBTYPE_BOOMER_LEAKER: strcopy(buffer, maxlen, "Leaker");
-		case ELITE_SUBTYPE_HUNTER_HEROIC: strcopy(buffer, maxlen, "Heroic");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -717,7 +708,6 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "never spits normally, rushes survivors with faster movement, and drops acid pools underfoot and on jumps");
 		case ELITE_SUBTYPE_SPITTER_SNEAKY: strcopy(buffer, maxlen, "keeps distance, cloaks in cycles with bullet immunity, and fires a two-shot acid burst before vanishing again");
 		case ELITE_SUBTYPE_BOOMER_LEAKER: strcopy(buffer, maxlen, "ignites on spawn, rushes in to self-detonate after crouching nearby, and replaces bile explosions with lingering fire patches");
-		case ELITE_SUBTYPE_HUNTER_HEROIC: strcopy(buffer, maxlen, "carries a pipebomb, arms it after a successful pounce or on death, and can reclaim it if shoved off the victim");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -764,7 +754,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 
 		case ELITE_CLASS_HUNTER:
 		{
-			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_HUNTER_TARGET_SWITCH || subtype == ELITE_SUBTYPE_HUNTER_HEROIC;
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_HUNTER_TARGET_SWITCH;
 		}
 
 		case ELITE_CLASS_JOCKEY:

@@ -471,6 +471,30 @@ bool FormatWeaponName(const char[] inputWeapon, char[] output, int maxlen)
 
 bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon, int dmgType, char[] cause, int maxlen)
 {
+    int toxicGasCause = 0;
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageCause") == FeatureStatus_Available)
+    {
+        toxicGasCause = EliteSI_ToxicGas_GetRecentDamageCause(victim);
+        if (toxicGasCause > 0)
+        {
+            int toxicGasAttacker = 0;
+            if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageAttacker") == FeatureStatus_Available)
+            {
+                toxicGasAttacker = EliteSI_ToxicGas_GetRecentDamageAttacker(victim);
+            }
+
+            if (toxicGasAttacker > 0 && toxicGasAttacker <= MaxClients && IsClientInGame(toxicGasAttacker) && GetClientTeam(toxicGasAttacker) == 3)
+            {
+                attackerClient = toxicGasAttacker;
+            }
+
+            switch (toxicGasCause)
+            {
+                case 1: { strcopy(cause, maxlen, "Smoker Toxic Gas"); return true; }
+            }
+        }
+    }
+
     int noxiousCause = 0;
     if (GetFeatureStatus(FeatureType_Native, "EliteSI_Noxious_GetRecentDamageCause") == FeatureStatus_Available)
     {

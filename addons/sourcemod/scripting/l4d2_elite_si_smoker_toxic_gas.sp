@@ -15,7 +15,6 @@
 
 #define ELITE_SUBTYPE_SMOKER_TOXIC_GAS 29
 
-#define TOXIC_GAS_INTERVAL 0.5
 #define MAX_TOXIC_CLOUDS 32
 
 native bool EliteSI_IsElite(int client);
@@ -27,6 +26,7 @@ ConVar g_cvCloudCooldown;
 ConVar g_cvCloudDuration;
 ConVar g_cvCloudRadius;
 ConVar g_cvCloudDamagePerSecond;
+ConVar g_cvDamageInterval;
 ConVar g_cvHintEnable;
 ConVar g_cvHintColor;
 ConVar g_cvHintInterval;
@@ -40,6 +40,14 @@ bool g_bCloudActive[MAX_TOXIC_CLOUDS];
 float g_fCloudExpireAt[MAX_TOXIC_CLOUDS];
 float g_vecCloudOrigin[MAX_TOXIC_CLOUDS][3];
 int g_iCloudOwner[MAX_TOXIC_CLOUDS];
+int g_iLastGasOwner[MAXPLAYERS + 1];
+float g_fLastGasDamageAt[MAXPLAYERS + 1];
+
+#define TOXIC_GAS_CAUSE_NONE 0
+#define TOXIC_GAS_CAUSE_CLOUD 1
+
+
+Handle g_hDamageThinkTimer;
 
 public Plugin myinfo =
 {
@@ -61,6 +69,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 	MarkNativeAsOptional("EliteSI_IsElite");
 	MarkNativeAsOptional("EliteSI_GetSubtype");
 
+	CreateNative("EliteSI_ToxicGas_GetRecentDamageCause", Native_GetRecentDamageCause);
+	CreateNative("EliteSI_ToxicGas_GetRecentDamageAttacker", Native_GetRecentDamageAttacker);
+
 	return APLRes_Success;
 }
 
@@ -72,6 +83,7 @@ public void OnPluginStart()
 	g_cvCloudDuration = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_duration", "8.0", "Duration in seconds for toxic smoke cloud.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
 	g_cvCloudRadius = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_radius", "180.0", "Radius of the toxic smoke cloud.", FCVAR_NOTIFY, true, 50.0, true, 1000.0);
 	g_cvCloudDamagePerSecond = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_per_second", "3.0", "Damage per second dealt to survivors inside toxic smoke.", FCVAR_NOTIFY, true, 0.1, true, 50.0);
+	g_cvDamageInterval = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_interval", "0.5", "Interval in seconds between toxic smoke damage ticks.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
 	g_cvHintEnable = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_enable", "1", "0=Off, 1=Show instructor hint to survivors taking toxic gas damage.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvHintColor = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_color", "80 80 80", "Instructor hint color for toxic gas damage in format 'R G B'.", FCVAR_NOTIFY);
 	g_cvHintInterval = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_interval", "1.5", "Minimum interval in seconds between toxic gas hints per survivor.", FCVAR_NOTIFY, true, 0.1, true, 10.0);
@@ -81,13 +93,13 @@ public void OnPluginStart()
 
 	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
-	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
+    HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("map_transition", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("mission_lost", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("finale_win", Event_RoundReset, EventHookMode_PostNoCopy);
 
-	CreateTimer(TOXIC_GAS_INTERVAL, Timer_ToxicGasThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	RestartDamageThinkTimer();
 
 	RefreshEliteState();
 	ResetAllState();
@@ -157,6 +169,7 @@ public void OnLibraryAdded(const char[] name)
 	{
 		RefreshEliteState();
 	}
+
 }
 
 public void OnLibraryRemoved(const char[] name)
@@ -165,6 +178,7 @@ public void OnLibraryRemoved(const char[] name)
 	{
 		RefreshEliteState();
 	}
+
 }
 
 public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
@@ -203,7 +217,13 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	int smoker = GetClientOfUserId(event.GetInt("userid"));
+	int victim = GetClientOfUserId(event.GetInt("userid"));
+	if (IsValidAliveSurvivor(victim))
+	{
+		return;
+	}
+
+	int smoker = victim;
 	if (!IsToxicGasSmoker(smoker, false))
 	{
 		return;
@@ -374,6 +394,9 @@ Action ToxicGas_OnUpdate(any action, int actor, float interval, ActionResult res
 
 public Action Timer_ToxicGasThink(Handle timer)
 {
+	g_hDamageThinkTimer = null;
+	RestartDamageThinkTimer();
+
 	if (!g_cvEnable.BoolValue)
 	{
 		return Plugin_Continue;
@@ -381,7 +404,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 
 	float now = GetGameTime();
 	float radius = g_cvCloudRadius.FloatValue;
-	float damage = g_cvCloudDamagePerSecond.FloatValue * TOXIC_GAS_INTERVAL;
+	float damage = g_cvCloudDamagePerSecond.FloatValue * g_cvDamageInterval.FloatValue;
 
 	for (int cloud = 0; cloud < MAX_TOXIC_CLOUDS; cloud++)
 	{
@@ -422,10 +445,12 @@ public Action Timer_ToxicGasThink(Handle timer)
 			if (hasLiveOwner)
 			{
 				SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage);
+				RecordGasAttribution(survivor, damageSource, now);
 			}
 			else
 			{
 				ApplyWorldToxicDamage(survivor, damage);
+				RecordGasAttribution(survivor, owner, now);
 			}
 			MaybeDisplayGasHint(survivor, now);
 		}
@@ -434,10 +459,21 @@ public Action Timer_ToxicGasThink(Handle timer)
 	return Plugin_Continue;
 }
 
+void RestartDamageThinkTimer()
+{
+	if (g_hDamageThinkTimer != null)
+	{
+		delete g_hDamageThinkTimer;
+	}
+
+	g_hDamageThinkTimer = CreateTimer(g_cvDamageInterval.FloatValue, Timer_ToxicGasThink, _, TIMER_FLAG_NO_MAPCHANGE);
+}
+
 void ReleaseToxicCloud(int smoker, bool onDeath)
 {
 	float origin[3];
 	GetClientAbsOrigin(smoker, origin);
+
 	CreateToxicCloud(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue, smoker);
 
 	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
@@ -532,6 +568,55 @@ void ApplyWorldToxicDamage(int survivor, float damage)
 	// Match the reference smoker cloud plugin pattern: use the victim as a valid
 	// attacker/inflictor so the engine still applies damage even after the smoker died.
 	SDKHooks_TakeDamage(survivor, survivor, survivor, damage);
+}
+
+void RecordGasAttribution(int survivor, int owner, float now)
+{
+	if (!IsValidSurvivorClient(survivor))
+	{
+		return;
+	}
+
+	g_iLastGasOwner[survivor] = owner;
+	g_fLastGasDamageAt[survivor] = now;
+}
+
+int GetRecentGasOwner(int survivor)
+{
+	if (!IsValidSurvivorClient(survivor))
+	{
+		return 0;
+	}
+
+	int owner = g_iLastGasOwner[survivor];
+	if (owner <= 0 || owner > MaxClients || !IsClientInGame(owner))
+	{
+		return 0;
+	}
+
+	if (GetGameTime() - g_fLastGasDamageAt[survivor] > 2.5)
+	{
+		return 0;
+	}
+
+	return owner;
+}
+
+public int Native_GetRecentDamageCause(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	if (GetRecentGasOwner(victim) <= 0)
+	{
+		return TOXIC_GAS_CAUSE_NONE;
+	}
+
+	return TOXIC_GAS_CAUSE_CLOUD;
+}
+
+public int Native_GetRecentDamageAttacker(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	return GetRecentGasOwner(victim);
 }
 
 void TryApproachClosestSurvivor(int smoker)
@@ -630,7 +715,7 @@ void MaybeDisplayGasHint(int survivor, float now)
 		strcopy(color, sizeof(color), "80 80 80");
 	}
 
-	DisplayInstructorHint(survivor, "Toxic gas! Roi khoi lan khoi den ngay.", "icon_alert", color);
+	DisplayInstructorHint(survivor, "Toxic gas! Leave the smoke now.", "icon_alert", color);
 }
 
 void DisplayInstructorHint(int target, const char[] text, const char[] icon, const char[] color)
@@ -698,6 +783,13 @@ void ResetClientState(int client)
 	g_bDeathCloudTriggered[client] = false;
 	g_fNextCloudAt[client] = 0.0;
 	g_fLastHintAt[client] = 0.0;
+	g_iLastGasOwner[client] = 0;
+	g_fLastGasDamageAt[client] = 0.0;
+}
+
+bool IsValidSurvivorClient(int client)
+{
+	return client > 0 && client <= MaxClients && IsClientInGame(client) && GetClientTeam(client) == TEAM_SURVIVOR;
 }
 
 bool IsToxicGasSmoker(int client, bool requireAlive)
@@ -760,14 +852,14 @@ void SyncTrackedSubtypeForClient(int client)
 		return;
 	}
 
-	if (!g_bHasEliteApi)
-	{
-		return;
-	}
-
 	if (GetClientTeam(client) != TEAM_INFECTED || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SMOKER)
 	{
 		g_bTrackedToxicGas[client] = false;
+		return;
+	}
+
+	if (!g_bHasEliteApi)
+	{
 		return;
 	}
 

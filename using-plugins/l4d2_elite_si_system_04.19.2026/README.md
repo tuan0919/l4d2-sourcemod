@@ -53,6 +53,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Khong dung tongue pull, uu tien ap sat va danh tay
    - Toc do di chuyen nhanh hon mac dinh
    - Khi bi shove hoac bi giet se tha lan khoi den gay sat thuong lien tuc cho survivor dung trong vung khoi
+   - Ho tro cvar rieng de dieu chinh tan suat tick damage cua lan khoi
+   - Mac dinh dung attribution o plugin layer de thong bao incap/death do Toxic Gas, khong phu thuoc acid entity cua Spitter
 
 7. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge

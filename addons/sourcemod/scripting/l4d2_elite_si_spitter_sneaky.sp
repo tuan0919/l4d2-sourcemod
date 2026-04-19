@@ -68,7 +68,7 @@ public void OnPluginStart()
 	g_cvRetreatSpeedMultiplier = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_speed_multiplier", "1.15", "Movement speed multiplier while Sneaky Spitter repositions away from survivors.", FCVAR_NOTIFY, true, 1.0, true, 3.0);
 	g_cvCloakFadeAlpha = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_alpha", "102", "Render alpha while Sneaky Spitter is cloaked. 102 ~= 60 percent fade.", FCVAR_NOTIFY, true, 0.0, true, 255.0);
 	g_cvCloakActiveDuration = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_duration", "5.0", "Duration in seconds of the Sneaky Spitter cloak cycle.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
-	g_cvCloakCooldown = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_cooldown", "7.0", "Cooldown in seconds before Sneaky Spitter can cloak again after finishing a two-shot burst.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
+	g_cvCloakCooldown = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_cooldown", "7.0", "Cooldown in seconds after cloak ends before Sneaky Spitter starts the next two-shot burst.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
 	g_cvShotInterval = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_interval", "0.45", "Delay between the two Sneaky Spitter acid shots.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
 	g_cvShotSpreadDistance = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_spread_distance", "140.0", "Offset used to spread the second acid shot away from the first target point.", FCVAR_NOTIFY, true, 10.0, true, 1000.0);
 	g_cvShotRange = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_range", "1400.0", "Max range to pick survivor targets for Sneaky Spitter acid bursts.", FCVAR_NOTIFY, true, 100.0, true, 5000.0);
@@ -139,9 +139,7 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 	g_bTrackedSneaky[client] = (zclass == ZC_SPITTER && subtype == ELITE_SUBTYPE_SPITTER_SNEAKY);
 	ResetClientState(client);
 	g_bTrackedSneaky[client] = (zclass == ZC_SPITTER && subtype == ELITE_SUBTYPE_SPITTER_SNEAKY);
-	g_iShotsRemaining[client] = SNEAKY_SHOTS_PER_CYCLE;
-	g_fNextShotAt[client] = GetGameTime() + 0.6;
-	g_fNextCloakAt[client] = GetGameTime() + 2.5;
+	QueueNextBurst(client, GetGameTime() + 0.6);
 }
 
 public void EliteSI_OnEliteCleared(int client)
@@ -245,14 +243,11 @@ void BreakCloak(int client, bool shoved)
 	g_bCloaked[client] = false;
 	g_fCloakUntil[client] = 0.0;
 	RestoreCloakVisual(client);
+	QueueNextBurst(client, GetGameTime() + g_cvCloakCooldown.FloatValue);
 
 	if (shoved)
 	{
-		g_fNextCloakAt[client] = GetGameTime() + g_cvCloakCooldown.FloatValue;
-		if (g_iShotsRemaining[client] <= 0)
-		{
-			g_iShotsRemaining[client] = SNEAKY_SHOTS_PER_CYCLE;
-		}
+		g_fNextShotAt[client] = GetGameTime() + g_cvCloakCooldown.FloatValue;
 	}
 }
 
@@ -346,8 +341,8 @@ void TryFireBurstShot(int client, float now)
 		return;
 	}
 
-	g_fNextShotAt[client] = now + 9999.0;
 	g_fNextCloakAt[client] = now + 0.2;
+	g_fNextShotAt[client] = 0.0;
 }
 
 void FireSpitAtPoint(int client, const float targetPos[3])
@@ -411,6 +406,13 @@ void ResetClientState(int client)
 	g_fNextCloakAt[client] = 0.0;
 	g_fNextShotAt[client] = 0.0;
 	g_iShotsRemaining[client] = 0;
+}
+
+void QueueNextBurst(int client, float startAt)
+{
+	g_iShotsRemaining[client] = SNEAKY_SHOTS_PER_CYCLE;
+	g_fNextShotAt[client] = startAt;
+	g_fNextCloakAt[client] = 0.0;
 }
 
 bool IsSneakySpitter(int client, bool requireAlive)
@@ -482,8 +484,6 @@ void SyncTrackedSubtypeForClient(int client)
 	g_bTrackedSneaky[client] = EliteSI_IsElite(client) && EliteSI_GetSubtype(client) == ELITE_SUBTYPE_SPITTER_SNEAKY;
 	if (g_bTrackedSneaky[client] && g_iShotsRemaining[client] <= 0 && g_fNextShotAt[client] <= 0.0)
 	{
-		g_iShotsRemaining[client] = SNEAKY_SHOTS_PER_CYCLE;
-		g_fNextShotAt[client] = GetGameTime() + 0.6;
-		g_fNextCloakAt[client] = GetGameTime() + 2.5;
+		QueueNextBurst(client, GetGameTime() + 0.6);
 	}
 }

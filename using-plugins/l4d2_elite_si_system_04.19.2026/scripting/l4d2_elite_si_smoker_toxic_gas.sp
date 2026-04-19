@@ -80,10 +80,10 @@ public void OnPluginStart()
 	g_cvEnable = CreateConVar("l4d2_elite_si_smoker_toxic_gas_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvSpeedMultiplier = CreateConVar("l4d2_elite_si_smoker_toxic_gas_speed_multiplier", "1.2", "Movement speed multiplier for Toxic Gas smoker bot.", FCVAR_NOTIFY, true, 1.0, true, 3.0);
 	g_cvCloudCooldown = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_cooldown", "10.0", "Cooldown in seconds before shove-triggered toxic cloud can trigger again.", FCVAR_NOTIFY, true, 0.0, true, 60.0);
-	g_cvCloudDuration = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_duration", "8.0", "Duration in seconds for toxic smoke cloud.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
-	g_cvCloudRadius = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_radius", "180.0", "Radius of the toxic smoke cloud.", FCVAR_NOTIFY, true, 50.0, true, 1000.0);
-	g_cvCloudDamagePerSecond = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_per_second", "3.0", "Damage per second dealt to survivors inside toxic smoke.", FCVAR_NOTIFY, true, 0.1, true, 50.0);
-	g_cvDamageInterval = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_interval", "0.5", "Interval in seconds between toxic smoke damage ticks.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
+	g_cvCloudDuration = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_duration", "12.0", "Duration in seconds for toxic smoke cloud.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
+	g_cvCloudRadius = CreateConVar("l4d2_elite_si_smoker_toxic_gas_cloud_radius", "230.0", "Radius of the toxic smoke cloud.", FCVAR_NOTIFY, true, 50.0, true, 1000.0);
+	g_cvCloudDamagePerSecond = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_per_second", "10.0", "Damage per second dealt to survivors inside toxic smoke.", FCVAR_NOTIFY, true, 0.1, true, 50.0);
+	g_cvDamageInterval = CreateConVar("l4d2_elite_si_smoker_toxic_gas_damage_interval", "0.2", "Interval in seconds between toxic smoke damage ticks.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
 	g_cvHintEnable = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_enable", "1", "0=Off, 1=Show instructor hint to survivors taking toxic gas damage.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvHintColor = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_color", "80 80 80", "Instructor hint color for toxic gas damage in format 'R G B'.", FCVAR_NOTIFY);
 	g_cvHintInterval = CreateConVar("l4d2_elite_si_smoker_toxic_gas_hint_interval", "1.5", "Minimum interval in seconds between toxic gas hints per survivor.", FCVAR_NOTIFY, true, 0.1, true, 10.0);
@@ -442,16 +442,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 				continue;
 			}
 
-			if (hasLiveOwner)
-			{
-				SDKHooks_TakeDamage(survivor, damageSource, damageSource, damage);
-				RecordGasAttribution(survivor, damageSource, now);
-			}
-			else
-			{
-				ApplyWorldToxicDamage(survivor, damage);
-				RecordGasAttribution(survivor, owner, now);
-			}
+			ApplyToxicGasDamage(survivor, hasLiveOwner ? damageSource : owner, damage, now, hasLiveOwner);
 			MaybeDisplayGasHint(survivor, now);
 		}
 	}
@@ -558,6 +549,30 @@ void TryReleaseDeathToxicCloud(int smoker)
 	ReleaseToxicCloud(smoker, true);
 }
 
+void ApplyToxicGasDamage(int survivor, int owner, float damage, float now, bool ownerAlive)
+{
+	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
+	{
+		return;
+	}
+
+	RecordGasAttribution(survivor, owner, now);
+
+	if (IsPlayerIncapped(survivor))
+	{
+		ApplyIncappedToxicGasDamage(survivor, owner, damage);
+		return;
+	}
+
+	if (ownerAlive)
+	{
+		SDKHooks_TakeDamage(survivor, owner, owner, damage);
+		return;
+	}
+
+	ApplyWorldToxicDamage(survivor, damage);
+}
+
 void ApplyWorldToxicDamage(int survivor, float damage)
 {
 	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
@@ -568,6 +583,30 @@ void ApplyWorldToxicDamage(int survivor, float damage)
 	// Match the reference smoker cloud plugin pattern: use the victim as a valid
 	// attacker/inflictor so the engine still applies damage even after the smoker died.
 	SDKHooks_TakeDamage(survivor, survivor, survivor, damage);
+}
+
+void ApplyIncappedToxicGasDamage(int survivor, int owner, float damage)
+{
+	int currentHealth = GetClientHealth(survivor);
+	if (currentHealth <= 0)
+	{
+		return;
+	}
+
+	int damageInt = RoundToCeil(damage);
+	if (damageInt < 1)
+	{
+		damageInt = 1;
+	}
+
+	if (currentHealth <= damageInt)
+	{
+		int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : survivor;
+		SDKHooks_TakeDamage(survivor, attacker, attacker, float(currentHealth));
+		return;
+	}
+
+	SetEntityHealth(survivor, currentHealth - damageInt);
 }
 
 void RecordGasAttribution(int survivor, int owner, float now)
@@ -829,6 +868,15 @@ bool IsValidAliveSurvivor(int client)
 		&& IsClientInGame(client)
 		&& GetClientTeam(client) == TEAM_SURVIVOR
 		&& IsPlayerAlive(client);
+}
+
+bool IsPlayerIncapped(int client)
+{
+	return client > 0
+		&& client <= MaxClients
+		&& IsClientInGame(client)
+		&& GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) == 1
+		&& GetEntProp(client, Prop_Send, "m_isHangingFromLedge", 1) == 0;
 }
 
 void RefreshEliteState()

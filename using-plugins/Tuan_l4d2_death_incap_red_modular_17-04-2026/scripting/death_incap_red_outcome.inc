@@ -2,6 +2,22 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 {
     isSelf = false;
 
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageCause") == FeatureStatus_Available
+        && EliteSI_ToxicGas_GetRecentDamageCause(victim) > 0)
+    {
+        int toxicGasAttacker = 0;
+        if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageAttacker") == FeatureStatus_Available)
+        {
+            toxicGasAttacker = EliteSI_ToxicGas_GetRecentDamageAttacker(victim);
+        }
+
+        if (toxicGasAttacker > 0 && toxicGasAttacker <= MaxClients && IsClientInGame(toxicGasAttacker) && GetClientTeam(toxicGasAttacker) == 3)
+        {
+            GetSpecialInfectedName(toxicGasAttacker, attackerLabel, maxlen);
+            return Attacker_SI;
+        }
+    }
+
     if (IsInGameClient(attackerClient))
     {
         if (attackerClient == victim)

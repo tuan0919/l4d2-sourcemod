@@ -395,9 +395,6 @@ Action ToxicGas_OnUpdate(any action, int actor, float interval, ActionResult res
 
 public Action Timer_ToxicGasThink(Handle timer)
 {
-	g_hDamageThinkTimer = null;
-	RestartDamageThinkTimer();
-
 	if (!g_cvEnable.BoolValue)
 	{
 		return Plugin_Continue;
@@ -455,10 +452,16 @@ void RestartDamageThinkTimer()
 {
 	if (g_hDamageThinkTimer != null)
 	{
-		delete g_hDamageThinkTimer;
+		return;
 	}
 
-	g_hDamageThinkTimer = CreateTimer(g_cvDamageInterval.FloatValue, Timer_ToxicGasThink, _, TIMER_FLAG_NO_MAPCHANGE);
+	float interval = g_cvDamageInterval.FloatValue;
+	if (interval < 0.1)
+	{
+		interval = 0.1;
+	}
+
+	g_hDamageThinkTimer = CreateTimer(interval, Timer_ToxicGasThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 void ReleaseToxicCloud(int smoker, bool onDeath)

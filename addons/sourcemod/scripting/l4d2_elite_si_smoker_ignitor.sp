@@ -278,9 +278,6 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 
 public Action Timer_IgnitorThink(Handle timer)
 {
-	g_hThinkTimer = null;
-	RestartThinkTimer();
-
 	if (!g_cvEnable.BoolValue)
 	{
 		return Plugin_Continue;
@@ -348,15 +345,15 @@ public Action Timer_IgnitorThink(Handle timer)
 
 void RestartThinkTimer()
 {
+	if (g_hThinkTimer != null)
+	{
+		return;
+	}
+
 	float interval = g_cvDebuffInterval != null ? g_cvDebuffInterval.FloatValue : 0.5;
 	if (interval < 0.1)
 	{
 		interval = 0.1;
-	}
-
-	if (g_hThinkTimer != null)
-	{
-		delete g_hThinkTimer;
 	}
 
 	g_hThinkTimer = CreateTimer(interval, Timer_IgnitorThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);

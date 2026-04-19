@@ -6,13 +6,13 @@
 #include <sdkhooks>
 #include <colors>
 
-#define PLUGIN_VERSION "1.6.0"
+#define PLUGIN_VERSION "1.7.0"
 
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 30
+#define ELITE_SUBTYPE_COUNT 31
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -47,7 +47,8 @@ enum
 	ELITE_SUBTYPE_HUNTER_TARGET_SWITCH,
 	ELITE_SUBTYPE_BOOMER_FLASHBANG,
 	ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP,
-	ELITE_SUBTYPE_SMOKER_TOXIC_GAS
+	ELITE_SUBTYPE_SMOKER_TOXIC_GAS,
+	ELITE_SUBTYPE_SMOKER_IGNITOR
 }
 
 enum
@@ -166,12 +167,13 @@ public void OnPluginStart()
 	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2=force Strange Movement, 28=force Pull Weapon Drop, 29=force Toxic Gas for test.", FCVAR_NOTIFY, true, 0.0, true, 29.0);
+	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2=force Strange Movement, 28=force Pull Weapon Drop, 29=force Toxic Gas, 30=force Ignitor for test.", FCVAR_NOTIFY, true, 0.0, true, 30.0);
 	g_cvBoomerForceSubtype = CreateConVar("l4d2_elite_si_core_boomer_force_subtype", "0", "0=random boomer subtype, 1 or 27=force exact boomer subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 27.0);
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_smoker_movement_subtype_chance", "1", "Relative weight for Smoker elite to roll Strange Movement.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP, "l4d2_elite_si_core_smoker_pull_weapon_drop_subtype_chance", "1", "Relative weight for Smoker elite to roll Pull Weapon Drop.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_TOXIC_GAS, "l4d2_elite_si_core_smoker_toxic_gas_subtype_chance", "1", "Relative weight for Smoker elite to roll Toxic Gas.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_IGNITOR, "l4d2_elite_si_core_smoker_ignitor_subtype_chance", "1", "Relative weight for Smoker elite to roll Ignitor.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_boomer_abnormal_subtype_chance", "1", "Relative weight for Boomer elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLASHBANG, "l4d2_elite_si_core_boomer_flashbang_subtype_chance", "1", "Relative weight for Boomer elite to roll Flashbang.");
@@ -296,7 +298,7 @@ public Action Timer_ProcessSpawn(Handle timer, int userId)
 
 	g_bIsElite[client] = true;
 	g_iEliteSubtype[client] = RollSubtypeByClass(zClass);
-	g_bIsFireImmune[client] = false;
+	g_bIsFireImmune[client] = (g_iEliteSubtype[client] == ELITE_SUBTYPE_SMOKER_IGNITOR);
 
 	ApplyEliteHealth(client);
 	ApplyEliteColor(client, zClass, g_iEliteSubtype[client]);
@@ -413,6 +415,12 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 		return;
 	}
 
+	if (subtype == ELITE_SUBTYPE_SMOKER_IGNITOR)
+	{
+		SetEntityRenderColor(client, 255, 120, 40, 255);
+		return;
+	}
+
 	if (subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT)
 	{
 		SetEntityRenderColor(client, ELITE_ABILITY_COLORS[colorIndex][0], ELITE_ABILITY_COLORS[colorIndex][1], ELITE_ABILITY_COLORS[colorIndex][2], 255);
@@ -452,7 +460,7 @@ int GetForcedSubtypeForClass(int zClass)
 		case ZC_SMOKER:
 		{
 			int forcedSubtype = g_cvSmokerForceSubtype.IntValue;
-			if (forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || forcedSubtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || forcedSubtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS)
+			if (forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || forcedSubtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || forcedSubtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || forcedSubtype == ELITE_SUBTYPE_SMOKER_IGNITOR)
 			{
 				return forcedSubtype;
 			}
@@ -651,6 +659,7 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_BOOMER_FLASHBANG: strcopy(buffer, maxlen, "Flashbang");
 		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "Pull Weapon Drop");
 		case ELITE_SUBTYPE_SMOKER_TOXIC_GAS: strcopy(buffer, maxlen, "Toxic Gas");
+		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "Ignitor Smoker");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -667,6 +676,7 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_BOOMER_FLASHBANG: strcopy(buffer, maxlen, "detonates with a blinding flash when killed");
 		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "forces the grabbed survivor to drop the weapon currently in hand");
 		case ELITE_SUBTYPE_SMOKER_TOXIC_GAS: strcopy(buffer, maxlen, "abandons tongue pulls, rushes in for melee, and releases damaging toxic smoke when shoved or killed");
+		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "spawns engulfed in flames, ignites survivors after tongue grabs and melee hits, and leaves a burning fire patch on death");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -703,7 +713,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 	{
 		case ELITE_CLASS_SMOKER:
 		{
-			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS;
+			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || subtype == ELITE_SUBTYPE_SMOKER_IGNITOR;
 		}
 
 		case ELITE_CLASS_BOOMER:

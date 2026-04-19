@@ -74,15 +74,21 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Tang hinh theo chu ky, bi shove se mat cloak va dang cloak thi mien bullet damage
    - Moi cycle khac 2 phat acid theo 2 diem khac nhau roi moi quay lai cloak
 
-10. `scripting/l4d2_elite_si_charger_steering.sp`
+10. `scripting/l4d2_elite_si_boomer_leaker.sp`
+   - Nhanh subtype rieng cho Boomer elite theo trait `Leaker`
+   - Tu boc chay khi spawn, khong vomit len survivor
+   - Chay toi gan survivor, ngoi xuong mot luc roi tu no
+   - Vu no va death deu de lai bai lua gay damage len ca survivor lan infected
+
+11. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge
    - Gate theo subtype `ChargerSteering`
 
-11. `scripting/l4d2_elite_si_charger_action.sp`
+12. `scripting/l4d2_elite_si_charger_action.sp`
    - Wrapper gate cho nhanh `ChargerAction` (subtype rieng)
    - Export native `EliteSI_IsChargerAction(client)` de plugin charger action logic goi truc tiep
 
-12. `scripting/l4d2_elite_si_boomer_flashbang.sp`
+13. `scripting/l4d2_elite_si_boomer_flashbang.sp`
    - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
    - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
 
@@ -100,6 +106,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `30`: Ignitor Smoker
 - `31`: Acid Pool
 - `32`: Sneaky
+- `33`: Leaker
 
 ## Rule gan subtype hien tai
 
@@ -112,7 +119,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 	- Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Pull Weapon Drop`, `Toxic Gas`, `Ignitor Smoker`
 
 - `Boomer`
-  - Roll trong so giua `Abnormal behavior` va `Flashbang`
+  - Roll trong so giua `Abnormal behavior`, `Flashbang`, `Leaker`
 
 - `Hunter`
   - Roll trong so giua `Abnormal behavior` va `Target Switch`
@@ -141,6 +148,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_smoker_ignitor_*`
 - `l4d2_elite_si_spitter_acid_pool_*`
 - `l4d2_elite_si_spitter_sneaky_*`
+- `l4d2_elite_si_boomer_leaker_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_si_boomer_flashbang_*`
@@ -172,6 +180,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Them `Ignitor Smoker`: Smoker tu boc chay, mien burn damage, dot survivor sau tongue grab/melee, va de lai bai lua khi chet.
 - Them `Spitter Acid Pool`: Spitter khong spit thuong, lao vao survivor, nhay/cao va rai puddle acid that theo cooldown.
 - Them `Spitter Sneaky`: Spitter giu khoang cach, cloak theo chu ky, mien dan khi cloak, va khac burst 2 phat acid truoc khi bien mat lai.
+- Them `Boomer Leaker`: Boomer tu boc chay, khong bile survivor, tiep can roi tu no de tao bai lua gay damage ca hai phe.
 
 ### 18/04/2026
 

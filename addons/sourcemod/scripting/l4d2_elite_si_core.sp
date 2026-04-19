@@ -6,13 +6,13 @@
 #include <sdkhooks>
 #include <colors>
 
-#define PLUGIN_VERSION "1.9.0"
+#define PLUGIN_VERSION "2.0.0"
 
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 33
+#define ELITE_SUBTYPE_COUNT 34
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -50,7 +50,8 @@ enum
 	ELITE_SUBTYPE_SMOKER_TOXIC_GAS,
 	ELITE_SUBTYPE_SMOKER_IGNITOR,
 	ELITE_SUBTYPE_SPITTER_ACID_POOL,
-	ELITE_SUBTYPE_SPITTER_SNEAKY
+	ELITE_SUBTYPE_SPITTER_SNEAKY,
+	ELITE_SUBTYPE_BOOMER_LEAKER
 }
 
 enum
@@ -180,6 +181,7 @@ public void OnPluginStart()
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_boomer_abnormal_subtype_chance", "1", "Relative weight for Boomer elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_FLASHBANG, "l4d2_elite_si_core_boomer_flashbang_subtype_chance", "1", "Relative weight for Boomer elite to roll Flashbang.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_BOOMER, ELITE_SUBTYPE_BOOMER_LEAKER, "l4d2_elite_si_core_boomer_leaker_subtype_chance", "1", "Relative weight for Boomer elite to roll Leaker.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_hunter_abnormal_subtype_chance", "1", "Relative weight for Hunter elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_HUNTER, ELITE_SUBTYPE_HUNTER_TARGET_SWITCH, "l4d2_elite_si_core_hunter_target_switch_subtype_chance", "1", "Relative weight for Hunter elite to roll Target Switch.");
@@ -303,7 +305,7 @@ public Action Timer_ProcessSpawn(Handle timer, int userId)
 
 	g_bIsElite[client] = true;
 	g_iEliteSubtype[client] = RollSubtypeByClass(zClass);
-	g_bIsFireImmune[client] = (g_iEliteSubtype[client] == ELITE_SUBTYPE_SMOKER_IGNITOR);
+	g_bIsFireImmune[client] = (g_iEliteSubtype[client] == ELITE_SUBTYPE_SMOKER_IGNITOR || g_iEliteSubtype[client] == ELITE_SUBTYPE_BOOMER_LEAKER);
 
 	ApplyEliteHealth(client);
 	ApplyEliteColor(client, zClass, g_iEliteSubtype[client]);
@@ -435,6 +437,12 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 	if (subtype == ELITE_SUBTYPE_SPITTER_SNEAKY)
 	{
 		SetEntityRenderColor(client, 120, 255, 180, 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_BOOMER_LEAKER)
+	{
+		SetEntityRenderColor(client, 255, 170, 90, 255);
 		return;
 	}
 
@@ -679,6 +687,7 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "Ignitor Smoker");
 		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "Acid Pool");
 		case ELITE_SUBTYPE_SPITTER_SNEAKY: strcopy(buffer, maxlen, "Sneaky");
+		case ELITE_SUBTYPE_BOOMER_LEAKER: strcopy(buffer, maxlen, "Leaker");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -698,6 +707,7 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "spawns engulfed in flames, ignites survivors after tongue grabs and melee hits, and leaves a burning fire patch on death");
 		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "never spits normally, rushes survivors with faster movement, and drops acid pools underfoot and on jumps");
 		case ELITE_SUBTYPE_SPITTER_SNEAKY: strcopy(buffer, maxlen, "keeps distance, cloaks in cycles with bullet immunity, and fires a two-shot acid burst before vanishing again");
+		case ELITE_SUBTYPE_BOOMER_LEAKER: strcopy(buffer, maxlen, "ignites on spawn, rushes in to self-detonate after crouching nearby, and replaces bile explosions with lingering fire patches");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -739,7 +749,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 
 		case ELITE_CLASS_BOOMER:
 		{
-			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_BOOMER_FLASHBANG;
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_BOOMER_FLASHBANG || subtype == ELITE_SUBTYPE_BOOMER_LEAKER;
 		}
 
 		case ELITE_CLASS_HUNTER:

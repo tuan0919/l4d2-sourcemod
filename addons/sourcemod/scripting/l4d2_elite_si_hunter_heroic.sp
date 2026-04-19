@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.3.0"
+#define PLUGIN_VERSION "1.4.0"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -27,6 +27,7 @@ ConVar g_cvExplosionDamage;
 ConVar g_cvExplosionRadius;
 ConVar g_cvDropOffset;
 ConVar g_cvBeepInterval;
+ConVar g_cvVisualEnable;
 
 bool g_bTrackedHeroic[MAXPLAYERS + 1];
 bool g_bHasPipeAvailable[MAXPLAYERS + 1];
@@ -41,6 +42,8 @@ int g_iHandLightRef[MAXPLAYERS + 1];
 int g_iWorldBombRef[MAXPLAYERS + 1];
 int g_iWorldFuseRef[MAXPLAYERS + 1];
 int g_iWorldLightRef[MAXPLAYERS + 1];
+bool g_bBombDroppedWorld[MAXPLAYERS + 1];
+float g_fBombWorldOrigin[MAXPLAYERS + 1][3];
 
 int g_iExplosionSprite = -1;
 
@@ -72,6 +75,7 @@ public void OnPluginStart()
 	g_cvExplosionRadius = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_radius", "320.0", "Explosion radius of Heroic Hunter pipebomb.", FCVAR_NOTIFY, true, 50.0, true, 2000.0);
 	g_cvDropOffset = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_drop_offset", "28.0", "Offset used when dropping the Heroic Hunter pipebomb near the pinned target.", FCVAR_NOTIFY, true, 0.0, true, 200.0);
 	g_cvBeepInterval = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_beep_interval", "0.75", "Interval in seconds between Heroic Hunter pipebomb beeps.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
+	g_cvVisualEnable = CreateConVar("l4d2_elite_si_hunter_heroic_visual_enable", "0", "0=Disable model/particle bomb visuals for max join compatibility, 1=Enable visuals.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	CreateConVar("l4d2_elite_si_hunter_heroic_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_hunter_heroic");
@@ -219,7 +223,7 @@ public void Event_PounceEnd(Event event, const char[] name, bool dontBroadcast)
 	}
 
 	g_iPinnedVictim[hunter] = 0;
-	if (GetHandBombEntity(hunter) == INVALID_ENT_REFERENCE)
+	if (!g_bBombArmed[hunter])
 	{
 		return;
 	}
@@ -262,7 +266,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	if (GetWorldBombEntity(client) != INVALID_ENT_REFERENCE)
+	if (GetWorldBombEntity(client) != INVALID_ENT_REFERENCE || g_bBombDroppedWorld[client])
 	{
 		return;
 	}
@@ -271,7 +275,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	GetClientAbsOrigin(client, origin);
 	origin[2] += 6.0;
 
-	if (GetHandBombEntity(client) != INVALID_ENT_REFERENCE)
+	if (GetHandBombEntity(client) != INVALID_ENT_REFERENCE || g_bBombArmed[client])
 	{
 		MoveBombToWorld(client, origin);
 		return;
@@ -296,9 +300,14 @@ void PrecacheAssets()
 void ArmBombOnHunter(int hunter)
 {
 	CancelBomb(hunter, false);
-	if (!CreateHandBombVisual(hunter))
+	g_bBombDroppedWorld[hunter] = false;
+	g_fBombWorldOrigin[hunter][0] = 0.0;
+	g_fBombWorldOrigin[hunter][1] = 0.0;
+	g_fBombWorldOrigin[hunter][2] = 0.0;
+
+	if (g_cvVisualEnable.BoolValue)
 	{
-		return;
+		CreateHandBombVisual(hunter);
 	}
 
 	g_bHasPipeAvailable[hunter] = false;
@@ -310,9 +319,14 @@ void ArmBombOnHunter(int hunter)
 void ArmBombOnDeath(int hunter, const float origin[3])
 {
 	CancelBomb(hunter, false);
-	if (!CreateWorldBombVisual(hunter, origin))
+	g_bBombDroppedWorld[hunter] = true;
+	g_fBombWorldOrigin[hunter][0] = origin[0];
+	g_fBombWorldOrigin[hunter][1] = origin[1];
+	g_fBombWorldOrigin[hunter][2] = origin[2];
+
+	if (g_cvVisualEnable.BoolValue)
 	{
-		return;
+		CreateWorldBombVisual(hunter, origin);
 	}
 
 	g_bHasPipeAvailable[hunter] = false;
@@ -418,8 +432,16 @@ void MoveBombToWorld(int hunter, const float origin[3])
 		return;
 	}
 
-	KillHandVisual(hunter);
-	CreateWorldBombVisual(hunter, origin);
+	g_bBombDroppedWorld[hunter] = true;
+	g_fBombWorldOrigin[hunter][0] = origin[0];
+	g_fBombWorldOrigin[hunter][1] = origin[1];
+	g_fBombWorldOrigin[hunter][2] = origin[2];
+
+	if (g_cvVisualEnable.BoolValue)
+	{
+		KillHandVisual(hunter);
+		CreateWorldBombVisual(hunter, origin);
+	}
 }
 
 int CreateBombModel()
@@ -497,6 +519,21 @@ void DetonateBomb(int attacker, const float origin[3])
 
 bool GetBombVisualOrigin(int hunter, float origin[3])
 {
+	if (g_bBombDroppedWorld[hunter])
+	{
+		int worldBomb = GetWorldBombEntity(hunter);
+		if (worldBomb != INVALID_ENT_REFERENCE)
+		{
+			GetEntPropVector(worldBomb, Prop_Data, "m_vecOrigin", origin);
+			return true;
+		}
+
+		origin[0] = g_fBombWorldOrigin[hunter][0];
+		origin[1] = g_fBombWorldOrigin[hunter][1];
+		origin[2] = g_fBombWorldOrigin[hunter][2];
+		return true;
+	}
+
 	int worldBomb = GetWorldBombEntity(hunter);
 	if (worldBomb != INVALID_ENT_REFERENCE)
 	{
@@ -590,6 +627,10 @@ void ResetClientState(int client, bool killVisuals, bool restorePipe)
 	{
 		g_bHasPipeAvailable[client] = false;
 	}
+	g_bBombDroppedWorld[client] = false;
+	g_fBombWorldOrigin[client][0] = 0.0;
+	g_fBombWorldOrigin[client][1] = 0.0;
+	g_fBombWorldOrigin[client][2] = 0.0;
 	ClearBombRefs(client);
 }
 
@@ -607,6 +648,10 @@ void CancelBomb(int hunter, bool restorePipe)
 	{
 		g_bHasPipeAvailable[hunter] = false;
 	}
+	g_bBombDroppedWorld[hunter] = false;
+	g_fBombWorldOrigin[hunter][0] = 0.0;
+	g_fBombWorldOrigin[hunter][1] = 0.0;
+	g_fBombWorldOrigin[hunter][2] = 0.0;
 	ClearBombRefs(hunter);
 }
 

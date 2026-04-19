@@ -17,6 +17,7 @@
 
 #define PARTICLE_FUSE "weapon_pipebomb_fuse"
 #define PARTICLE_LIGHT "weapon_pipebomb_blinking_light"
+#define MODEL_PIPEBOMB "models/w_models/weapons/w_eq_pipebomb.mdl"
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -33,6 +34,7 @@ bool g_bHasPipeInHand[MAXPLAYERS + 1];
 int g_iPinnedVictim[MAXPLAYERS + 1];
 int g_iPinnedHunter[MAXPLAYERS + 1];
 int g_iActivePipeRef[MAXPLAYERS + 1];
+int g_iHandPipeRef[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -85,6 +87,7 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
+	PrecacheModel(MODEL_PIPEBOMB, true);
 	ResetAllState();
 }
 
@@ -124,11 +127,21 @@ public void OnClientDisconnect(int client)
 
 public void OnEntityDestroyed(int entity)
 {
+	if (entity <= MaxClients)
+	{
+		return;
+	}
+
 	for (int client = 1; client <= MaxClients; client++)
 	{
-		if (g_iActivePipeRef[client] == EntIndexToEntRef(entity))
+		if (g_iActivePipeRef[client] != 0 && EntRefToEntIndex(g_iActivePipeRef[client]) == entity)
 		{
 			g_iActivePipeRef[client] = 0;
+		}
+
+		if (g_iHandPipeRef[client] != 0 && EntRefToEntIndex(g_iHandPipeRef[client]) == entity)
+		{
+			g_iHandPipeRef[client] = 0;
 		}
 	}
 }
@@ -143,6 +156,10 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 	ResetClientState(client);
 	g_bTrackedHeroic[client] = (zclass == ZC_HUNTER && subtype == ELITE_SUBTYPE_HUNTER_HEROIC);
 	g_bHasPipeInHand[client] = g_bTrackedHeroic[client];
+	if (g_bTrackedHeroic[client])
+	{
+		CreatePipeInHandModel(client);
+	}
 }
 
 public void EliteSI_OnEliteCleared(int client)
@@ -255,10 +272,13 @@ void ReclaimPipeBomb(int hunter)
 
 	g_iActivePipeRef[hunter] = 0;
 	g_bHasPipeInHand[hunter] = true;
+	CreatePipeInHandModel(hunter);
 }
 
 void DropPipeBombNearVictim(int hunter, int victim)
 {
+	KillHandPipeModel(hunter);
+
 	float pos[3];
 	GetClientAbsOrigin(victim, pos);
 	pos[0] += g_cvDropOffset.FloatValue;
@@ -285,9 +305,64 @@ void DropPipeBombNearVictim(int hunter, int victim)
 	CreateTimer(g_cvFuseTime.FloatValue, Timer_DetonatePipeBomb, EntIndexToEntRef(pipe), TIMER_FLAG_NO_MAPCHANGE);
 }
 
+void CreatePipeInHandModel(int hunter)
+{
+	if (!IsHeroicHunter(hunter, false) || !g_bHasPipeInHand[hunter])
+	{
+		return;
+	}
+
+	if (GetHandPipeEntity(hunter) != INVALID_ENT_REFERENCE)
+	{
+		return;
+	}
+
+	int entity = CreateEntityByName("prop_dynamic_override");
+	if (entity <= MaxClients || !IsValidEntity(entity))
+	{
+		return;
+	}
+
+	DispatchKeyValue(entity, "model", MODEL_PIPEBOMB);
+	DispatchKeyValue(entity, "solid", "0");
+	DispatchSpawn(entity);
+	SetEntityMoveType(entity, MOVETYPE_NONE);
+	SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
+
+	SetVariantString("!activator");
+	AcceptEntityInput(entity, "SetParent", hunter);
+	SetVariantString("rhand");
+	AcceptEntityInput(entity, "SetParentAttachment", hunter);
+	TeleportEntity(entity, NULL_VECTOR, view_as<float>({90.0, 10.0, 0.0}), NULL_VECTOR);
+
+	g_iHandPipeRef[hunter] = EntIndexToEntRef(entity);
+}
+
+void KillHandPipeModel(int hunter)
+{
+	int entity = GetHandPipeEntity(hunter);
+	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
+	{
+		AcceptEntityInput(entity, "Kill");
+	}
+
+	g_iHandPipeRef[hunter] = 0;
+}
+
 int GetActivePipeEntity(int hunter)
 {
 	int entity = EntRefToEntIndex(g_iActivePipeRef[hunter]);
+	if (entity == INVALID_ENT_REFERENCE || !IsValidEntity(entity))
+	{
+		return INVALID_ENT_REFERENCE;
+	}
+
+	return entity;
+}
+
+int GetHandPipeEntity(int hunter)
+{
+	int entity = EntRefToEntIndex(g_iHandPipeRef[hunter]);
 	if (entity == INVALID_ENT_REFERENCE || !IsValidEntity(entity))
 	{
 		return INVALID_ENT_REFERENCE;
@@ -363,11 +438,14 @@ void ResetClientState(int client)
 		AcceptEntityInput(entity, "Kill");
 	}
 
+	KillHandPipeModel(client);
+
 	g_bTrackedHeroic[client] = false;
 	g_bHasPipeInHand[client] = false;
 	g_iPinnedVictim[client] = 0;
 	g_iPinnedHunter[client] = 0;
 	g_iActivePipeRef[client] = 0;
+	g_iHandPipeRef[client] = 0;
 }
 
 bool IsHeroicHunter(int client, bool requireAlive)
@@ -440,5 +518,6 @@ void SyncTrackedSubtypeForClient(int client)
 	if (g_bTrackedHeroic[client] && GetActivePipeEntity(client) == INVALID_ENT_REFERENCE)
 	{
 		g_bHasPipeInHand[client] = true;
+		CreatePipeInHandModel(client);
 	}
 }

@@ -125,27 +125,6 @@ public void OnClientDisconnect(int client)
 	ResetClientState(client);
 }
 
-public void OnEntityDestroyed(int entity)
-{
-	if (entity <= MaxClients)
-	{
-		return;
-	}
-
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (g_iActivePipeRef[client] != 0 && EntRefToEntIndex(g_iActivePipeRef[client]) == entity)
-		{
-			g_iActivePipeRef[client] = 0;
-		}
-
-		if (g_iHandPipeRef[client] != 0 && EntRefToEntIndex(g_iHandPipeRef[client]) == entity)
-		{
-			g_iHandPipeRef[client] = 0;
-		}
-	}
-}
-
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 {
 	if (client <= 0 || client > MaxClients)
@@ -155,8 +134,8 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 
 	ResetClientState(client);
 	g_bTrackedHeroic[client] = (zclass == ZC_HUNTER && subtype == ELITE_SUBTYPE_HUNTER_HEROIC);
-	g_bHasPipeInHand[client] = g_bTrackedHeroic[client];
-	if (g_bTrackedHeroic[client])
+	g_bHasPipeInHand[client] = g_bTrackedHeroic[client] && IsPlayerAlive(client);
+	if (g_bHasPipeInHand[client])
 	{
 		CreatePipeInHandModel(client);
 	}
@@ -271,7 +250,7 @@ void ReclaimPipeBomb(int hunter)
 	}
 
 	g_iActivePipeRef[hunter] = 0;
-	g_bHasPipeInHand[hunter] = true;
+	g_bHasPipeInHand[hunter] = IsPlayerAlive(hunter);
 	CreatePipeInHandModel(hunter);
 }
 
@@ -308,6 +287,11 @@ void DropPipeBombNearVictim(int hunter, int victim)
 void CreatePipeInHandModel(int hunter)
 {
 	if (!IsHeroicHunter(hunter, false) || !g_bHasPipeInHand[hunter])
+	{
+		return;
+	}
+
+	if (!IsPlayerAlive(hunter))
 	{
 		return;
 	}
@@ -515,7 +499,7 @@ void SyncTrackedSubtypeForClient(int client)
 	}
 
 	g_bTrackedHeroic[client] = EliteSI_IsElite(client) && EliteSI_GetSubtype(client) == ELITE_SUBTYPE_HUNTER_HEROIC;
-	if (g_bTrackedHeroic[client] && GetActivePipeEntity(client) == INVALID_ENT_REFERENCE)
+	if (g_bTrackedHeroic[client] && IsPlayerAlive(client) && GetActivePipeEntity(client) == INVALID_ENT_REFERENCE)
 	{
 		g_bHasPipeInHand[client] = true;
 		CreatePipeInHandModel(client);

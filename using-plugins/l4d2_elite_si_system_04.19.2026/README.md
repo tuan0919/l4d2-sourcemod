@@ -62,15 +62,21 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Tongue grab hoac melee trung survivor se dat debuff chay gay damage theo tick
    - Khi chet se tao bai lua duoi chan chi gay damage len survivor
 
-8. `scripting/l4d2_elite_si_charger_steering.sp`
+8. `scripting/l4d2_elite_si_spitter_acid_pool.sp`
+   - Nhanh subtype rieng cho Spitter elite theo trait `Acid Pool`
+   - Khong spit theo kieu thuong, thay vao do rai bai acid duoi chan va tren duong di
+   - Khi nhay hoac cao trung survivor se tha them puddle acid theo cooldown
+   - Tang toc do di chuyen va uu tien ap sat survivor
+
+9. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge
    - Gate theo subtype `ChargerSteering`
 
-9. `scripting/l4d2_elite_si_charger_action.sp`
+10. `scripting/l4d2_elite_si_charger_action.sp`
    - Wrapper gate cho nhanh `ChargerAction` (subtype rieng)
    - Export native `EliteSI_IsChargerAction(client)` de plugin charger action logic goi truc tiep
 
-10. `scripting/l4d2_elite_si_boomer_flashbang.sp`
+11. `scripting/l4d2_elite_si_boomer_flashbang.sp`
    - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
    - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
 
@@ -86,6 +92,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `28`: Pull Weapon Drop
 - `29`: Toxic Gas
 - `30`: Ignitor Smoker
+- `31`: Acid Pool
 
 ## Rule gan subtype hien tai
 
@@ -104,7 +111,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
   - Roll trong so giua `Abnormal behavior` va `Target Switch`
 
 - `Spitter`
-  - Roll trong so giua `Abnormal behavior` va `Strange Movement`
+  - Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Acid Pool`
 
 - `Jockey`
   - Hien tai chi co `Abnormal behavior`
@@ -125,6 +132,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_smoker_pull_weapon_drop_*`
 - `l4d2_elite_si_smoker_toxic_gas_*`
 - `l4d2_elite_si_smoker_ignitor_*`
+- `l4d2_elite_si_spitter_acid_pool_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_si_boomer_flashbang_*`
@@ -154,6 +162,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Them `Smoker Toxic Gas`: Smoker AI khong dung tongue pull, lao vao danh tay, tang toc do di chuyen, va tha khoi doc khi bi shove hoac bi giet.
 - Them module runtime + cvar + web UI cho `Smoker Toxic Gas`.
 - Them `Ignitor Smoker`: Smoker tu boc chay, mien burn damage, dot survivor sau tongue grab/melee, va de lai bai lua khi chet.
+- Them `Spitter Acid Pool`: Spitter khong spit thuong, lao vao survivor, nhay/cao va rai puddle acid that theo cooldown.
 
 ### 18/04/2026
 

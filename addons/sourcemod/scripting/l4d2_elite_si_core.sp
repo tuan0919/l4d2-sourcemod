@@ -6,13 +6,13 @@
 #include <sdkhooks>
 #include <colors>
 
-#define PLUGIN_VERSION "1.7.0"
+#define PLUGIN_VERSION "1.8.0"
 
 #define TEAM_INFECTED 3
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 31
+#define ELITE_SUBTYPE_COUNT 32
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -48,7 +48,8 @@ enum
 	ELITE_SUBTYPE_BOOMER_FLASHBANG,
 	ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP,
 	ELITE_SUBTYPE_SMOKER_TOXIC_GAS,
-	ELITE_SUBTYPE_SMOKER_IGNITOR
+	ELITE_SUBTYPE_SMOKER_IGNITOR,
+	ELITE_SUBTYPE_SPITTER_ACID_POOL
 }
 
 enum
@@ -184,6 +185,7 @@ public void OnPluginStart()
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_spitter_abnormal_subtype_chance", "1", "Relative weight for Spitter elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_spitter_ability_subtype_chance", "1", "Relative weight for Spitter elite to roll Strange Movement.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SPITTER, ELITE_SUBTYPE_SPITTER_ACID_POOL, "l4d2_elite_si_core_spitter_acid_pool_subtype_chance", "1", "Relative weight for Spitter elite to roll Acid Pool.");
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_JOCKEY, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_jockey_abnormal_subtype_chance", "1", "Relative weight for Jockey elite to roll Abnormal behavior.");
 
@@ -419,6 +421,12 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 	if (subtype == ELITE_SUBTYPE_SMOKER_IGNITOR)
 	{
 		SetEntityRenderColor(client, 255, 120, 40, 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_SPITTER_ACID_POOL)
+	{
+		SetEntityRenderColor(client, 120, 255, 80, 255);
 		return;
 	}
 
@@ -661,6 +669,7 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "Pull Weapon Drop");
 		case ELITE_SUBTYPE_SMOKER_TOXIC_GAS: strcopy(buffer, maxlen, "Toxic Gas");
 		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "Ignitor Smoker");
+		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "Acid Pool");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -678,6 +687,7 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP: strcopy(buffer, maxlen, "forces the grabbed survivor to drop the weapon currently in hand");
 		case ELITE_SUBTYPE_SMOKER_TOXIC_GAS: strcopy(buffer, maxlen, "abandons tongue pulls, rushes in for melee, and releases damaging toxic smoke when shoved or killed");
 		case ELITE_SUBTYPE_SMOKER_IGNITOR: strcopy(buffer, maxlen, "spawns engulfed in flames, ignites survivors after tongue grabs and melee hits, and leaves a burning fire patch on death");
+		case ELITE_SUBTYPE_SPITTER_ACID_POOL: strcopy(buffer, maxlen, "never spits normally, rushes survivors with faster movement, and drops acid pools underfoot and on jumps");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -734,7 +744,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 
 		case ELITE_CLASS_SPITTER:
 		{
-			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT;
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SPITTER_ACID_POOL;
 		}
 
 		case ELITE_CLASS_CHARGER:

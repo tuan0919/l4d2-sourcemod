@@ -16,6 +16,9 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
             GetSpecialInfectedName(toxicGasAttacker, attackerLabel, maxlen);
             return Attacker_SI;
         }
+
+		strcopy(attackerLabel, maxlen, "Elite Smoker (Toxic Gas)");
+		return Attacker_SI;
     }
 
     if (IsInGameClient(attackerClient))

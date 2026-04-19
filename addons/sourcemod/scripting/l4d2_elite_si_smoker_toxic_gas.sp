@@ -16,6 +16,7 @@
 #define ELITE_SUBTYPE_SMOKER_TOXIC_GAS 29
 
 #define MAX_TOXIC_CLOUDS 32
+#define TOXIC_GAS_ATTRIBUTION_WINDOW 4.0
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -633,7 +634,7 @@ int GetRecentGasOwner(int survivor)
 		return 0;
 	}
 
-	if (GetGameTime() - g_fLastGasDamageAt[survivor] > 2.5)
+	if (GetGameTime() - g_fLastGasDamageAt[survivor] > TOXIC_GAS_ATTRIBUTION_WINDOW)
 	{
 		return 0;
 	}

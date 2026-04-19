@@ -83,15 +83,21 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Vu no va death deu tao `inferno` that cua engine (owner = boomer), co the dot ca survivor lan infected
    - Da noi fallback attribution voi `Tuan_l4d2_death_incap_red` de kill/incap trong inferno resolve ve `Elite Boomer (Leaker)` / `Boomer Leaker Fire`
 
-11. `scripting/l4d2_elite_si_charger_steering.sp`
+11. `scripting/l4d2_elite_si_hunter_heroic.sp`
+   - Nhanh subtype rieng cho Hunter elite theo trait `Heroic`
+   - Hunter cam san pipebomb tren tay
+   - Khi pounce thanh cong hoac khi chet se tha pipebomb that xuong dat va no sau N giay
+   - Neu dang pin ma bi shove thi hunter bat ra va reclaim pipebomb tren tay
+
+12. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge
    - Gate theo subtype `ChargerSteering`
 
-12. `scripting/l4d2_elite_si_charger_action.sp`
+13. `scripting/l4d2_elite_si_charger_action.sp`
    - Wrapper gate cho nhanh `ChargerAction` (subtype rieng)
    - Export native `EliteSI_IsChargerAction(client)` de plugin charger action logic goi truc tiep
 
-13. `scripting/l4d2_elite_si_boomer_flashbang.sp`
+14. `scripting/l4d2_elite_si_boomer_flashbang.sp`
    - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
    - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
 
@@ -110,6 +116,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `31`: Acid Pool
 - `32`: Sneaky
 - `33`: Leaker
+- `34`: Heroic
 
 ## Rule gan subtype hien tai
 
@@ -125,7 +132,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
   - Roll trong so giua `Abnormal behavior`, `Flashbang`, `Leaker`
 
 - `Hunter`
-  - Roll trong so giua `Abnormal behavior` va `Target Switch`
+  - Roll trong so giua `Abnormal behavior`, `Target Switch`, `Heroic`
 
 - `Spitter`
   - Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Acid Pool`, `Sneaky`
@@ -152,6 +159,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_spitter_acid_pool_*`
 - `l4d2_elite_si_spitter_sneaky_*`
 - `l4d2_elite_si_boomer_leaker_*`
+- `l4d2_elite_si_hunter_heroic_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_si_boomer_flashbang_*`
@@ -184,6 +192,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Them `Spitter Acid Pool`: Spitter khong spit thuong, lao vao survivor, nhay/cao va rai puddle acid that theo cooldown.
 - Them `Spitter Sneaky`: Spitter giu khoang cach, cloak theo chu ky, mien dan khi cloak, va khac burst 2 phat acid truoc khi bien mat lai.
 - Them `Boomer Leaker`: Boomer tu boc chay, khong bile survivor, tiep can roi tu no de tao bai lua gay damage ca hai phe.
+- Them `Hunter Heroic`: Hunter cam pipebomb, arm no sau pounce thanh cong hoac khi chet, va co the reclaim bom neu bi shove khi dang pin.
 
 ### 18/04/2026
 

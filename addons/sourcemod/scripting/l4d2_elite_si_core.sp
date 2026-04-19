@@ -167,9 +167,10 @@ public void OnPluginStart()
 	g_cvEliteSpawnCooldown = CreateConVar("l4d2_elite_si_core_spawn_cooldown", "20.0", "Cooldown in seconds between successful elite SI spawns (0=Off).", FCVAR_NOTIFY, true, 0.0, true, 300.0);
 	g_cvEliteHpMultiplier = CreateConVar("l4d2_elite_si_core_hp_multiplier", "2.5", "Elite HP multiplier.", FCVAR_NOTIFY, true, 0.1, true, 20.0);
 	g_cvSpawnAnnounce = CreateConVar("l4d2_elite_si_core_spawn_announce", "1", "0=Off, 1=Announce elite SI spawn to chat with {red} color.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 2=force Strange Movement, 28=force Pull Weapon Drop, 29=force Toxic Gas, 30=force Ignitor for test.", FCVAR_NOTIFY, true, 0.0, true, 30.0);
+	g_cvSmokerForceSubtype = CreateConVar("l4d2_elite_si_core_smoker_force_subtype", "0", "0=random smoker subtype, 1=force Abnormal behavior, 2=force Strange Movement, 28=force Pull Weapon Drop, 29=force Toxic Gas, 30=force Ignitor for test.", FCVAR_NOTIFY, true, 0.0, true, 30.0);
 	g_cvBoomerForceSubtype = CreateConVar("l4d2_elite_si_core_boomer_force_subtype", "0", "0=random boomer subtype, 1 or 27=force exact boomer subtype for test.", FCVAR_NOTIFY, true, 0.0, true, 27.0);
 
+	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_smoker_abnormal_subtype_chance", "1", "Relative weight for Smoker elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_smoker_movement_subtype_chance", "1", "Relative weight for Smoker elite to roll Strange Movement.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP, "l4d2_elite_si_core_smoker_pull_weapon_drop_subtype_chance", "1", "Relative weight for Smoker elite to roll Pull Weapon Drop.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_SMOKER, ELITE_SUBTYPE_SMOKER_TOXIC_GAS, "l4d2_elite_si_core_smoker_toxic_gas_subtype_chance", "1", "Relative weight for Smoker elite to roll Toxic Gas.");
@@ -460,7 +461,7 @@ int GetForcedSubtypeForClass(int zClass)
 		case ZC_SMOKER:
 		{
 			int forcedSubtype = g_cvSmokerForceSubtype.IntValue;
-			if (forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || forcedSubtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || forcedSubtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || forcedSubtype == ELITE_SUBTYPE_SMOKER_IGNITOR)
+			if (forcedSubtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || forcedSubtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || forcedSubtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || forcedSubtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || forcedSubtype == ELITE_SUBTYPE_SMOKER_IGNITOR)
 			{
 				return forcedSubtype;
 			}
@@ -713,7 +714,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 	{
 		case ELITE_CLASS_SMOKER:
 		{
-			return subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || subtype == ELITE_SUBTYPE_SMOKER_IGNITOR;
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_SMOKER_PULL_WEAPON_DROP || subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS || subtype == ELITE_SUBTYPE_SMOKER_IGNITOR;
 		}
 
 		case ELITE_CLASS_BOOMER:

@@ -15,6 +15,11 @@
 #define ELITE_SUBTYPE_SMOKER_IGNITOR 30
 
 #define MAX_FIRE_PATCHES 24
+#define IGNITOR_ATTRIBUTION_WINDOW 4.0
+
+#define IGNITOR_CAUSE_NONE 0
+#define IGNITOR_CAUSE_BURN 1
+#define IGNITOR_CAUSE_FIRE_PATCH 2
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -41,6 +46,9 @@ bool g_bPatchActive[MAX_FIRE_PATCHES];
 float g_fPatchExpireAt[MAX_FIRE_PATCHES];
 float g_vecPatchOrigin[MAX_FIRE_PATCHES][3];
 int g_iPatchOwner[MAX_FIRE_PATCHES];
+int g_iLastIgnitorOwner[MAXPLAYERS + 1];
+int g_iLastIgnitorCause[MAXPLAYERS + 1];
+float g_fLastIgnitorDamageAt[MAXPLAYERS + 1];
 
 Handle g_hThinkTimer;
 
@@ -63,6 +71,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 	MarkNativeAsOptional("EliteSI_IsElite");
 	MarkNativeAsOptional("EliteSI_GetSubtype");
+
+	CreateNative("EliteSI_Ignitor_GetRecentDamageCause", Native_GetRecentDamageCause);
+	CreateNative("EliteSI_Ignitor_GetRecentDamageAttacker", Native_GetRecentDamageAttacker);
 
 	return APLRes_Success;
 }
@@ -297,7 +308,7 @@ public Action Timer_IgnitorThink(Handle timer)
 
 		if (g_fBurnExpireAt[survivor] > now && g_iBurnOwner[survivor] > 0)
 		{
-			ApplyManagedFireDamage(survivor, g_iBurnOwner[survivor], burnDamage);
+			ApplyManagedFireDamage(survivor, g_iBurnOwner[survivor], burnDamage, IGNITOR_CAUSE_BURN, now);
 			MaybeDisplayIgnitorHint(survivor, now, "Ignited! Put out the flames.");
 		}
 		else if (g_fBurnExpireAt[survivor] > 0.0)
@@ -327,7 +338,7 @@ public Action Timer_IgnitorThink(Handle timer)
 				continue;
 			}
 
-			ApplyManagedFireDamage(survivor, g_iPatchOwner[patch], firePatchDamage);
+			ApplyManagedFireDamage(survivor, g_iPatchOwner[patch], firePatchDamage, IGNITOR_CAUSE_FIRE_PATCH, now);
 			MaybeDisplayIgnitorHint(survivor, now, "Fire patch! Move out now.");
 		}
 	}
@@ -371,12 +382,14 @@ void ApplyIgnitorBurn(int survivor, int smoker)
 	IgniteEntity(survivor, 1.0);
 }
 
-void ApplyManagedFireDamage(int survivor, int owner, float damage)
+void ApplyManagedFireDamage(int survivor, int owner, float damage, int cause, float now)
 {
 	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
 	{
 		return;
 	}
+
+	RecordIgnitorAttribution(survivor, owner, cause, now);
 
 	int attacker = owner;
 	if (attacker <= 0 || attacker > MaxClients || !IsClientInGame(attacker))
@@ -584,6 +597,59 @@ void ResetClientState(int client)
 	g_fLastHintAt[client] = 0.0;
 	g_iBurnOwner[client] = 0;
 	g_fBurnExpireAt[client] = 0.0;
+	g_iLastIgnitorOwner[client] = 0;
+	g_iLastIgnitorCause[client] = IGNITOR_CAUSE_NONE;
+	g_fLastIgnitorDamageAt[client] = 0.0;
+}
+
+void RecordIgnitorAttribution(int survivor, int owner, int cause, float now)
+{
+	if (!IsValidSurvivorClient(survivor))
+	{
+		return;
+	}
+
+	g_iLastIgnitorOwner[survivor] = owner;
+	g_iLastIgnitorCause[survivor] = cause;
+	g_fLastIgnitorDamageAt[survivor] = now;
+}
+
+int GetRecentIgnitorOwner(int survivor)
+{
+	if (!IsValidSurvivorClient(survivor))
+	{
+		return 0;
+	}
+
+	int owner = g_iLastIgnitorOwner[survivor];
+	if (owner <= 0 || owner > MaxClients || !IsClientInGame(owner))
+	{
+		return 0;
+	}
+
+	if (GetGameTime() - g_fLastIgnitorDamageAt[survivor] > IGNITOR_ATTRIBUTION_WINDOW)
+	{
+		return 0;
+	}
+
+	return owner;
+}
+
+public int Native_GetRecentDamageCause(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	if (GetRecentIgnitorOwner(victim) <= 0)
+	{
+		return IGNITOR_CAUSE_NONE;
+	}
+
+	return g_iLastIgnitorCause[victim];
+}
+
+public int Native_GetRecentDamageAttacker(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	return GetRecentIgnitorOwner(victim);
 }
 
 void ClearBurnOwnerReferences(int owner)

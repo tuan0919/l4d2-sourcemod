@@ -13,6 +13,8 @@ native int EliteSI_Noxious_GetRecentDamageCause(int victim);
 native int EliteSI_Noxious_GetRecentDamageAttacker(int victim);
 native int EliteSI_ToxicGas_GetRecentDamageCause(int victim);
 native int EliteSI_ToxicGas_GetRecentDamageAttacker(int victim);
+native int EliteSI_Ignitor_GetRecentDamageCause(int victim);
+native int EliteSI_Ignitor_GetRecentDamageAttacker(int victim);
 
 #define PLUGIN_VERSION "1.0.0"
 #define ANCHOR_NAME "SI_RedAnchor"

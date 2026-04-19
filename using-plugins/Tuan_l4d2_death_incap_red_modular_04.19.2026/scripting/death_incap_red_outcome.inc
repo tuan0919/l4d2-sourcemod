@@ -21,6 +21,25 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 		return Attacker_SI;
     }
 
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_Ignitor_GetRecentDamageCause") == FeatureStatus_Available
+        && EliteSI_Ignitor_GetRecentDamageCause(victim) > 0)
+    {
+        int ignitorAttacker = 0;
+        if (GetFeatureStatus(FeatureType_Native, "EliteSI_Ignitor_GetRecentDamageAttacker") == FeatureStatus_Available)
+        {
+            ignitorAttacker = EliteSI_Ignitor_GetRecentDamageAttacker(victim);
+        }
+
+        if (ignitorAttacker > 0 && ignitorAttacker <= MaxClients && IsClientInGame(ignitorAttacker) && GetClientTeam(ignitorAttacker) == 3)
+        {
+            GetSpecialInfectedName(ignitorAttacker, attackerLabel, maxlen);
+            return Attacker_SI;
+        }
+
+		strcopy(attackerLabel, maxlen, "Elite Smoker (Ignitor Smoker)");
+		return Attacker_SI;
+    }
+
     if (IsInGameClient(attackerClient))
     {
         if (attackerClient == victim)
@@ -510,6 +529,31 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             switch (toxicGasCause)
             {
                 case 1: { strcopy(cause, maxlen, "Smoker Toxic Gas"); return true; }
+            }
+        }
+    }
+
+    int ignitorCause = 0;
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_Ignitor_GetRecentDamageCause") == FeatureStatus_Available)
+    {
+        ignitorCause = EliteSI_Ignitor_GetRecentDamageCause(victim);
+        if (ignitorCause > 0)
+        {
+            int ignitorAttacker = 0;
+            if (GetFeatureStatus(FeatureType_Native, "EliteSI_Ignitor_GetRecentDamageAttacker") == FeatureStatus_Available)
+            {
+                ignitorAttacker = EliteSI_Ignitor_GetRecentDamageAttacker(victim);
+            }
+
+            if (ignitorAttacker > 0 && ignitorAttacker <= MaxClients && IsClientInGame(ignitorAttacker) && GetClientTeam(ignitorAttacker) == 3)
+            {
+                attackerClient = ignitorAttacker;
+            }
+
+            switch (ignitorCause)
+            {
+                case 1: { strcopy(cause, maxlen, "Smoker Ignitor Burn"); return true; }
+                case 2: { strcopy(cause, maxlen, "Smoker Ignitor Fire Patch"); return true; }
             }
         }
     }

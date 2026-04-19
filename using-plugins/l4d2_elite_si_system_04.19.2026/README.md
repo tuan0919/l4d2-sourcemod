@@ -95,7 +95,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Gia tri lon hon chi lam subtype de ra hon tuong doi, khong phai phan tram tuyet doi
 
 - `Smoker`
-	- Roll trong so giua `Strange Movement`, `Pull Weapon Drop`, `Toxic Gas`, `Ignitor Smoker`
+	- Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Pull Weapon Drop`, `Toxic Gas`, `Ignitor Smoker`
 
 - `Boomer`
   - Roll trong so giua `Abnormal behavior` va `Flashbang`

@@ -6,6 +6,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
     MarkNativeAsOptional("EliteSI_Noxious_GetRecentDamageAttacker");
     MarkNativeAsOptional("EliteSI_ToxicGas_GetRecentDamageCause");
     MarkNativeAsOptional("EliteSI_ToxicGas_GetRecentDamageAttacker");
+    MarkNativeAsOptional("EliteSI_Ignitor_GetRecentDamageCause");
+    MarkNativeAsOptional("EliteSI_Ignitor_GetRecentDamageAttacker");
     return APLRes_Success;
 }
 

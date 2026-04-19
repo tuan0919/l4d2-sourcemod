@@ -40,6 +40,25 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 		return Attacker_SI;
     }
 
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_Leaker_GetRecentDamageCause") == FeatureStatus_Available
+        && EliteSI_Leaker_GetRecentDamageCause(victim) > 0)
+    {
+        int leakerAttacker = 0;
+        if (GetFeatureStatus(FeatureType_Native, "EliteSI_Leaker_GetRecentDamageAttacker") == FeatureStatus_Available)
+        {
+            leakerAttacker = EliteSI_Leaker_GetRecentDamageAttacker(victim);
+        }
+
+        if (leakerAttacker > 0 && leakerAttacker <= MaxClients && IsClientInGame(leakerAttacker) && GetClientTeam(leakerAttacker) == 3)
+        {
+            GetSpecialInfectedName(leakerAttacker, attackerLabel, maxlen);
+            return Attacker_SI;
+        }
+
+		strcopy(attackerLabel, maxlen, "Elite Boomer (Leaker)");
+		return Attacker_SI;
+    }
+
     if (IsInGameClient(attackerClient))
     {
         if (attackerClient == victim)
@@ -554,6 +573,30 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             {
                 case 1: { strcopy(cause, maxlen, "Smoker Ignitor Burn"); return true; }
                 case 2: { strcopy(cause, maxlen, "Smoker Ignitor Fire Patch"); return true; }
+            }
+        }
+    }
+
+    int leakerCause = 0;
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_Leaker_GetRecentDamageCause") == FeatureStatus_Available)
+    {
+        leakerCause = EliteSI_Leaker_GetRecentDamageCause(victim);
+        if (leakerCause > 0)
+        {
+            int leakerAttacker = 0;
+            if (GetFeatureStatus(FeatureType_Native, "EliteSI_Leaker_GetRecentDamageAttacker") == FeatureStatus_Available)
+            {
+                leakerAttacker = EliteSI_Leaker_GetRecentDamageAttacker(victim);
+            }
+
+            if (leakerAttacker > 0 && leakerAttacker <= MaxClients && IsClientInGame(leakerAttacker) && GetClientTeam(leakerAttacker) == 3)
+            {
+                attackerClient = leakerAttacker;
+            }
+
+            switch (leakerCause)
+            {
+                case 1: { strcopy(cause, maxlen, "Boomer Leaker Fire"); return true; }
             }
         }
     }

@@ -14,8 +14,9 @@
 #define ZC_BOOMER 2
 
 #define ELITE_SUBTYPE_BOOMER_LEAKER 33
-
-#define MAX_LEAKER_FIRE_PATCHES 24
+#define LEAKER_ATTRIBUTION_WINDOW 4.0
+#define LEAKER_CAUSE_NONE 0
+#define LEAKER_CAUSE_FIRE 1
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -26,22 +27,15 @@ ConVar g_cvPrepareRange;
 ConVar g_cvPrepareDuration;
 ConVar g_cvMoveSpeedMultiplier;
 ConVar g_cvFirePatchDuration;
-ConVar g_cvFirePatchRadius;
-ConVar g_cvFirePatchDamagePerSecond;
-ConVar g_cvFireDamageInterval;
 
 bool g_bHasEliteApi;
 bool g_bTrackedLeaker[MAXPLAYERS + 1];
 bool g_bPrepareExplode[MAXPLAYERS + 1];
 bool g_bExplosionTriggered[MAXPLAYERS + 1];
 float g_fExplodeAt[MAXPLAYERS + 1];
-
-bool g_bPatchActive[MAX_LEAKER_FIRE_PATCHES];
-float g_fPatchExpireAt[MAX_LEAKER_FIRE_PATCHES];
-float g_vecPatchOrigin[MAX_LEAKER_FIRE_PATCHES][3];
-int g_iPatchOwner[MAX_LEAKER_FIRE_PATCHES];
-
-Handle g_hThinkTimer;
+int g_iLastLeakerOwner[MAXPLAYERS + 1];
+int g_iLastLeakerCause[MAXPLAYERS + 1];
+float g_fLastLeakerDamageAt[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -63,6 +57,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 	MarkNativeAsOptional("EliteSI_IsElite");
 	MarkNativeAsOptional("EliteSI_GetSubtype");
 
+	CreateNative("EliteSI_Leaker_GetRecentDamageCause", Native_GetRecentDamageCause);
+	CreateNative("EliteSI_Leaker_GetRecentDamageAttacker", Native_GetRecentDamageAttacker);
+
 	return APLRes_Success;
 }
 
@@ -73,10 +70,7 @@ public void OnPluginStart()
 	g_cvPrepareRange = CreateConVar("l4d2_elite_si_boomer_leaker_prepare_range", "170.0", "Distance where Leaker Boomer crouches and starts its self-detonation countdown.", FCVAR_NOTIFY, true, 50.0, true, 1000.0);
 	g_cvPrepareDuration = CreateConVar("l4d2_elite_si_boomer_leaker_prepare_duration", "2.5", "Seconds Leaker Boomer crouches before self-detonating.", FCVAR_NOTIFY, true, 0.2, true, 10.0);
 	g_cvMoveSpeedMultiplier = CreateConVar("l4d2_elite_si_boomer_leaker_speed_multiplier", "1.12", "Movement speed multiplier while Leaker Boomer closes distance.", FCVAR_NOTIFY, true, 1.0, true, 3.0);
-	g_cvFirePatchDuration = CreateConVar("l4d2_elite_si_boomer_leaker_fire_patch_duration", "10.0", "Duration in seconds of the fire patch created by Leaker Boomer explosions.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
-	g_cvFirePatchRadius = CreateConVar("l4d2_elite_si_boomer_leaker_fire_patch_radius", "180.0", "Radius of the Leaker Boomer fire patch.", FCVAR_NOTIFY, true, 32.0, true, 1000.0);
-	g_cvFirePatchDamagePerSecond = CreateConVar("l4d2_elite_si_boomer_leaker_fire_patch_damage_per_second", "12.0", "Damage per second dealt by Leaker Boomer fire patches.", FCVAR_NOTIFY, true, 0.1, true, 100.0);
-	g_cvFireDamageInterval = CreateConVar("l4d2_elite_si_boomer_leaker_fire_damage_interval", "0.5", "Tick interval in seconds for Leaker Boomer fire patch damage.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
+	g_cvFirePatchDuration = CreateConVar("l4d2_elite_si_boomer_leaker_fire_patch_duration", "10.0", "Duration in seconds of the inferno created by Leaker Boomer explosions.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
 
 	CreateConVar("l4d2_elite_si_boomer_leaker_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_boomer_leaker");
@@ -84,10 +78,12 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
 	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
+	HookEvent("map_transition", Event_RoundReset, EventHookMode_PostNoCopy);
+	HookEvent("mission_lost", Event_RoundReset, EventHookMode_PostNoCopy);
+	HookEvent("finale_win", Event_RoundReset, EventHookMode_PostNoCopy);
 
 	RefreshEliteState();
 	ResetAllState();
-	RestartThinkTimer();
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -134,7 +130,14 @@ public void OnClientDisconnect(int client)
 	ResetClientState(client);
 	SDKUnhook(client, SDKHook_PreThinkPost, OnLeakerThinkPost);
 	SDKUnhook(client, SDKHook_OnTakeDamage, OnTakeDamage);
-	ClearPatchOwnerReferences(client);
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrEqual(classname, "inferno"))
+	{
+		SDKHook(entity, SDKHook_SpawnPost, OnInfernoSpawnPost);
+	}
 }
 
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
@@ -181,9 +184,9 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 		return;
 	}
 
-	CreateLeakerFirePatch(client);
+	CreateLeakerInferno(client);
 	g_bExplosionTriggered[client] = true;
-	}
+}
 
 public void OnLeakerThinkPost(int client)
 {
@@ -220,7 +223,21 @@ public void OnLeakerThinkPost(int client)
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
 {
-	if (!IsLeakerBoomer(victim, true) || damage <= 0.0)
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || damage <= 0.0)
+	{
+		return Plugin_Continue;
+	}
+
+	if ((damageType & DMG_BURN) != 0)
+	{
+		int owner = ResolveLeakerFireOwner(attacker, inflictor);
+		if (owner > 0)
+		{
+			RecordLeakerAttribution(victim, owner, LEAKER_CAUSE_FIRE);
+		}
+	}
+
+	if (!IsLeakerBoomer(victim, true))
 	{
 		return Plugin_Continue;
 	}
@@ -229,51 +246,6 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 	{
 		damage = 0.0;
 		return Plugin_Handled;
-	}
-
-	return Plugin_Continue;
-}
-
-public Action Timer_LeakerThink(Handle timer)
-{
-	if (!g_cvEnable.BoolValue)
-	{
-		return Plugin_Continue;
-	}
-
-	float now = GetGameTime();
-	float radius = g_cvFirePatchRadius.FloatValue;
-	float damage = g_cvFirePatchDamagePerSecond.FloatValue * g_cvFireDamageInterval.FloatValue;
-
-	for (int patch = 0; patch < MAX_LEAKER_FIRE_PATCHES; patch++)
-	{
-		if (!g_bPatchActive[patch])
-		{
-			continue;
-		}
-
-		if (g_fPatchExpireAt[patch] <= now)
-		{
-			ClearFirePatch(patch);
-			continue;
-		}
-
-		for (int client = 1; client <= MaxClients; client++)
-		{
-			if (!IsDamageableLivingPlayer(client))
-			{
-				continue;
-			}
-
-			float origin[3];
-			GetClientAbsOrigin(client, origin);
-			if (GetVectorDistance(origin, g_vecPatchOrigin[patch]) > radius)
-			{
-				continue;
-			}
-
-			ApplyManagedFireDamage(client, g_iPatchOwner[patch], damage);
-		}
 	}
 
 	return Plugin_Continue;
@@ -292,22 +264,6 @@ public Action L4D_OnVomitedUpon(int victim, int &attacker, bool &boomerExplosion
 	}
 
 	return Plugin_Handled;
-}
-
-void RestartThinkTimer()
-{
-	if (g_hThinkTimer != null)
-	{
-		return;
-	}
-
-	float interval = g_cvFireDamageInterval != null ? g_cvFireDamageInterval.FloatValue : 0.5;
-	if (interval < 0.1)
-	{
-		interval = 0.1;
-	}
-
-	g_hThinkTimer = CreateTimer(interval, Timer_LeakerThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 void TryApproachAndPrime(int client, float now)
@@ -345,120 +301,78 @@ void TryApproachAndPrime(int client, float now)
 	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", speed);
 }
 
-void ApplyManagedFireDamage(int client, int owner, float damage)
+void CreateLeakerInferno(int owner)
 {
-	if (!IsDamageableLivingPlayer(client) || damage <= 0.0)
+	if (owner <= 0 || owner > MaxClients || !IsClientInGame(owner))
 	{
 		return;
 	}
 
-	int attacker = owner;
-	if (attacker <= 0 || attacker > MaxClients || !IsClientInGame(attacker))
-	{
-		attacker = client;
-	}
-
-	if (IsPlayerIncapped(client))
-	{
-		int currentHealth = GetClientHealth(client);
-		if (currentHealth <= 0)
-		{
-			return;
-		}
-
-		int damageInt = RoundToCeil(damage);
-		if (damageInt < 1)
-		{
-			damageInt = 1;
-		}
-
-		if (currentHealth <= damageInt)
-		{
-			SDKHooks_TakeDamage(client, attacker, attacker, float(currentHealth), DMG_BURN);
-			return;
-		}
-
-		SetEntityHealth(client, currentHealth - damageInt);
-		return;
-	}
-
-	SDKHooks_TakeDamage(client, attacker, attacker, damage, DMG_BURN);
-	IgniteEntity(client, 1.0);
-}
-
-void CreateLeakerFirePatch(int owner)
-{
 	float origin[3];
 	GetClientAbsOrigin(owner, origin);
 	origin[2] += 2.0;
 
-	int slot = FindFreeFirePatchSlot();
-	if (slot == -1)
+	float ang[3] = {90.0, 0.0, 0.0};
+	int projectile = L4D_MolotovPrj(owner, origin, ang);
+	if (projectile <= MaxClients || !IsValidEntity(projectile))
 	{
 		return;
 	}
 
-	g_bPatchActive[slot] = true;
-	g_fPatchExpireAt[slot] = GetGameTime() + g_cvFirePatchDuration.FloatValue;
-	g_iPatchOwner[slot] = owner;
-	g_vecPatchOrigin[slot][0] = origin[0];
-	g_vecPatchOrigin[slot][1] = origin[1];
-	g_vecPatchOrigin[slot][2] = origin[2];
-
-	CreateGroundFireParticle(origin, g_cvFirePatchDuration.FloatValue);
+	L4D_DetonateProjectile(projectile);
 }
 
-int FindFreeFirePatchSlot()
+public void OnInfernoSpawnPost(int entity)
 {
-	int slot = -1;
-	float oldestExpire = 9999999.0;
-
-	for (int i = 0; i < MAX_LEAKER_FIRE_PATCHES; i++)
-	{
-		if (!g_bPatchActive[i])
-		{
-			return i;
-		}
-
-		if (g_fPatchExpireAt[i] < oldestExpire)
-		{
-			oldestExpire = g_fPatchExpireAt[i];
-			slot = i;
-		}
-	}
-
-	return slot;
-}
-
-void ClearFirePatch(int slot)
-{
-	if (slot < 0 || slot >= MAX_LEAKER_FIRE_PATCHES)
+	if (!IsValidEntity(entity))
 	{
 		return;
 	}
 
-	g_bPatchActive[slot] = false;
-	g_fPatchExpireAt[slot] = 0.0;
-	g_iPatchOwner[slot] = 0;
-	g_vecPatchOrigin[slot][0] = 0.0;
-	g_vecPatchOrigin[slot][1] = 0.0;
-	g_vecPatchOrigin[slot][2] = 0.0;
-}
-
-void CreateGroundFireParticle(const float origin[3], float lifetime)
-{
-	int entity = CreateEntityByName("info_particle_system");
-	if (entity <= MaxClients || !IsValidEntity(entity))
+	int owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
+	if (!IsLeakerBoomer(owner, false))
 	{
 		return;
 	}
 
-	DispatchKeyValue(entity, "effect_name", "gas_explosion_ground_fire");
-	DispatchSpawn(entity);
-	TeleportEntity(entity, origin, NULL_VECTOR, NULL_VECTOR);
-	ActivateEntity(entity);
-	AcceptEntityInput(entity, "Start");
-	CreateTimer(lifetime, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+	float duration = g_cvFirePatchDuration.FloatValue;
+	if (duration > 0.0)
+	{
+		CreateTimer(duration, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
+void RecordLeakerAttribution(int victim, int owner, int cause)
+{
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+	{
+		return;
+	}
+
+	g_iLastLeakerOwner[victim] = owner;
+	g_iLastLeakerCause[victim] = cause;
+	g_fLastLeakerDamageAt[victim] = GetGameTime();
+}
+
+int GetRecentLeakerOwner(int victim)
+{
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+	{
+		return 0;
+	}
+
+	int owner = g_iLastLeakerOwner[victim];
+	if (owner <= 0 || owner > MaxClients || !IsClientInGame(owner))
+	{
+		return 0;
+	}
+
+	if (GetGameTime() - g_fLastLeakerDamageAt[victim] > LEAKER_ATTRIBUTION_WINDOW)
+	{
+		return 0;
+	}
+
+	return owner;
 }
 
 public Action Timer_KillEntity(Handle timer, int entityRef)
@@ -474,11 +388,6 @@ public Action Timer_KillEntity(Handle timer, int entityRef)
 
 void ResetAllState()
 {
-	for (int i = 0; i < MAX_LEAKER_FIRE_PATCHES; i++)
-	{
-		ClearFirePatch(i);
-	}
-
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		ResetClientState(i);
@@ -496,60 +405,62 @@ void ResetClientState(int client)
 	g_bPrepareExplode[client] = false;
 	g_bExplosionTriggered[client] = false;
 	g_fExplodeAt[client] = 0.0;
+	g_iLastLeakerOwner[client] = 0;
+	g_iLastLeakerCause[client] = LEAKER_CAUSE_NONE;
+	g_fLastLeakerDamageAt[client] = 0.0;
 }
 
-void ClearPatchOwnerReferences(int owner)
+int ResolveLeakerFireOwner(int attacker, int inflictor)
 {
-	for (int patch = 0; patch < MAX_LEAKER_FIRE_PATCHES; patch++)
+	int owner = ResolveOwnerFromEntity(inflictor);
+	if (owner > 0)
 	{
-		if (g_iPatchOwner[patch] == owner)
+		return owner;
+	}
+
+	return ResolveOwnerFromEntity(attacker);
+}
+
+int ResolveOwnerFromEntity(int entity)
+{
+	if (!IsValidEdict(entity))
+	{
+		return 0;
+	}
+
+	char classname[64];
+	GetEntityClassname(entity, classname, sizeof(classname));
+	if (!StrEqual(classname, "inferno") && !StrEqual(classname, "entityflame"))
+	{
+		return 0;
+	}
+
+	int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+	if (!IsLeakerBoomer(owner, false))
+	{
+		owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
+		if (!IsLeakerBoomer(owner, false))
 		{
-			g_iPatchOwner[patch] = 0;
+			return 0;
 		}
 	}
+
+	return owner;
 }
 
 bool IsLeakerBoomer(int client, bool requireAlive)
 {
+	if (requireAlive && (client <= 0 || client > MaxClients || !IsClientInGame(client) || !IsPlayerAlive(client)))
+	{
+		return false;
+	}
+
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
 	{
 		return false;
 	}
 
-	if (GetClientTeam(client) != TEAM_INFECTED || !IsFakeClient(client))
-	{
-		return false;
-	}
-
-	if (requireAlive && !IsPlayerAlive(client))
-	{
-		return false;
-	}
-
-	if (GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_BOOMER)
-	{
-		return false;
-	}
-
 	return g_bTrackedLeaker[client];
-}
-
-bool IsDamageableLivingPlayer(int client)
-{
-	return client > 0
-		&& client <= MaxClients
-		&& IsClientInGame(client)
-		&& IsPlayerAlive(client)
-		&& (GetClientTeam(client) == TEAM_SURVIVOR || GetClientTeam(client) == TEAM_INFECTED);
-}
-
-bool IsPlayerIncapped(int client)
-{
-	return client > 0
-		&& client <= MaxClients
-		&& IsClientInGame(client)
-		&& GetEntProp(client, Prop_Send, "m_isIncapacitated", 1) == 1
-		&& GetEntProp(client, Prop_Send, "m_isHangingFromLedge", 1) == 0;
 }
 
 int FindClosestSurvivor(int client, float maxDistance)
@@ -622,4 +533,21 @@ void SyncTrackedSubtypeForClient(int client)
 	}
 
 	g_bTrackedLeaker[client] = EliteSI_IsElite(client) && EliteSI_GetSubtype(client) == ELITE_SUBTYPE_BOOMER_LEAKER;
+}
+
+public int Native_GetRecentDamageCause(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	if (GetRecentLeakerOwner(victim) <= 0)
+	{
+		return LEAKER_CAUSE_NONE;
+	}
+
+	return g_iLastLeakerCause[victim];
+}
+
+public int Native_GetRecentDamageAttacker(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	return GetRecentLeakerOwner(victim);
 }

@@ -149,15 +149,22 @@ public void EliteSI_OnEliteCleared(int client)
 		return;
 	}
 
+	bool wasSneaky = g_bTrackedSneaky[client];
 	ResetClientState(client);
-	RestoreCloakVisual(client);
+	if (wasSneaky)
+	{
+		RestoreCloakVisual(client);
+	}
 }
 
 public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		RestoreCloakVisual(i);
+		if (g_bTrackedSneaky[i])
+		{
+			RestoreCloakVisual(i);
+		}
 		ResetClientState(i);
 	}
 }
@@ -254,6 +261,11 @@ void BreakCloak(int client, bool shoved)
 void RestoreCloakVisual(int client)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
+		return;
+	}
+
+	if (GetClientTeam(client) != TEAM_INFECTED || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER)
 	{
 		return;
 	}

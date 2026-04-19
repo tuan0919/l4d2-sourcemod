@@ -92,6 +92,17 @@ public void OnPluginStart()
 	CreateConVar("l4d2_elite_si_smoker_toxic_gas_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_smoker_toxic_gas");
 
+	g_cvEnable.AddChangeHook(OnRelevantConVarChanged);
+	g_cvSpeedMultiplier.AddChangeHook(OnRelevantConVarChanged);
+	g_cvCloudCooldown.AddChangeHook(OnRelevantConVarChanged);
+	g_cvCloudDuration.AddChangeHook(OnRelevantConVarChanged);
+	g_cvCloudRadius.AddChangeHook(OnRelevantConVarChanged);
+	g_cvCloudDamagePerSecond.AddChangeHook(OnRelevantConVarChanged);
+	g_cvDamageInterval.AddChangeHook(OnRelevantConVarChanged);
+	g_cvHintEnable.AddChangeHook(OnRelevantConVarChanged);
+	g_cvHintColor.AddChangeHook(OnRelevantConVarChanged);
+	g_cvHintInterval.AddChangeHook(OnRelevantConVarChanged);
+
 	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
@@ -118,6 +129,19 @@ public void OnAllPluginsLoaded()
 {
 	RefreshEliteState();
 	SyncTrackedSubtypeState();
+}
+
+public void OnConfigsExecuted()
+{
+	RebuildDamageThinkTimer();
+}
+
+public void OnRelevantConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	if (convar == g_cvDamageInterval || convar == g_cvEnable)
+	{
+		RebuildDamageThinkTimer();
+	}
 }
 
 public void OnClientPutInServer(int client)
@@ -462,6 +486,17 @@ void RestartDamageThinkTimer()
 	}
 
 	g_hDamageThinkTimer = CreateTimer(interval, Timer_ToxicGasThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void RebuildDamageThinkTimer()
+{
+	if (g_hDamageThinkTimer != null)
+	{
+		delete g_hDamageThinkTimer;
+		g_hDamageThinkTimer = null;
+	}
+
+	RestartDamageThinkTimer();
 }
 
 void ReleaseToxicCloud(int smoker, bool onDeath)

@@ -193,7 +193,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Them `Spitter Sneaky`: Spitter giu khoang cach, cloak theo chu ky, mien dan khi cloak, va khac burst 2 phat acid truoc khi bien mat lai.
 - Them `Boomer Leaker`: Boomer tu boc chay, khong bile survivor, tiep can roi tu no de tao bai lua gay damage ca hai phe.
 - Them `Hunter Heroic`: Hunter cam pipebomb, arm no sau pounce thanh cong hoac khi chet, va co the reclaim bom neu bi shove khi dang pin.
-- Fix `Hunter Heroic`: rewrite lai co che bom theo huong noi bo (timer + explosion radius damage) thay vi tao `pipe_bomb_projectile` / attachment phu. Muc tieu la giu behavior heroic hunter nhưng tranh nhanh gay ket loading khi nguoi choi join server.
+- Fix `Hunter Heroic`: rewrite lai theo pattern attach projectile that tham khao `reference/plugins-reference/l4d_pipebomb_shove.sp`. Heroic Hunter gio gan `pipebomb_projectile` that vao tay khi dang pin, shove thi reclaim, pounce ket thuc/chet thi tha bom xuong dat; dong thoi bo cac nhanh sync subtype luc client join da tung gay ket loading.
 
 ### 18/04/2026
 

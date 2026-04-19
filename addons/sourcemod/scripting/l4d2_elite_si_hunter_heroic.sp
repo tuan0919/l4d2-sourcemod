@@ -3,9 +3,8 @@
 
 #include <sourcemod>
 #include <sdktools>
-#include <sdkhooks>
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.0"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -14,28 +13,26 @@
 
 #define ELITE_SUBTYPE_HUNTER_HEROIC 34
 
-#define MAX_HEROIC_BOMBS (MAXPLAYERS + 1)
-#define EXPLOSION_SPRITE "materials/sprites/zerogxplode.vmt"
-#define EXPLOSION_SOUND "weapons/hegrenade/explode5.wav"
+#define GAMEDATA_FILE "l4d_pipebomb_shove"
+#define PARTICLE_FUSE "weapon_pipebomb_fuse"
+#define PARTICLE_LIGHT "weapon_pipebomb_blinking_light"
 
 ConVar g_cvEnable;
 ConVar g_cvFuseTime;
 ConVar g_cvExplosionDamage;
 ConVar g_cvExplosionRadius;
 ConVar g_cvDropOffset;
+ConVar g_cvEnginePipeFuse;
 
+Handle g_hSdkActivatePipe;
+
+bool g_bFuseSwitching;
 bool g_bTrackedHeroic[MAXPLAYERS + 1];
 bool g_bHasPipeAvailable[MAXPLAYERS + 1];
+bool g_bPipeAttached[MAXPLAYERS + 1];
 int g_iPinnedVictim[MAXPLAYERS + 1];
 int g_iPinnedHunter[MAXPLAYERS + 1];
-int g_iHunterBombSlot[MAXPLAYERS + 1];
-
-bool g_bBombActive[MAX_HEROIC_BOMBS];
-int g_iBombSerial[MAX_HEROIC_BOMBS];
-int g_iBombOwner[MAX_HEROIC_BOMBS];
-float g_vecBombOrigin[MAX_HEROIC_BOMBS][3];
-
-int g_iExplosionSprite = -1;
+int g_iActivePipeRef[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -59,32 +56,35 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 public void OnPluginStart()
 {
+	LoadPipebombSdkCall();
+
 	g_cvEnable = CreateConVar("l4d2_elite_si_hunter_heroic_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvFuseTime = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_fuse", "3.0", "Fuse time in seconds before Heroic Hunter pipebomb explodes.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
-	g_cvExplosionDamage = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_damage", "220.0", "Base explosion damage dealt by Heroic Hunter pipebomb.", FCVAR_NOTIFY, true, 1.0, true, 1000.0);
+	g_cvExplosionDamage = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_damage", "220.0", "Explosion damage dealt by Heroic Hunter pipebomb.", FCVAR_NOTIFY, true, 1.0, true, 1000.0);
 	g_cvExplosionRadius = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_radius", "320.0", "Explosion radius of Heroic Hunter pipebomb.", FCVAR_NOTIFY, true, 50.0, true, 2000.0);
 	g_cvDropOffset = CreateConVar("l4d2_elite_si_hunter_heroic_pipebomb_drop_offset", "28.0", "Offset used when dropping the Heroic Hunter pipebomb near the pinned target.", FCVAR_NOTIFY, true, 0.0, true, 200.0);
 
 	CreateConVar("l4d2_elite_si_hunter_heroic_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_hunter_heroic");
 
+	g_cvEnginePipeFuse = FindConVar("pipe_bomb_timer_duration");
+	if (g_cvEnginePipeFuse == null)
+	{
+		SetFailState("Missing required ConVar: pipe_bomb_timer_duration");
+	}
+	g_cvEnginePipeFuse.AddChangeHook(ConVarChanged_PipeFuse);
+
 	HookEvent("lunge_pounce", Event_LungePounce, EventHookMode_Post);
 	HookEvent("pounce_end", Event_PounceEnd, EventHookMode_Post);
 	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
+	HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
 	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("finale_win", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("mission_lost", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("map_transition", Event_RoundReset, EventHookMode_PostNoCopy);
 
-	PrecacheAssets();
-	ResetAllState();
-}
-
-public void OnMapStart()
-{
-	PrecacheAssets();
 	ResetAllState();
 }
 
@@ -98,6 +98,18 @@ public void OnClientDisconnect(int client)
 	ResetClientState(client, true);
 }
 
+public void OnEntityDestroyed(int entity)
+{
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (g_iActivePipeRef[client] != 0 && EntRefToEntIndex(g_iActivePipeRef[client]) == entity)
+		{
+			g_iActivePipeRef[client] = 0;
+			g_bPipeAttached[client] = false;
+		}
+	}
+}
+
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 {
 	if (client <= 0 || client > MaxClients)
@@ -105,15 +117,11 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 		return;
 	}
 
-	ClearPinnedState(client);
+	ResetClientState(client, true);
 	g_bTrackedHeroic[client] = (zclass == ZC_HUNTER && subtype == ELITE_SUBTYPE_HUNTER_HEROIC);
-	if (g_bTrackedHeroic[client] && IsClientInGame(client) && IsPlayerAlive(client) && g_iHunterBombSlot[client] == -1)
+	if (g_bTrackedHeroic[client] && IsClientInGame(client) && IsPlayerAlive(client))
 	{
 		g_bHasPipeAvailable[client] = true;
-	}
-	else if (!g_bTrackedHeroic[client])
-	{
-		g_bHasPipeAvailable[client] = false;
 	}
 }
 
@@ -124,14 +132,29 @@ public void EliteSI_OnEliteCleared(int client)
 		return;
 	}
 
-	ClearPinnedState(client);
-	g_bTrackedHeroic[client] = false;
-	g_bHasPipeAvailable[client] = false;
+	ResetClientState(client, true);
+}
+
+public void ConVarChanged_PipeFuse(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	if (g_bFuseSwitching)
+	{
+		return;
+	}
 }
 
 public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
 {
 	ResetAllState();
+}
+
+public void Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (client > 0)
+	{
+		ResetClientState(client, true);
+	}
 }
 
 public void Event_LungePounce(Event event, const char[] name, bool dontBroadcast)
@@ -152,14 +175,12 @@ public void Event_LungePounce(Event event, const char[] name, bool dontBroadcast
 	g_iPinnedVictim[hunter] = victim;
 	g_iPinnedHunter[victim] = hunter;
 
-	if (!g_bHasPipeAvailable[hunter] || g_iHunterBombSlot[hunter] != -1)
+	if (!g_bHasPipeAvailable[hunter] || GetActivePipeEntity(hunter) != INVALID_ENT_REFERENCE)
 	{
 		return;
 	}
 
-	float bombOrigin[3];
-	GetBombOriginNearVictim(hunter, victim, bombOrigin);
-	ArmHunterBomb(hunter, bombOrigin);
+	AttachPipeToHunter(hunter);
 }
 
 public void Event_PounceEnd(Event event, const char[] name, bool dontBroadcast)
@@ -172,10 +193,20 @@ public void Event_PounceEnd(Event event, const char[] name, bool dontBroadcast)
 
 	int hunter = g_iPinnedHunter[victim];
 	g_iPinnedHunter[victim] = 0;
-	if (hunter > 0 && hunter <= MaxClients)
+	if (hunter <= 0 || hunter > MaxClients)
 	{
-		g_iPinnedVictim[hunter] = 0;
+		return;
 	}
+
+	g_iPinnedVictim[hunter] = 0;
+	if (!g_bPipeAttached[hunter])
+	{
+		return;
+	}
+
+	float origin[3];
+	GetBombDropOrigin(hunter, victim, origin);
+	ReleaseActivePipeToGround(hunter, origin);
 }
 
 public void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
@@ -192,7 +223,7 @@ public void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcas
 	}
 
 	ClearPinnedState(hunter);
-	ReclaimHunterBomb(hunter);
+	ReclaimPipeBomb(hunter);
 }
 
 public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -207,135 +238,174 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 
 	if (!g_cvEnable.BoolValue || !IsHeroicHunter(client, false))
 	{
+		ResetClientState(client, true);
 		return;
 	}
 
-	if (!g_bHasPipeAvailable[client] || g_iHunterBombSlot[client] != -1)
+	float origin[3];
+	GetClientAbsOrigin(client, origin);
+	origin[2] += 6.0;
+
+	int pipe = GetActivePipeEntity(client);
+	if (pipe != INVALID_ENT_REFERENCE)
+	{
+		ReleaseActivePipeToGround(client, origin);
+		return;
+	}
+
+	if (!g_bHasPipeAvailable[client])
+	{
+		ResetClientState(client, true);
+		return;
+	}
+
+	int entity = CreatePipeBombProjectile(client, origin);
+	if (entity != INVALID_ENT_REFERENCE)
+	{
+		g_iActivePipeRef[client] = EntIndexToEntRef(entity);
+		g_bHasPipeAvailable[client] = false;
+		g_bPipeAttached[client] = false;
+	}
+}
+
+void LoadPipebombSdkCall()
+{
+	char path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), "gamedata/%s.txt", GAMEDATA_FILE);
+	if (!FileExists(path))
+	{
+		SetFailState("Missing required file: %s", path);
+	}
+
+	GameData gameData = LoadGameConfigFile(GAMEDATA_FILE);
+	if (gameData == null)
+	{
+		SetFailState("Failed to load gamedata: %s", GAMEDATA_FILE);
+	}
+
+	StartPrepSDKCall(SDKCall_Static);
+	if (!PrepSDKCall_SetFromConf(gameData, SDKConf_Signature, "CPipeBombProjectile_Create"))
+	{
+		delete gameData;
+		SetFailState("Could not load CPipeBombProjectile_Create signature.");
+	}
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
+	PrepSDKCall_AddParameter(SDKType_CBasePlayer, SDKPass_Pointer);
+	PrepSDKCall_AddParameter(SDKType_Float, SDKPass_Plain);
+	PrepSDKCall_SetReturnInfo(SDKType_CBaseEntity, SDKPass_Pointer);
+	g_hSdkActivatePipe = EndPrepSDKCall();
+	delete gameData;
+
+	if (g_hSdkActivatePipe == null)
+	{
+		SetFailState("Could not prep CPipeBombProjectile_Create.");
+	}
+}
+
+void AttachPipeToHunter(int hunter)
+{
+	float origin[3];
+	GetClientAbsOrigin(hunter, origin);
+	origin[2] += 40.0;
+
+	int entity = CreatePipeBombProjectile(hunter, origin);
+	if (entity == INVALID_ENT_REFERENCE)
 	{
 		return;
 	}
 
-	float bombOrigin[3];
-	GetClientAbsOrigin(client, bombOrigin);
-	bombOrigin[2] += 6.0;
-	ArmHunterBomb(client, bombOrigin);
-}
+	SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
+	SetEntityMoveType(entity, MOVETYPE_NONE);
 
-void PrecacheAssets()
-{
-	g_iExplosionSprite = PrecacheModel(EXPLOSION_SPRITE, true);
-	PrecacheSound(EXPLOSION_SOUND, true);
-}
-
-void ArmHunterBomb(int hunter, const float origin[3])
-{
-	int slot = FindFreeBombSlot();
-	if (slot == -1)
+	SetVariantString("!activator");
+	AcceptEntityInput(entity, "SetParent", hunter);
+	if (GetRandomInt(0, 1) == 0)
 	{
-		return;
+		SetVariantString("rhand");
 	}
+	else
+	{
+		SetVariantString("lhand");
+	}
+	AcceptEntityInput(entity, "SetParentAttachment", hunter);
+	TeleportEntity(entity, NULL_VECTOR, view_as<float>({90.0, 0.0, 0.0}), NULL_VECTOR);
 
-	g_bBombActive[slot] = true;
-	g_iBombOwner[slot] = hunter;
-	g_iBombSerial[slot]++;
-	g_vecBombOrigin[slot][0] = origin[0];
-	g_vecBombOrigin[slot][1] = origin[1];
-	g_vecBombOrigin[slot][2] = origin[2];
-	g_iHunterBombSlot[hunter] = slot;
+	g_iActivePipeRef[hunter] = EntIndexToEntRef(entity);
 	g_bHasPipeAvailable[hunter] = false;
-
-	DataPack pack = new DataPack();
-	pack.WriteCell(slot);
-	pack.WriteCell(g_iBombSerial[slot]);
-	CreateTimer(g_cvFuseTime.FloatValue, Timer_DetonateBomb, pack, TIMER_FLAG_NO_MAPCHANGE);
+	g_bPipeAttached[hunter] = true;
 }
 
-void ReclaimHunterBomb(int hunter)
+int CreatePipeBombProjectile(int owner, const float origin[3])
 {
-	int slot = g_iHunterBombSlot[hunter];
-	if (slot != -1)
+	float ang[3] = {0.0, 0.0, 0.0};
+	float vel[3] = {0.0, 0.0, 0.0};
+
+	int restoreFuse = g_cvEnginePipeFuse.IntValue;
+	g_bFuseSwitching = true;
+	g_cvEnginePipeFuse.SetInt(RoundToNearest(g_cvFuseTime.FloatValue));
+	int entity = SDKCall(g_hSdkActivatePipe, origin, ang, vel, vel, owner, 2.0);
+	g_cvEnginePipeFuse.SetInt(restoreFuse);
+	g_bFuseSwitching = false;
+
+	if (entity <= MaxClients || !IsValidEntity(entity))
 	{
-		CancelBombSlot(slot);
+		return INVALID_ENT_REFERENCE;
 	}
 
+	SetEntPropFloat(entity, Prop_Data, "m_DmgRadius", g_cvExplosionRadius.FloatValue);
+	SetEntPropFloat(entity, Prop_Data, "m_flDamage", g_cvExplosionDamage.FloatValue);
+	CreateParticle(entity, 0);
+	CreateParticle(entity, 1);
+	return entity;
+}
+
+void ReleaseActivePipeToGround(int hunter, const float origin[3])
+{
+	int entity = GetActivePipeEntity(hunter);
+	if (entity == INVALID_ENT_REFERENCE)
+	{
+		return;
+	}
+
+	SetEntityMoveType(entity, MOVETYPE_FLYGRAVITY);
+	AcceptEntityInput(entity, "ClearParent");
+	TeleportEntity(entity, origin, NULL_VECTOR, NULL_VECTOR);
+	g_bPipeAttached[hunter] = false;
+	g_bHasPipeAvailable[hunter] = false;
+}
+
+void ReclaimPipeBomb(int hunter)
+{
+	int entity = GetActivePipeEntity(hunter);
+	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
+	{
+		AcceptEntityInput(entity, "Kill");
+	}
+
+	g_iActivePipeRef[hunter] = 0;
+	g_bPipeAttached[hunter] = false;
 	if (IsHeroicHunter(hunter, true))
 	{
 		g_bHasPipeAvailable[hunter] = true;
 	}
 }
 
-public Action Timer_DetonateBomb(Handle timer, DataPack pack)
+void GetBombDropOrigin(int hunter, int victim, float origin[3])
 {
-	pack.Reset();
-	int slot = pack.ReadCell();
-	int serial = pack.ReadCell();
-	delete pack;
-
-	if (slot < 0 || slot >= MAX_HEROIC_BOMBS)
+	if (IsValidAliveSurvivor(victim))
 	{
-		return Plugin_Stop;
+		GetClientAbsOrigin(victim, origin);
 	}
-
-	if (!g_bBombActive[slot] || g_iBombSerial[slot] != serial)
+	else
 	{
-		return Plugin_Stop;
+		GetClientAbsOrigin(hunter, origin);
 	}
-
-	int owner = g_iBombOwner[slot];
-	float origin[3];
-	origin[0] = g_vecBombOrigin[slot][0];
-	origin[1] = g_vecBombOrigin[slot][1];
-	origin[2] = g_vecBombOrigin[slot][2];
-
-	DeactivateBombSlot(slot);
-	DetonateBomb(owner, origin);
-	return Plugin_Stop;
-}
-
-void DetonateBomb(int owner, const float origin[3])
-{
-	if (g_iExplosionSprite > 0)
-	{
-		TE_SetupExplosion(origin, g_iExplosionSprite, 1.0, 1, 0, RoundToNearest(g_cvExplosionRadius.FloatValue), 600);
-		TE_SendToAll();
-	}
-
-	EmitAmbientSound(EXPLOSION_SOUND, origin, owner, SNDLEVEL_RAIDSIREN);
-
-	float radius = g_cvExplosionRadius.FloatValue;
-	float baseDamage = g_cvExplosionDamage.FloatValue;
-	for (int survivor = 1; survivor <= MaxClients; survivor++)
-	{
-		if (!IsValidAliveSurvivor(survivor))
-		{
-			continue;
-		}
-
-		float survivorPos[3];
-		GetClientAbsOrigin(survivor, survivorPos);
-		float distance = GetVectorDistance(origin, survivorPos);
-		if (distance > radius)
-		{
-			continue;
-		}
-
-		float damageScale = 1.0 - (distance / radius);
-		if (damageScale < 0.15)
-		{
-			damageScale = 0.15;
-		}
-
-		SDKHooks_TakeDamage(survivor, owner, owner, baseDamage * damageScale, DMG_BLAST);
-	}
-}
-
-void GetBombOriginNearVictim(int hunter, int victim, float origin[3])
-{
-	GetClientAbsOrigin(victim, origin);
 
 	float hunterPos[3];
 	GetClientAbsOrigin(hunter, hunterPos);
-
 	float dir[3];
 	MakeVectorFromPoints(hunterPos, origin, dir);
 	if (NormalizeVector(dir, dir) < 0.001)
@@ -350,83 +420,80 @@ void GetBombOriginNearVictim(int hunter, int victim, float origin[3])
 	origin[2] += 6.0;
 }
 
-int FindFreeBombSlot()
+void CreateParticle(int target, int type)
 {
-	for (int i = 0; i < MAX_HEROIC_BOMBS; i++)
-	{
-		if (!g_bBombActive[i])
-		{
-			return i;
-		}
-	}
-
-	return -1;
-}
-
-void CancelBombSlot(int slot)
-{
-	if (slot < 0 || slot >= MAX_HEROIC_BOMBS)
+	int entity = CreateEntityByName("info_particle_system");
+	if (entity <= MaxClients || !IsValidEntity(entity))
 	{
 		return;
 	}
 
-	if (g_bBombActive[slot])
+	if (type == 0)
 	{
-		g_iBombSerial[slot]++;
+		DispatchKeyValue(entity, "effect_name", PARTICLE_FUSE);
+	}
+	else
+	{
+		DispatchKeyValue(entity, "effect_name", PARTICLE_LIGHT);
 	}
 
-	DeactivateBombSlot(slot);
+	DispatchSpawn(entity);
+	ActivateEntity(entity);
+	AcceptEntityInput(entity, "Start");
+
+	SetVariantString("!activator");
+	AcceptEntityInput(entity, "SetParent", target);
+	if (type == 0)
+	{
+		SetVariantString("fuse");
+	}
+	else
+	{
+		SetVariantString("pipebomb_light");
+	}
+	AcceptEntityInput(entity, "SetParentAttachment", target);
 }
 
-void DeactivateBombSlot(int slot)
+int GetActivePipeEntity(int hunter)
 {
-	if (slot < 0 || slot >= MAX_HEROIC_BOMBS)
+	int entity = EntRefToEntIndex(g_iActivePipeRef[hunter]);
+	if (entity == INVALID_ENT_REFERENCE || !IsValidEntity(entity))
 	{
-		return;
+		return INVALID_ENT_REFERENCE;
 	}
 
-	int owner = g_iBombOwner[slot];
-	if (owner > 0 && owner <= MaxClients && g_iHunterBombSlot[owner] == slot)
-	{
-		g_iHunterBombSlot[owner] = -1;
-	}
-
-	g_bBombActive[slot] = false;
-	g_iBombOwner[slot] = 0;
-	g_vecBombOrigin[slot][0] = 0.0;
-	g_vecBombOrigin[slot][1] = 0.0;
-	g_vecBombOrigin[slot][2] = 0.0;
+	return entity;
 }
 
 void ResetAllState()
 {
-	for (int i = 0; i < MAX_HEROIC_BOMBS; i++)
-	{
-		CancelBombSlot(i);
-	}
-
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		ResetClientState(i, false);
+		ResetClientState(i, true);
 	}
 }
 
-void ResetClientState(int client, bool cancelBomb)
+void ResetClientState(int client, bool killPipe)
 {
 	if (client <= 0 || client > MaxClients)
 	{
 		return;
 	}
 
-	ClearPinnedState(client);
-	if (cancelBomb && g_iHunterBombSlot[client] != -1)
+	if (killPipe)
 	{
-		CancelBombSlot(g_iHunterBombSlot[client]);
+		int entity = GetActivePipeEntity(client);
+		if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
+		{
+			AcceptEntityInput(entity, "Kill");
+		}
 	}
 
+	ClearPinnedState(client);
 	g_bTrackedHeroic[client] = false;
 	g_bHasPipeAvailable[client] = false;
-	g_iHunterBombSlot[client] = -1;
+	g_bPipeAttached[client] = false;
+	g_iActivePipeRef[client] = 0;
 }
 
 void ClearPinnedState(int client)

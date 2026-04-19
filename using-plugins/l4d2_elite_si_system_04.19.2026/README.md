@@ -55,6 +55,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Khi bi shove hoac bi giet se tha lan khoi den gay sat thuong lien tuc cho survivor dung trong vung khoi
    - Ho tro cvar rieng de dieu chinh tan suat tick damage cua lan khoi
    - Mac dinh dung attribution o plugin layer de thong bao incap/death do Toxic Gas, khong phu thuoc acid entity cua Spitter
+   - Runtime da rebuild damage timer khi doi `damage_interval` / `enable`, khong can reload plugin
 
 7. `scripting/l4d2_elite_si_smoker_ignitor.sp`
    - Nhanh subtype rieng cho Smoker elite theo trait `Ignitor Smoker`
@@ -73,12 +74,14 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Giu khoang cach, lui khi survivor tien gan va khong chu dong melee pressure
    - Tang hinh theo chu ky, bi shove se mat cloak va dang cloak thi mien bullet damage
    - Moi cycle khac 2 phat acid theo 2 diem khac nhau roi moi quay lai cloak
+   - Da fix round reset / clear subtype de khong con restore mau render len survivor ngoai subtype nay
 
 10. `scripting/l4d2_elite_si_boomer_leaker.sp`
    - Nhanh subtype rieng cho Boomer elite theo trait `Leaker`
    - Tu boc chay khi spawn, khong vomit len survivor
    - Chay toi gan survivor, ngoi xuong mot luc roi tu no
-   - Vu no va death deu de lai bai lua gay damage len ca survivor lan infected
+   - Vu no va death deu tao `inferno` that cua engine (owner = boomer), co the dot ca survivor lan infected
+   - Da noi fallback attribution voi `Tuan_l4d2_death_incap_red` de kill/incap trong inferno resolve ve `Elite Boomer (Leaker)` / `Boomer Leaker Fire`
 
 11. `scripting/l4d2_elite_si_charger_steering.sp`
    - Nhanh bot steering cho Charger trong luc charge

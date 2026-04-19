@@ -16,6 +16,7 @@
 #define ELITE_SUBTYPE_SMOKER_TOXIC_GAS 29
 
 #define TOXIC_GAS_INTERVAL 0.5
+#define MAX_TOXIC_CLOUDS 32
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -34,9 +35,11 @@ bool g_bHasEliteApi;
 bool g_bTrackedToxicGas[MAXPLAYERS + 1];
 bool g_bDeathCloudTriggered[MAXPLAYERS + 1];
 float g_fNextCloudAt[MAXPLAYERS + 1];
-float g_fCloudUntil[MAXPLAYERS + 1];
-float g_vecCloudOrigin[MAXPLAYERS + 1][3];
 float g_fLastHintAt[MAXPLAYERS + 1];
+bool g_bCloudActive[MAX_TOXIC_CLOUDS];
+float g_fCloudExpireAt[MAX_TOXIC_CLOUDS];
+float g_vecCloudOrigin[MAX_TOXIC_CLOUDS][3];
+int g_iCloudOwner[MAX_TOXIC_CLOUDS];
 
 public Plugin myinfo =
 {
@@ -132,6 +135,7 @@ public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 	}
 
 	g_bTrackedToxicGas[client] = (zclass == ZC_SMOKER && subtype == ELITE_SUBTYPE_SMOKER_TOXIC_GAS);
+	g_bDeathCloudTriggered[client] = false;
 }
 
 public void EliteSI_OnEliteCleared(int client)
@@ -379,18 +383,25 @@ public Action Timer_ToxicGasThink(Handle timer)
 	float radius = g_cvCloudRadius.FloatValue;
 	float damage = g_cvCloudDamagePerSecond.FloatValue * TOXIC_GAS_INTERVAL;
 
-	for (int smoker = 1; smoker <= MaxClients; smoker++)
+	for (int cloud = 0; cloud < MAX_TOXIC_CLOUDS; cloud++)
 	{
-		if (g_fCloudUntil[smoker] <= now)
+		if (!g_bCloudActive[cloud])
 		{
+			continue;
+		}
+
+		if (g_fCloudExpireAt[cloud] <= now)
+		{
+			ClearCloud(cloud);
 			continue;
 		}
 
 		int damageSource = 0;
 		bool hasLiveOwner = false;
-		if (smoker > 0 && smoker <= MaxClients && IsClientInGame(smoker) && IsPlayerAlive(smoker))
+		int owner = g_iCloudOwner[cloud];
+		if (owner > 0 && owner <= MaxClients && IsClientInGame(owner) && IsPlayerAlive(owner))
 		{
-			damageSource = smoker;
+			damageSource = owner;
 			hasLiveOwner = true;
 		}
 
@@ -403,7 +414,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 
 			float origin[3];
 			GetClientAbsOrigin(survivor, origin);
-			if (GetVectorDistance(origin, g_vecCloudOrigin[smoker]) > radius)
+			if (GetVectorDistance(origin, g_vecCloudOrigin[cloud]) > radius)
 			{
 				continue;
 			}
@@ -427,10 +438,77 @@ void ReleaseToxicCloud(int smoker, bool onDeath)
 {
 	float origin[3];
 	GetClientAbsOrigin(smoker, origin);
-	g_vecCloudOrigin[smoker] = origin;
-	g_fCloudUntil[smoker] = GetGameTime() + g_cvCloudDuration.FloatValue;
+	CreateToxicCloud(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue, smoker);
 
 	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
+}
+
+void CreateToxicCloud(const float origin[3], float duration, int owner)
+{
+	int slot = FindAvailableCloudSlot();
+	if (slot == -1)
+	{
+		slot = FindOldestCloudSlot();
+		if (slot == -1)
+		{
+			return;
+		}
+	}
+
+	g_bCloudActive[slot] = true;
+	g_fCloudExpireAt[slot] = GetGameTime() + duration;
+	g_vecCloudOrigin[slot] = origin;
+	g_iCloudOwner[slot] = owner;
+}
+
+int FindAvailableCloudSlot()
+{
+	for (int i = 0; i < MAX_TOXIC_CLOUDS; i++)
+	{
+		if (!g_bCloudActive[i])
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+int FindOldestCloudSlot()
+{
+	int slot = -1;
+	float oldestExpireAt = 999999999.0;
+
+	for (int i = 0; i < MAX_TOXIC_CLOUDS; i++)
+	{
+		if (!g_bCloudActive[i])
+		{
+			return i;
+		}
+
+		if (g_fCloudExpireAt[i] < oldestExpireAt)
+		{
+			oldestExpireAt = g_fCloudExpireAt[i];
+			slot = i;
+		}
+	}
+
+	return slot;
+}
+
+void ClearCloud(int slot)
+{
+	if (slot < 0 || slot >= MAX_TOXIC_CLOUDS)
+	{
+		return;
+	}
+
+	g_bCloudActive[slot] = false;
+	g_fCloudExpireAt[slot] = 0.0;
+	g_iCloudOwner[slot] = 0;
+	g_vecCloudOrigin[slot][0] = 0.0;
+	g_vecCloudOrigin[slot][1] = 0.0;
+	g_vecCloudOrigin[slot][2] = 0.0;
 }
 
 void TryReleaseDeathToxicCloud(int smoker)
@@ -598,6 +676,11 @@ public Action Timer_KillEntity(Handle timer, int entityRef)
 
 void ResetAllState()
 {
+	for (int i = 0; i < MAX_TOXIC_CLOUDS; i++)
+	{
+		ClearCloud(i);
+	}
+
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		ResetClientState(i);
@@ -614,11 +697,7 @@ void ResetClientState(int client)
 	g_bTrackedToxicGas[client] = false;
 	g_bDeathCloudTriggered[client] = false;
 	g_fNextCloudAt[client] = 0.0;
-	g_fCloudUntil[client] = 0.0;
 	g_fLastHintAt[client] = 0.0;
-	g_vecCloudOrigin[client][0] = 0.0;
-	g_vecCloudOrigin[client][1] = 0.0;
-	g_vecCloudOrigin[client][2] = 0.0;
 }
 
 bool IsToxicGasSmoker(int client, bool requireAlive)

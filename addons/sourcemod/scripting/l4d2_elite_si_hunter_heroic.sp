@@ -85,7 +85,6 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
-	PrecacheModel(MODEL_PIPEBOMB, true);
 	ResetAllState();
 }
 
@@ -285,50 +284,13 @@ void DropPipeBombNearVictim(int hunter, int victim)
 
 void CreatePipeInHandModel(int hunter)
 {
-	if (!IsHeroicHunter(hunter, false) || !g_bHasPipeInHand[hunter])
-	{
-		return;
-	}
-
-	if (!IsPlayerAlive(hunter))
-	{
-		return;
-	}
-
-	if (GetHandPipeEntity(hunter) != INVALID_ENT_REFERENCE)
-	{
-		return;
-	}
-
-	int entity = CreateEntityByName("prop_dynamic_override");
-	if (entity <= MaxClients || !IsValidEntity(entity))
-	{
-		return;
-	}
-
-	DispatchKeyValue(entity, "model", MODEL_PIPEBOMB);
-	DispatchKeyValue(entity, "solid", "0");
-	DispatchSpawn(entity);
-	SetEntityMoveType(entity, MOVETYPE_NONE);
-	SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
-
-	SetVariantString("!activator");
-	AcceptEntityInput(entity, "SetParent", hunter);
-	SetVariantString("rhand");
-	AcceptEntityInput(entity, "SetParentAttachment", hunter);
-	TeleportEntity(entity, NULL_VECTOR, view_as<float>({90.0, 10.0, 0.0}), NULL_VECTOR);
-
-	g_iHandPipeRef[hunter] = EntIndexToEntRef(entity);
+	// Disabled intentionally: attaching a prop_dynamic pipebomb to Hunter has
+	// been correlated with clients getting stuck at signon/loading.
+	g_iHandPipeRef[hunter] = 0;
 }
 
 void KillHandPipeModel(int hunter)
 {
-	int entity = GetHandPipeEntity(hunter);
-	if (entity != INVALID_ENT_REFERENCE && IsValidEntity(entity))
-	{
-		AcceptEntityInput(entity, "Kill");
-	}
-
 	g_iHandPipeRef[hunter] = 0;
 }
 

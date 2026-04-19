@@ -15,8 +15,6 @@
 
 #define ELITE_SUBTYPE_HUNTER_HEROIC 34
 
-#define PARTICLE_FUSE "weapon_pipebomb_fuse"
-#define PARTICLE_LIGHT "weapon_pipebomb_blinking_light"
 #define MODEL_PIPEBOMB "models/w_models/weapons/w_eq_pipebomb.mdl"
 
 native bool EliteSI_IsElite(int client);
@@ -279,8 +277,9 @@ void DropPipeBombNearVictim(int hunter, int victim)
 	SetEntityMoveType(pipe, MOVETYPE_FLYGRAVITY);
 	SetEntPropEnt(pipe, Prop_Send, "m_hOwnerEntity", hunter);
 
-	CreateParticle(pipe, 0);
-	CreateParticle(pipe, 1);
+	// L4D_PipeBombPrj already spawns the real pipebomb projectile with its own
+	// fuse/light effects. Creating extra particle entities here leaks edicts
+	// across rounds/spawns and can block new clients from finishing loading.
 	CreateTimer(g_cvFuseTime.FloatValue, Timer_DetonatePipeBomb, EntIndexToEntRef(pipe), TIMER_FLAG_NO_MAPCHANGE);
 }
 
@@ -364,41 +363,6 @@ public Action Timer_DetonatePipeBomb(Handle timer, int pipeRef)
 	}
 
 	return Plugin_Stop;
-}
-
-void CreateParticle(int target, int type)
-{
-	int entity = CreateEntityByName("info_particle_system");
-	if (entity <= MaxClients || !IsValidEntity(entity))
-	{
-		return;
-	}
-
-	if (type == 0)
-	{
-		DispatchKeyValue(entity, "effect_name", PARTICLE_FUSE);
-	}
-	else
-	{
-		DispatchKeyValue(entity, "effect_name", PARTICLE_LIGHT);
-	}
-
-	DispatchSpawn(entity);
-	ActivateEntity(entity);
-	AcceptEntityInput(entity, "Start");
-
-	SetVariantString("!activator");
-	AcceptEntityInput(entity, "SetParent", target);
-
-	if (type == 0)
-	{
-		SetVariantString("fuse");
-	}
-	else
-	{
-		SetVariantString("pipebomb_light");
-	}
-	AcceptEntityInput(entity, "SetParentAttachment", target);
 }
 
 void ResetAllState()

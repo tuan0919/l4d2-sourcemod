@@ -193,6 +193,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Them `Spitter Sneaky`: Spitter giu khoang cach, cloak theo chu ky, mien dan khi cloak, va khac burst 2 phat acid truoc khi bien mat lai.
 - Them `Boomer Leaker`: Boomer tu boc chay, khong bile survivor, tiep can roi tu no de tao bai lua gay damage ca hai phe.
 - Them `Hunter Heroic`: Hunter cam pipebomb, arm no sau pounce thanh cong hoac khi chet, va co the reclaim bom neu bi shove khi dang pin.
+- Fix `Hunter Heroic`: bo spawn them particle fuse/light trung lap cho pipebomb that de tranh leak entity theo thoi gian, giam nguy co server day edict lam nguoi choi bi ket o man hinh loading khi join.
 
 ### 18/04/2026
 

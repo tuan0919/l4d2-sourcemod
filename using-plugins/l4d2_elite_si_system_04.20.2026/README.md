@@ -1,4 +1,4 @@
-# l4d2_elite_si_system (rewrite 13/04/2026, update 19/04/2026)
+# l4d2_elite_si_system (rewrite 13/04/2026, update 20/04/2026)
 
 ## Muc tieu rewrite
 
@@ -110,6 +110,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `31`: Acid Pool
 - `32`: Sneaky
 - `33`: Leaker
+- `34`: Heroic
 
 ## Rule gan subtype hien tai
 
@@ -125,7 +126,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
   - Roll trong so giua `Abnormal behavior`, `Flashbang`, `Leaker`
 
 - `Hunter`
-  - Roll trong so giua `Abnormal behavior` va `Target Switch`
+  - Roll trong so giua `Abnormal behavior`, `Target Switch` va `Heroic`
 
 - `Spitter`
   - Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Acid Pool`, `Sneaky`
@@ -155,6 +156,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
 - `l4d2_elite_si_boomer_flashbang_*`
+- `l4d2_elite_si_hunter_heroic_*`
 
 ## Flow hien tai
 
@@ -175,6 +177,10 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khong con giu force subtype, UI card, config map hoac doc tham chieu cho 2 nhanh tren.
 
 ## Changelog tom tat
+
+### 20/04/2026
+
+- Them `Hunter Heroic`: Elite Hunter cầm sẵn pipebomb trong tay. Khi đè survivor hoặc khi bị giết, tự động drop pipebomb xuống đất nổ gây lượng sát thương lớn.
 
 ### 19/04/2026
 

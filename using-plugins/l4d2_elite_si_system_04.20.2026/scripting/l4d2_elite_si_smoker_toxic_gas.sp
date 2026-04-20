@@ -164,6 +164,11 @@ public void OnMapStart()
 	ResetAllState();
 }
 
+public void OnMapEnd()
+{
+	g_hDamageThinkTimer = null;
+}
+
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 {
 	if (client <= 0 || client > MaxClients)
@@ -485,7 +490,7 @@ void RestartDamageThinkTimer()
 		interval = 0.1;
 	}
 
-	g_hDamageThinkTimer = CreateTimer(interval, Timer_ToxicGasThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	g_hDamageThinkTimer = CreateTimer(interval, Timer_ToxicGasThink, _, TIMER_REPEAT);
 }
 
 void RebuildDamageThinkTimer()

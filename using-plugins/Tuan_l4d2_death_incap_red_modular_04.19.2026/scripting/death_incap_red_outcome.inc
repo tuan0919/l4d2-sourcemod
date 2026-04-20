@@ -651,25 +651,33 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
         }
     }
 
-    if (IsValidEdict(attackerEnt))
+    int checkEnts[2];
+    checkEnts[0] = attackerEnt;
+    checkEnts[1] = HasRecentSnapshot(victim) ? g_iLastInflictor[victim] : -1;
+
+    for (int i = 0; i < sizeof(checkEnts); i++)
     {
-        char targetname[64];
-        if (GetEntPropStringSafe(attackerEnt, Prop_Data, "m_iName", targetname, sizeof(targetname)))
+        int ent = checkEnts[i];
+        if (IsValidEdict(ent))
         {
-            if (StrEqual(targetname, "elite_boomer_leaker_fire", false))
+            char targetname[64];
+            if (GetEntPropStringSafe(ent, Prop_Data, "m_iName", targetname, sizeof(targetname)))
             {
-                strcopy(cause, maxlen, "Boomer Leaker Fire");
-                return true;
-            }
-            if (StrEqual(targetname, "elite_smoker_ignitor_fire", false))
-            {
-                strcopy(cause, maxlen, "Smoker Ignitor Fire Patch");
-                return true;
-            }
-            if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
-            {
-                strcopy(cause, maxlen, "Smoker Toxic Gas");
-                return true;
+                if (StrEqual(targetname, "elite_boomer_leaker_fire", false))
+                {
+                    strcopy(cause, maxlen, "Boomer Leaker Fire");
+                    return true;
+                }
+                if (StrEqual(targetname, "elite_smoker_ignitor_fire", false))
+                {
+                    strcopy(cause, maxlen, "Smoker Ignitor Fire Patch");
+                    return true;
+                }
+                if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
+                {
+                    strcopy(cause, maxlen, "Smoker Toxic Gas");
+                    return true;
+                }
             }
         }
     }

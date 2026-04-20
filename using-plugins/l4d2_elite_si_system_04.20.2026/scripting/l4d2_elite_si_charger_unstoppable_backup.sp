@@ -5,7 +5,6 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <left4dhooks>
-#include <actions>
 
 #define PLUGIN_VERSION "1.0.0"
 
@@ -242,37 +241,10 @@ public Action Timer_ForceDropCarry(Handle timer, int userId)
 
 	if ((carryVictim > 0 && carryVictim <= MaxClients) || (pummelVictim > 0 && pummelVictim <= MaxClients))
 	{
-		// Hất nó lên một tẹo để ngắt Charge & Carry thay vì dùng Stagger (gây ra lỗi Too much entities hoặc loop)
-		float vel[3];
-		vel[0] = 0.0;
-		vel[1] = 0.0;
-		vel[2] = 100.0;
-		TeleportEntity(charger, NULL_VECTOR, NULL_VECTOR, vel);
+		L4D_StaggerPlayer(charger, charger, NULL_VECTOR);
 	}
 
 	return Plugin_Stop;
-}
-
-public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
-{
-	if (!g_cvEnable.BoolValue)
-		return;
-
-	// Bất tử Charger có thể cố gắng Pummel sau khi Charge trúng tường, block nó luôn
-	if (StrContains(name, "Pummel", false) != -1)
-	{
-		if (IsUnstoppableCharger(actor, true))
-		{
-			action.OnStart = ChargerPummel_OnStart;
-		}
-	}
-}
-
-Action ChargerPummel_OnStart(BehaviorAction action, int actor, any priorAction, ActionResult result)
-{
-	result.type = DONE;
-	result.SetReason("Unstoppable Charger doesn't pummel");
-	return Plugin_Changed;
 }
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
@@ -325,6 +297,9 @@ void ApplyMeleeKnockback(int survivor, int charger)
 	velocity[2] = vertForce;
 
 	TeleportEntity(survivor, NULL_VECTOR, NULL_VECTOR, velocity);
+	
+	// Add an optional stagger to also disable them briefly if they hit the ground
+	L4D_StaggerPlayer(survivor, charger, NULL_VECTOR);
 }
 
 void ResetAllState()

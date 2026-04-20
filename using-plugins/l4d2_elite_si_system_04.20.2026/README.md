@@ -181,6 +181,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 ### 20/04/2026
 
 - Them `Hunter Heroic`: Elite Hunter cầm sẵn pipebomb trong tay. Khi đè survivor hoặc khi bị giết, tự động drop pipebomb xuống đất nổ gây lượng sát thương lớn.
+- Hotfix trang thai logic bi loop `Handle Error 3 (Invalid Handle)` cua timer o module `Smoker Toxic Gas` chong leak qua qua trinh map transition/reloadconfig.
+- Hotfix xung dot "Native already in use" cua `Core` module do duplicate build giua folder qol va plugins.
 
 ### 19/04/2026
 

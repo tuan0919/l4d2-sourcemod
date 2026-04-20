@@ -335,6 +335,8 @@ public void OnInfernoSpawnPost(int entity)
 		return;
 	}
 
+	DispatchKeyValue(entity, "targetname", "elite_boomer_leaker_fire");
+
 	float duration = g_cvFirePatchDuration.FloatValue;
 	if (duration > 0.0)
 	{
@@ -435,18 +437,17 @@ int ResolveOwnerFromEntity(int entity)
 		return 0;
 	}
 
-	int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
-	if (!IsLeakerBoomer(owner, false))
+	char targetname[64];
+	GetEntPropString(entity, Prop_Data, "m_iName", targetname, sizeof(targetname));
+	
+	if (StrEqual(targetname, "elite_boomer_leaker_fire"))
 	{
-		owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
-		if (!IsLeakerBoomer(owner, false))
-		{
-			return 0;
-		}
+		return GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
 	}
 
-	return owner;
+	return 0;
 }
+
 
 bool IsLeakerBoomer(int client, bool requireAlive)
 {

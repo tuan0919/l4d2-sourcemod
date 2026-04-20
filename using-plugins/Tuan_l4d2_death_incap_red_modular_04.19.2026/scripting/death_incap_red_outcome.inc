@@ -175,46 +175,66 @@ bool TryResolveFromEntity(int entity, char[] label, int maxlen)
         return true;
     }
 
-    if (StrContains(classname, "_claw", false) != -1)
-    {
-        if (StrContains(classname, "tank", false) != -1)
-        {
-            strcopy(label, maxlen, "Tank");
-            return true;
-        }
-        if (StrContains(classname, "hunter", false) != -1)
-        {
-            strcopy(label, maxlen, "Hunter");
-            return true;
-        }
-        if (StrContains(classname, "smoker", false) != -1)
-        {
-            strcopy(label, maxlen, "Smoker");
-            return true;
-        }
-        if (StrContains(classname, "boomer", false) != -1)
-        {
-            strcopy(label, maxlen, "Boomer");
-            return true;
-        }
-        if (StrContains(classname, "spitter", false) != -1)
-        {
-            strcopy(label, maxlen, "Spitter");
-            return true;
-        }
-        if (StrContains(classname, "jockey", false) != -1)
-        {
-            strcopy(label, maxlen, "Jockey");
-            return true;
-        }
-        if (StrContains(classname, "charger", false) != -1)
-        {
-            strcopy(label, maxlen, "Charger");
-            return true;
-        }
-    }
+	if (StrContains(classname, "_claw", false) != -1)
+	{
+		if (StrContains(classname, "tank", false) != -1)
+		{
+			strcopy(label, maxlen, "Tank");
+			return true;
+		}
+		if (StrContains(classname, "hunter", false) != -1)
+		{
+			strcopy(label, maxlen, "Hunter");
+			return true;
+		}
+		if (StrContains(classname, "smoker", false) != -1)
+		{
+			strcopy(label, maxlen, "Smoker");
+			return true;
+		}
+		if (StrContains(classname, "boomer", false) != -1)
+		{
+			strcopy(label, maxlen, "Boomer");
+			return true;
+		}
+		if (StrContains(classname, "spitter", false) != -1)
+		{
+			strcopy(label, maxlen, "Spitter");
+			return true;
+		}
+		if (StrContains(classname, "jockey", false) != -1)
+		{
+			strcopy(label, maxlen, "Jockey");
+			return true;
+		}
+		if (StrContains(classname, "charger", false) != -1)
+		{
+			strcopy(label, maxlen, "Charger");
+			return true;
+		}
+	}
 
-    return false;
+	char targetname[64];
+	if (GetEntPropStringSafe(entity, Prop_Data, "m_iName", targetname, sizeof(targetname)))
+	{
+		if (StrEqual(targetname, "elite_boomer_leaker_fire", false))
+		{
+			strcopy(label, maxlen, "Elite Boomer (Leaker)");
+			return true;
+		}
+		if (StrEqual(targetname, "elite_smoker_ignitor_fire", false))
+		{
+			strcopy(label, maxlen, "Elite Smoker (Ignitor Smoker)");
+			return true;
+		}
+		if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
+		{
+			strcopy(label, maxlen, "Elite Smoker (Toxic Gas)");
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void ResolveCause(int victim, const char[] eventWeapon, int dmgType, int attackerClient, int attackerEnt, AttackerKind kind, char[] cause, int maxlen)
@@ -630,6 +650,30 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             }
         }
     }
+
+    if (IsValidEdict(attackerEnt))
+    {
+        char targetname[64];
+        if (GetEntPropStringSafe(attackerEnt, Prop_Data, "m_iName", targetname, sizeof(targetname)))
+        {
+            if (StrEqual(targetname, "elite_boomer_leaker_fire", false))
+            {
+                strcopy(cause, maxlen, "Boomer Leaker Fire");
+                return true;
+            }
+            if (StrEqual(targetname, "elite_smoker_ignitor_fire", false))
+            {
+                strcopy(cause, maxlen, "Smoker Ignitor Fire Patch");
+                return true;
+            }
+            if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
+            {
+                strcopy(cause, maxlen, "Smoker Toxic Gas");
+                return true;
+            }
+        }
+    }
+
 
     if (StrEqual(eventWeapon, "tank_rock", false))
     {

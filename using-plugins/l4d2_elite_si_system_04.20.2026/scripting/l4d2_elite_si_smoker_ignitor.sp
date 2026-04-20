@@ -406,6 +406,8 @@ public void OnInfernoSpawnPost(int entity)
 		return;
 	}
 
+	DispatchKeyValue(entity, "targetname", "elite_smoker_ignitor_fire");
+
 	float duration = g_cvDeathFireDuration.FloatValue;
 	if (duration > 0.0)
 	{
@@ -551,18 +553,17 @@ int ResolveOwnerFromEntity(int entity)
 		return 0;
 	}
 
-	int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
-	if (!IsIgnitorSmoker(owner, false))
+	char targetname[64];
+	GetEntPropString(entity, Prop_Data, "m_iName", targetname, sizeof(targetname));
+	
+	if (StrEqual(targetname, "elite_smoker_ignitor_fire"))
 	{
-		owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
-		if (!IsIgnitorSmoker(owner, false))
-		{
-			return 0;
-		}
+		return GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
 	}
 
-	return owner;
+	return 0;
 }
+
 
 void RecordIgnitorAttribution(int survivor, int owner, int cause, float now)
 {

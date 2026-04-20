@@ -41,6 +41,7 @@ bool g_bCloudActive[MAX_TOXIC_CLOUDS];
 float g_fCloudExpireAt[MAX_TOXIC_CLOUDS];
 float g_vecCloudOrigin[MAX_TOXIC_CLOUDS][3];
 int g_iCloudOwner[MAX_TOXIC_CLOUDS];
+int g_iCloudEntity[MAX_TOXIC_CLOUDS];
 int g_iLastGasOwner[MAXPLAYERS + 1];
 float g_fLastGasDamageAt[MAXPLAYERS + 1];
 
@@ -449,6 +450,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 		int damageSource = 0;
 		bool hasLiveOwner = false;
 		int owner = g_iCloudOwner[cloud];
+		int cloudEntity = g_iCloudEntity[cloud];
 		if (owner > 0 && owner <= MaxClients && IsClientInGame(owner) && IsPlayerAlive(owner))
 		{
 			damageSource = owner;
@@ -469,7 +471,7 @@ public Action Timer_ToxicGasThink(Handle timer)
 				continue;
 			}
 
-			ApplyToxicGasDamage(survivor, hasLiveOwner ? damageSource : owner, damage, now, hasLiveOwner);
+			ApplyToxicGasDamage(survivor, hasLiveOwner ? damageSource : owner, cloudEntity, damage, now, hasLiveOwner);
 			MaybeDisplayGasHint(survivor, now);
 		}
 	}
@@ -509,12 +511,11 @@ void ReleaseToxicCloud(int smoker, bool onDeath)
 	float origin[3];
 	GetClientAbsOrigin(smoker, origin);
 
-	CreateToxicCloud(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue, smoker);
-
-	CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue);
+	int entity = CreateSmokeParticle(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue, smoker);
+	CreateToxicCloud(origin, onDeath ? 8.0 : g_cvCloudDuration.FloatValue, smoker, entity);
 }
 
-void CreateToxicCloud(const float origin[3], float duration, int owner)
+void CreateToxicCloud(const float origin[3], float duration, int owner, int cloudEntity)
 {
 	int slot = FindAvailableCloudSlot();
 	if (slot == -1)
@@ -530,6 +531,7 @@ void CreateToxicCloud(const float origin[3], float duration, int owner)
 	g_fCloudExpireAt[slot] = GetGameTime() + duration;
 	g_vecCloudOrigin[slot] = origin;
 	g_iCloudOwner[slot] = owner;
+	g_iCloudEntity[slot] = cloudEntity;
 }
 
 int FindAvailableCloudSlot()
@@ -580,6 +582,7 @@ void ClearCloud(int slot)
 	g_vecCloudOrigin[slot][0] = 0.0;
 	g_vecCloudOrigin[slot][1] = 0.0;
 	g_vecCloudOrigin[slot][2] = 0.0;
+	g_iCloudEntity[slot] = 0;
 }
 
 void TryReleaseDeathToxicCloud(int smoker)
@@ -593,7 +596,7 @@ void TryReleaseDeathToxicCloud(int smoker)
 	ReleaseToxicCloud(smoker, true);
 }
 
-void ApplyToxicGasDamage(int survivor, int owner, float damage, float now, bool ownerAlive)
+void ApplyToxicGasDamage(int survivor, int owner, int cloudEntity, float damage, float now, bool ownerAlive)
 {
 	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
 	{
@@ -604,32 +607,34 @@ void ApplyToxicGasDamage(int survivor, int owner, float damage, float now, bool 
 
 	if (IsPlayerIncapped(survivor))
 	{
-		ApplyIncappedToxicGasDamage(survivor, owner, damage);
+		ApplyIncappedToxicGasDamage(survivor, owner, cloudEntity, damage);
 		return;
 	}
 
 	if (ownerAlive)
 	{
-		SDKHooks_TakeDamage(survivor, owner, owner, damage);
+		int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : owner;
+		SDKHooks_TakeDamage(survivor, owner, inflictor, damage);
 		return;
 	}
 
-	ApplyWorldToxicDamage(survivor, damage);
+	ApplyWorldToxicDamage(survivor, owner, cloudEntity, damage);
 }
 
-void ApplyWorldToxicDamage(int survivor, float damage)
+void ApplyWorldToxicDamage(int survivor, int owner, int cloudEntity, float damage)
 {
 	if (!IsValidAliveSurvivor(survivor) || damage <= 0.0)
 	{
 		return;
 	}
 
-	// Match the reference smoker cloud plugin pattern: use the victim as a valid
-	// attacker/inflictor so the engine still applies damage even after the smoker died.
-	SDKHooks_TakeDamage(survivor, survivor, survivor, damage);
+	int attacker = (owner > 0 && owner <= MaxClients) ? owner : survivor;
+	int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : survivor;
+
+	SDKHooks_TakeDamage(survivor, attacker, inflictor, damage);
 }
 
-void ApplyIncappedToxicGasDamage(int survivor, int owner, float damage)
+void ApplyIncappedToxicGasDamage(int survivor, int owner, int cloudEntity, float damage)
 {
 	int currentHealth = GetClientHealth(survivor);
 	if (currentHealth <= 0)
@@ -645,8 +650,9 @@ void ApplyIncappedToxicGasDamage(int survivor, int owner, float damage)
 
 	if (currentHealth <= damageInt)
 	{
-		int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : survivor;
-		SDKHooks_TakeDamage(survivor, attacker, attacker, float(currentHealth));
+		int attacker = (owner > 0 && owner <= MaxClients) ? owner : survivor;
+		int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : survivor;
+		SDKHooks_TakeDamage(survivor, attacker, inflictor, float(currentHealth));
 		return;
 	}
 
@@ -761,20 +767,24 @@ int FindClosestSurvivor(int smoker)
 	return closest;
 }
 
-void CreateSmokeParticle(const float origin[3], float lifetime)
+int CreateSmokeParticle(const float origin[3], float lifetime, int owner)
 {
 	int entity = CreateEntityByName("info_particle_system");
 	if (entity <= MaxClients || !IsValidEntity(entity))
 	{
-		return;
+		return 0;
 	}
 
 	DispatchKeyValue(entity, "effect_name", "smoker_smokecloud");
+	DispatchKeyValue(entity, "targetname", "elite_smoker_toxic_gas");
 	DispatchSpawn(entity);
+	SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", owner);
 	TeleportEntity(entity, origin, NULL_VECTOR, NULL_VECTOR);
 	ActivateEntity(entity);
 	AcceptEntityInput(entity, "Start");
 	CreateTimer(lifetime, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+	
+	return entity;
 }
 
 void MaybeDisplayGasHint(int survivor, float now)

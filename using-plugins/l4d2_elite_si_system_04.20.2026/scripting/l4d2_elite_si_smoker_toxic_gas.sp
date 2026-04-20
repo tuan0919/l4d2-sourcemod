@@ -628,8 +628,8 @@ void ApplyWorldToxicDamage(int survivor, int owner, int cloudEntity, float damag
 		return;
 	}
 
-	int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : survivor;
-	int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : survivor;
+	int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : 0;
+	int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : 0;
 
 	SDKHooks_TakeDamage(survivor, inflictor, attacker, damage);
 }
@@ -650,8 +650,8 @@ void ApplyIncappedToxicGasDamage(int survivor, int owner, int cloudEntity, float
 
 	if (currentHealth <= damageInt)
 	{
-		int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : survivor;
-		int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : survivor;
+		int attacker = (owner > 0 && owner <= MaxClients && IsClientInGame(owner)) ? owner : 0;
+		int inflictor = (cloudEntity > MaxClients && IsValidEntity(cloudEntity)) ? cloudEntity : 0;
 		SDKHooks_TakeDamage(survivor, inflictor, attacker, float(currentHealth));
 		return;
 	}

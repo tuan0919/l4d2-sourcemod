@@ -4,6 +4,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#include <left4dhooks>
 
 #define PLUGIN_VERSION "1.0.0"
 
@@ -14,7 +15,6 @@
 
 #define ELITE_SUBTYPE_SMOKER_IGNITOR 30
 
-#define MAX_FIRE_PATCHES 24
 #define IGNITOR_ATTRIBUTION_WINDOW 4.0
 
 #define IGNITOR_CAUSE_NONE 0
@@ -29,8 +29,6 @@ ConVar g_cvDebuffDuration;
 ConVar g_cvDebuffDamagePerSecond;
 ConVar g_cvDebuffInterval;
 ConVar g_cvDeathFireDuration;
-ConVar g_cvDeathFireRadius;
-ConVar g_cvDeathFireDamagePerSecond;
 ConVar g_cvHintEnable;
 ConVar g_cvHintColor;
 ConVar g_cvHintInterval;
@@ -42,10 +40,6 @@ float g_fLastHintAt[MAXPLAYERS + 1];
 int g_iBurnOwner[MAXPLAYERS + 1];
 float g_fBurnExpireAt[MAXPLAYERS + 1];
 
-bool g_bPatchActive[MAX_FIRE_PATCHES];
-float g_fPatchExpireAt[MAX_FIRE_PATCHES];
-float g_vecPatchOrigin[MAX_FIRE_PATCHES][3];
-int g_iPatchOwner[MAX_FIRE_PATCHES];
 int g_iLastIgnitorOwner[MAXPLAYERS + 1];
 int g_iLastIgnitorCause[MAXPLAYERS + 1];
 float g_fLastIgnitorDamageAt[MAXPLAYERS + 1];
@@ -84,9 +78,7 @@ public void OnPluginStart()
 	g_cvDebuffDuration = CreateConVar("l4d2_elite_si_smoker_ignitor_burn_duration", "8.0", "Duration in seconds for the burn debuff applied by Ignitor Smoker.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
 	g_cvDebuffDamagePerSecond = CreateConVar("l4d2_elite_si_smoker_ignitor_burn_damage_per_second", "4.0", "Damage per second dealt by the Ignitor Smoker burn debuff.", FCVAR_NOTIFY, true, 0.1, true, 50.0);
 	g_cvDebuffInterval = CreateConVar("l4d2_elite_si_smoker_ignitor_burn_interval", "0.5", "Interval in seconds between Ignitor Smoker burn damage ticks.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
-	g_cvDeathFireDuration = CreateConVar("l4d2_elite_si_smoker_ignitor_death_fire_duration", "10.0", "Duration in seconds for the fire patch spawned on Ignitor Smoker death.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
-	g_cvDeathFireRadius = CreateConVar("l4d2_elite_si_smoker_ignitor_death_fire_radius", "180.0", "Radius of the death fire patch.", FCVAR_NOTIFY, true, 32.0, true, 1000.0);
-	g_cvDeathFireDamagePerSecond = CreateConVar("l4d2_elite_si_smoker_ignitor_death_fire_damage_per_second", "12.0", "Damage per second dealt by the death fire patch.", FCVAR_NOTIFY, true, 0.1, true, 100.0);
+	g_cvDeathFireDuration = CreateConVar("l4d2_elite_si_smoker_ignitor_death_fire_duration", "10.0", "Duration in seconds for the inferno spawned on Ignitor Smoker death.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
 	g_cvHintEnable = CreateConVar("l4d2_elite_si_smoker_ignitor_hint_enable", "1", "0=Off, 1=Show instructor hint to survivors taking Ignitor fire damage.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvHintColor = CreateConVar("l4d2_elite_si_smoker_ignitor_hint_color", "255 140 40", "Instructor hint color for Ignitor fire damage in format 'R G B'.", FCVAR_NOTIFY);
 	g_cvHintInterval = CreateConVar("l4d2_elite_si_smoker_ignitor_hint_interval", "1.5", "Minimum interval in seconds between Ignitor fire hints per survivor.", FCVAR_NOTIFY, true, 0.1, true, 10.0);
@@ -141,7 +133,14 @@ public void OnClientDisconnect(int client)
 	SDKUnhook(client, SDKHook_PreThinkPost, OnIgnitorThinkPost);
 	SDKUnhook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 	ClearBurnOwnerReferences(client);
-	ClearPatchOwnerReferences(client);
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrEqual(classname, "inferno"))
+	{
+		SDKHook(entity, SDKHook_SpawnPost, OnInfernoSpawnPost);
+	}
 }
 
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
@@ -167,7 +166,6 @@ public void EliteSI_OnEliteCleared(int client)
 		g_bTrackedIgnitor[client] = false;
 	}
 	ClearBurnOwnerReferences(client);
-	ClearPatchOwnerReferences(client);
 }
 
 public void OnLibraryAdded(const char[] name)
@@ -249,7 +247,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	}
 
 	TryCreateDeathFirePatch(victim);
-	}
+}
 
 public void OnIgnitorThinkPost(int client)
 {
@@ -269,9 +267,14 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 		return Plugin_Continue;
 	}
 
-	if (GetClientTeam(victim) == TEAM_INFECTED)
+	if ((damageType & DMG_BURN) != 0 && GetClientTeam(victim) == TEAM_SURVIVOR)
 	{
-		return Plugin_Continue;
+		int fireOwner = ResolveIgnitorFireOwner(attacker, inflictor);
+		if (fireOwner > 0)
+		{
+			RecordIgnitorAttribution(victim, fireOwner, IGNITOR_CAUSE_FIRE_PATCH, GetGameTime());
+			MaybeDisplayIgnitorHint(victim, GetGameTime(), "Fire patch! Move out now.");
+		}
 	}
 
 	if (GetClientTeam(victim) != TEAM_SURVIVOR)
@@ -279,7 +282,7 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 		return Plugin_Continue;
 	}
 
-	if ((damageType & DMG_BURN) != 0 && IsIgnitorSmoker(attacker, false))
+	if ((damageType & DMG_BURN) != 0 && IsIgnitorSmoker(attacker, false) && attacker == inflictor)
 	{
 		ApplyIgnitorBurn(victim, attacker);
 	}
@@ -296,8 +299,6 @@ public Action Timer_IgnitorThink(Handle timer)
 
 	float now = GetGameTime();
 	float burnDamage = g_cvDebuffDamagePerSecond.FloatValue * g_cvDebuffInterval.FloatValue;
-	float firePatchDamage = g_cvDeathFireDamagePerSecond.FloatValue * g_cvDebuffInterval.FloatValue;
-	float firePatchRadius = g_cvDeathFireRadius.FloatValue;
 
 	for (int survivor = 1; survivor <= MaxClients; survivor++)
 	{
@@ -315,39 +316,6 @@ public Action Timer_IgnitorThink(Handle timer)
 		{
 			g_iBurnOwner[survivor] = 0;
 			g_fBurnExpireAt[survivor] = 0.0;
-		}
-
-		float survivorOrigin[3];
-		GetClientAbsOrigin(survivor, survivorOrigin);
-
-		for (int patch = 0; patch < MAX_FIRE_PATCHES; patch++)
-		{
-			if (!g_bPatchActive[patch])
-			{
-				continue;
-			}
-
-			if (g_fPatchExpireAt[patch] <= now)
-			{
-				ClearFirePatch(patch);
-				continue;
-			}
-
-			if (GetVectorDistance(survivorOrigin, g_vecPatchOrigin[patch]) > firePatchRadius)
-			{
-				continue;
-			}
-
-			ApplyManagedFireDamage(survivor, g_iPatchOwner[patch], firePatchDamage, IGNITOR_CAUSE_FIRE_PATCH, now);
-			MaybeDisplayIgnitorHint(survivor, now, "Fire patch! Move out now.");
-		}
-	}
-
-	for (int patch = 0; patch < MAX_FIRE_PATCHES; patch++)
-	{
-		if (g_bPatchActive[patch] && g_fPatchExpireAt[patch] <= now)
-		{
-			ClearFirePatch(patch);
 		}
 	}
 
@@ -425,6 +393,26 @@ void ApplyManagedFireDamage(int survivor, int owner, float damage, int cause, fl
 	IgniteEntity(survivor, 1.0);
 }
 
+public void OnInfernoSpawnPost(int entity)
+{
+	if (!IsValidEntity(entity))
+	{
+		return;
+	}
+
+	int owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
+	if (!IsIgnitorSmoker(owner, false))
+	{
+		return;
+	}
+
+	float duration = g_cvDeathFireDuration.FloatValue;
+	if (duration > 0.0)
+	{
+		CreateTimer(duration, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
 void TryCreateDeathFirePatch(int smoker)
 {
 	if (smoker <= 0 || smoker > MaxClients || g_bDeathFireTriggered[smoker])
@@ -438,73 +426,14 @@ void TryCreateDeathFirePatch(int smoker)
 	GetClientAbsOrigin(smoker, origin);
 	origin[2] += 2.0;
 
-	int slot = FindFreeFirePatchSlot();
-	if (slot == -1)
+	float ang[3] = {90.0, 0.0, 0.0};
+	int projectile = L4D_MolotovPrj(smoker, origin, ang);
+	if (projectile <= MaxClients || !IsValidEntity(projectile))
 	{
 		return;
 	}
 
-	g_bPatchActive[slot] = true;
-	g_fPatchExpireAt[slot] = GetGameTime() + g_cvDeathFireDuration.FloatValue;
-	g_iPatchOwner[slot] = smoker;
-	g_vecPatchOrigin[slot][0] = origin[0];
-	g_vecPatchOrigin[slot][1] = origin[1];
-	g_vecPatchOrigin[slot][2] = origin[2];
-
-	CreateGroundFireParticle(origin, g_cvDeathFireDuration.FloatValue);
-}
-
-int FindFreeFirePatchSlot()
-{
-	int slot = -1;
-	float oldestExpire = 9999999.0;
-
-	for (int i = 0; i < MAX_FIRE_PATCHES; i++)
-	{
-		if (!g_bPatchActive[i])
-		{
-			return i;
-		}
-
-		if (g_fPatchExpireAt[i] < oldestExpire)
-		{
-			oldestExpire = g_fPatchExpireAt[i];
-			slot = i;
-		}
-	}
-
-	return slot;
-}
-
-void ClearFirePatch(int slot)
-{
-	if (slot < 0 || slot >= MAX_FIRE_PATCHES)
-	{
-		return;
-	}
-
-	g_bPatchActive[slot] = false;
-	g_fPatchExpireAt[slot] = 0.0;
-	g_iPatchOwner[slot] = 0;
-	g_vecPatchOrigin[slot][0] = 0.0;
-	g_vecPatchOrigin[slot][1] = 0.0;
-	g_vecPatchOrigin[slot][2] = 0.0;
-}
-
-void CreateGroundFireParticle(const float origin[3], float lifetime)
-{
-	int entity = CreateEntityByName("info_particle_system");
-	if (entity <= MaxClients || !IsValidEntity(entity))
-	{
-		return;
-	}
-
-	DispatchKeyValue(entity, "effect_name", "gas_explosion_ground_fire");
-	DispatchSpawn(entity);
-	TeleportEntity(entity, origin, NULL_VECTOR, NULL_VECTOR);
-	ActivateEntity(entity);
-	AcceptEntityInput(entity, "Start");
-	CreateTimer(lifetime, Timer_KillEntity, EntIndexToEntRef(entity), TIMER_FLAG_NO_MAPCHANGE);
+	L4D_DetonateProjectile(projectile);
 }
 
 void MaybeDisplayIgnitorHint(int survivor, float now, const char[] text)
@@ -574,11 +503,6 @@ public Action Timer_KillEntity(Handle timer, int entityRef)
 
 void ResetAllState()
 {
-	for (int i = 0; i < MAX_FIRE_PATCHES; i++)
-	{
-		ClearFirePatch(i);
-	}
-
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		ResetClientState(i);
@@ -600,6 +524,44 @@ void ResetClientState(int client)
 	g_iLastIgnitorOwner[client] = 0;
 	g_iLastIgnitorCause[client] = IGNITOR_CAUSE_NONE;
 	g_fLastIgnitorDamageAt[client] = 0.0;
+}
+
+int ResolveIgnitorFireOwner(int attacker, int inflictor)
+{
+	int owner = ResolveOwnerFromEntity(inflictor);
+	if (owner > 0)
+	{
+		return owner;
+	}
+
+	return ResolveOwnerFromEntity(attacker);
+}
+
+int ResolveOwnerFromEntity(int entity)
+{
+	if (!IsValidEdict(entity))
+	{
+		return 0;
+	}
+
+	char classname[64];
+	GetEntityClassname(entity, classname, sizeof(classname));
+	if (!StrEqual(classname, "inferno") && !StrEqual(classname, "entityflame"))
+	{
+		return 0;
+	}
+
+	int owner = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+	if (!IsIgnitorSmoker(owner, false))
+	{
+		owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
+		if (!IsIgnitorSmoker(owner, false))
+		{
+			return 0;
+		}
+	}
+
+	return owner;
 }
 
 void RecordIgnitorAttribution(int survivor, int owner, int cause, float now)
@@ -659,17 +621,6 @@ void ClearBurnOwnerReferences(int owner)
 		if (g_iBurnOwner[survivor] == owner)
 		{
 			g_iBurnOwner[survivor] = 0;
-		}
-	}
-}
-
-void ClearPatchOwnerReferences(int owner)
-{
-	for (int patch = 0; patch < MAX_FIRE_PATCHES; patch++)
-	{
-		if (g_iPatchOwner[patch] == owner)
-		{
-			g_iPatchOwner[patch] = 0;
 		}
 	}
 }

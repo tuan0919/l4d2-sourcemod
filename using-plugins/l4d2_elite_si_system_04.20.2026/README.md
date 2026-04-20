@@ -61,7 +61,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Nhanh subtype rieng cho Smoker elite theo trait `Ignitor Smoker`
    - Spawn ra tu boc chay va duoc mien nhiem burn damage
    - Tongue grab hoac melee trung survivor se dat debuff chay gay damage theo tick
-   - Khi chet se tao bai lua duoi chan chi gay damage len survivor
+   - Khi chet se tao bai lua (inferno) duoi chan gay damage rong rãi cho tat ca moi nguoi (giong Boomer Leaker).
 
 8. `scripting/l4d2_elite_si_spitter_acid_pool.sp`
    - Nhanh subtype rieng cho Spitter elite theo trait `Acid Pool`

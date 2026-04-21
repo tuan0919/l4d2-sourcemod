@@ -164,6 +164,22 @@ public void OnMapStart()
     }
     g_iMolotovDestroyWrite = 0;
 
+    for (int i = 0; i < MAX_RECENT_HEROIC_PIPES; i++)
+    {
+        g_iHeroicPipeOwner[i] = 0;
+        g_fHeroicPipeTime[i]  = 0.0;
+        g_vHeroicPipePos[i][0] = 0.0;
+        g_vHeroicPipePos[i][1] = 0.0;
+        g_vHeroicPipePos[i][2] = 0.0;
+    }
+    g_iHeroicPipeWrite = 0;
+
+    for (int i = MaxClients + 1; i < MAX_TRACKED_EDICTS; i++)
+    {
+        g_bHeroicPipeEnt[i] = false;
+        g_iHeroicPipeEntOwner[i] = 0;
+    }
+
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 }

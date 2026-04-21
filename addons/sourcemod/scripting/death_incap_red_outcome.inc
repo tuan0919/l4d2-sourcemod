@@ -2,27 +2,6 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 {
     isSelf = false;
 
-    // DEBUG: log heroic pipe resolution
-    if ((dmgType & DMG_BLAST) != 0 && victim > 0 && victim <= MaxClients && IsClientInGame(victim) && GetClientTeam(victim) == 2)
-    {
-        char entCls[64];
-        char entName[64];
-        if (IsValidEdict(attackerEnt))
-        {
-            GetEntityClassname(attackerEnt, entCls, sizeof(entCls));
-            GetEntPropStringSafe(attackerEnt, Prop_Data, "m_iName", entName, sizeof(entName));
-        }
-        else
-        {
-            strcopy(entCls, sizeof(entCls), "INVALID");
-            strcopy(entName, sizeof(entName), "INVALID");
-        }
-        LogMessage("[HeroicPipeDebug] ResolveAttacker victim=%d attackerClient=%d(inGame=%d) attackerEnt=%d(cls=%s name=%s) weapon=%s snapTargetname=%s hasSnap=%d",
-            victim, attackerClient, IsInGameClient(attackerClient),
-            attackerEnt, entCls, entName, eventWeapon,
-            g_sLastInflictorTargetname[victim], HasRecentSnapshot(victim));
-    }
-
     if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageCause") == FeatureStatus_Available
         && EliteSI_ToxicGas_GetRecentDamageCause(victim) > 0)
     {
@@ -179,8 +158,7 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 
     if (attackerClient <= 0 && ShouldTreatAsSelf(dmgType, eventWeapon))
     {
-        // Trước khi claim self-damage, check heroic hunter pipe targetname
-        // (hunter bot có thể đã chết trước khi pipe nổ → attackerClient invalid)
+        // Check heroic hunter pipe targetname trên attackerEnt
         if (IsValidEdict(attackerEnt))
         {
             char tn[64];
@@ -194,10 +172,23 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
             }
         }
 
-        // Check snapshot targetname độc lập (không cần HasRecentSnapshot)
+        // Check snapshot targetname
         if (g_sLastInflictorTargetname[victim][0] != '\0')
         {
             if (StrEqual(g_sLastInflictorTargetname[victim], "elite_hunter_heroic_pipe", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Hunter (Heroic)");
+                return Attacker_SI;
+            }
+        }
+
+        // Check heroic pipe explosion ring buffer (pipe destroy trước damage event)
+        if ((dmgType & DMG_BLAST) != 0)
+        {
+            float victimPos[3];
+            GetClientEyePosition(victim, victimPos);
+            int pipeOwner = 0;
+            if (FindRecentHeroicPipeExplosion(victimPos, 3.0, 600.0, pipeOwner))
             {
                 strcopy(attackerLabel, maxlen, "Elite Hunter (Heroic)");
                 return Attacker_SI;
@@ -788,6 +779,19 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
             return true;
         }
         if (StrEqual(targetname, "elite_hunter_heroic_pipe", false))
+        {
+            strcopy(cause, maxlen, "Heroic Pipebomb");
+            return true;
+        }
+    }
+
+    // Check heroic pipe explosion ring buffer (pipe entity đã destroy trước damage)
+    if ((dmgType & DMG_BLAST) != 0 && victim > 0 && victim <= MaxClients && IsClientInGame(victim))
+    {
+        float victimPos[3];
+        GetClientEyePosition(victim, victimPos);
+        int pipeOwner = 0;
+        if (FindRecentHeroicPipeExplosion(victimPos, 3.0, 600.0, pipeOwner))
         {
             strcopy(cause, maxlen, "Heroic Pipebomb");
             return true;

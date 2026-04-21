@@ -12,6 +12,13 @@ public void OnEntityCreated(int entity, const char[] classname)
         return;
     }
 
+    if (StrContains(classname, "pipe_bomb_projectile", false) != -1)
+    {
+        // Delay 1 frame để targetname được set bởi heroic hunter plugin
+        RequestFrame(Frame_InitHeroicPipe, EntIndexToEntRef(entity));
+        return;
+    }
+
     if (StrContains(classname, "inferno", false) != -1 || StrContains(classname, "entityflame", false) != -1)
     {
         RequestFrame(Frame_MarkFireEntitySource, EntIndexToEntRef(entity));
@@ -26,11 +33,51 @@ public void OnEntityCreated(int entity, const char[] classname)
     RequestFrame(Frame_DelayedHookHazard, EntIndexToEntRef(entity));
 }
 
+public void Frame_InitHeroicPipe(any entityRef)
+{
+    int entity = EntRefToEntIndex(entityRef);
+    if (entity == INVALID_ENT_REFERENCE || entity <= 0 || entity >= MAX_TRACKED_EDICTS || !IsValidEdict(entity))
+    {
+        return;
+    }
+
+    char targetname[64];
+    if (!GetEntPropStringSafe(entity, Prop_Data, "m_iName", targetname, sizeof(targetname)))
+    {
+        return;
+    }
+
+    if (!StrEqual(targetname, "elite_hunter_heroic_pipe", false))
+    {
+        return;
+    }
+
+    // Resolve owner: m_hThrower set bởi CPipeBombProjectile_Create
+    int owner = ResolveProjectileOwner(entity);
+    g_bHeroicPipeEnt[entity] = true;
+    g_iHeroicPipeEntOwner[entity] = owner;
+}
+
 public void OnEntityDestroyed(int entity)
 {
     if (entity > 0 && entity < MAX_TRACKED_EDICTS)
     {
         g_bHazardHooked[entity] = false;
+
+        if (g_bHeroicPipeEnt[entity])
+        {
+            int geIdx = g_iHeroicPipeWrite;
+            g_iHeroicPipeOwner[geIdx] = g_iHeroicPipeEntOwner[entity];
+            g_fHeroicPipeTime[geIdx]  = GetGameTime();
+            float pos[3];
+            GetEntityAbsPos(entity, pos);
+            g_vHeroicPipePos[geIdx][0] = pos[0];
+            g_vHeroicPipePos[geIdx][1] = pos[1];
+            g_vHeroicPipePos[geIdx][2] = pos[2];
+            g_iHeroicPipeWrite = (g_iHeroicPipeWrite + 1) % MAX_RECENT_HEROIC_PIPES;
+            g_bHeroicPipeEnt[entity] = false;
+            g_iHeroicPipeEntOwner[entity] = 0;
+        }
 
         if (g_iHazardEntType[entity] != view_as<int>(Hazard_None))
         {

@@ -657,6 +657,31 @@ bool EntityIsOxygenTank(int entity)
     return false;
 }
 
+bool FindRecentHeroicPipeExplosion(const float pos[3], float window, float maxDist, int &owner)
+{
+    float now = GetGameTime();
+    float bestScore = 999999.0;
+    owner = 0;
+    bool found = false;
+
+    for (int i = 0; i < MAX_RECENT_HEROIC_PIPES; i++)
+    {
+        if (g_fHeroicPipeTime[i] <= 0.0) continue;
+        float age = now - g_fHeroicPipeTime[i];
+        if (age < 0.0 || age > window) continue;
+        float dist = GetVectorDistance(pos, g_vHeroicPipePos[i]);
+        if (dist > maxDist) continue;
+        float score = dist + age * 60.0;
+        if (score < bestScore)
+        {
+            bestScore = score;
+            owner = g_iHeroicPipeOwner[i];
+            found = true;
+        }
+    }
+    return found;
+}
+
 bool FindRecentGascanExplode(const float pos[3], float window, float maxDist, int &owner)
 {
     float now = GetGameTime();

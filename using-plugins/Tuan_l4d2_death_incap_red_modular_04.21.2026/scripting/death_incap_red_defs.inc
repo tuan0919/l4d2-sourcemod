@@ -139,6 +139,18 @@ float g_fMolotovDestroyTime[MAX_RECENT_MOLOTOV_DESTROYS];
 float g_vMolotovDestroyPos[MAX_RECENT_MOLOTOV_DESTROYS][3];
 int   g_iMolotovDestroyWrite;
 
+#define MAX_RECENT_HEROIC_PIPES 16
+
+// Heroic pipe explosion ring buffer
+int   g_iHeroicPipeOwner[MAX_RECENT_HEROIC_PIPES];
+float g_fHeroicPipeTime[MAX_RECENT_HEROIC_PIPES];
+float g_vHeroicPipePos[MAX_RECENT_HEROIC_PIPES][3];
+int   g_iHeroicPipeWrite;
+
+// Per-entity heroic pipe tracking
+bool  g_bHeroicPipeEnt[MAX_TRACKED_EDICTS];
+int   g_iHeroicPipeEntOwner[MAX_TRACKED_EDICTS];
+
 // SI/Tank fire source snapshot — track nguồn lửa hiện tại trên SI
 int   g_iSIFireSourceType[MAXPLAYERS + 1];    // HazardType
 int   g_iSIFireSourceOwner[MAXPLAYERS + 1];   // survivor owner gây cháy

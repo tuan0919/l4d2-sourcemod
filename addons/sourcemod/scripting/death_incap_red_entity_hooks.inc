@@ -40,11 +40,33 @@ public void OnEntityDestroyed(int entity)
                 owner = g_iHazardLastOwner[entity];
             }
             AddSourceEvent(view_as<HazardType>(g_iHazardEntType[entity]), g_vHazardLastPos[entity], owner);
+
+            // Ghi gascan explosion vào ring buffer riêng để inferno resolution dùng
+            if (view_as<HazardType>(g_iHazardEntType[entity]) == Hazard_Gascan
+                && (GetGameTime() - g_fHazardLastHitTime[entity]) <= 5.0)
+            {
+                int geIdx = g_iGascanExplodeWrite;
+                g_iGascanExplodeOwner[geIdx] = owner;
+                g_fGascanExplodeTime[geIdx]  = GetGameTime();
+                g_vGascanExplodePos[geIdx][0] = g_vHazardLastPos[entity][0];
+                g_vGascanExplodePos[geIdx][1] = g_vHazardLastPos[entity][1];
+                g_vGascanExplodePos[geIdx][2] = g_vHazardLastPos[entity][2];
+                g_iGascanExplodeWrite = (g_iGascanExplodeWrite + 1) % MAX_RECENT_GASCAN_EXPLODES;
+            }
         }
 
         if (g_bMolotovProjectile[entity])
         {
             AddSourceEvent(Hazard_Molotov, g_vMolotovLastPos[entity], g_iMolotovOwner[entity]);
+
+            // Ghi molotov destroy vào ring buffer riêng để inferno resolution dùng
+            int mdIdx = g_iMolotovDestroyWrite;
+            g_iMolotovDestroyOwner[mdIdx]    = g_iMolotovOwner[entity];
+            g_fMolotovDestroyTime[mdIdx]     = GetGameTime();
+            g_vMolotovDestroyPos[mdIdx][0]   = g_vMolotovLastPos[entity][0];
+            g_vMolotovDestroyPos[mdIdx][1]   = g_vMolotovLastPos[entity][1];
+            g_vMolotovDestroyPos[mdIdx][2]   = g_vMolotovLastPos[entity][2];
+            g_iMolotovDestroyWrite = (g_iMolotovDestroyWrite + 1) % MAX_RECENT_MOLOTOV_DESTROYS;
         }
 
         g_iHazardEntType[entity] = view_as<int>(Hazard_None);

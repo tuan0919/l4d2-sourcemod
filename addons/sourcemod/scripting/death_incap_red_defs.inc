@@ -35,6 +35,12 @@ native int EliteSI_Leaker_GetRecentDamageAttacker(int victim);
 #define FIRE_ASSIST_UNLOCK_GRACE 2.0
 #define STAGGER_MATCH_WINDOW 1.25
 #define BURN_WATCH_INTERVAL 0.50
+#define GASCAN_EXPLODE_MATCH_WINDOW  8.0
+#define GASCAN_EXPLODE_MAX_DIST      400.0
+#define MOLOTOV_DESTROY_MATCH_WINDOW 4.0
+#define MOLOTOV_DESTROY_MAX_DIST     300.0
+#define MAX_RECENT_GASCAN_EXPLODES   32
+#define MAX_RECENT_MOLOTOV_DESTROYS  32
 
 enum AttackerKind
 {
@@ -119,6 +125,24 @@ int g_iSourceOwner[MAX_SOURCE_EVENTS];
 float g_fSourceTime[MAX_SOURCE_EVENTS];
 float g_vSourcePos[MAX_SOURCE_EVENTS][3];
 int g_iSourceWrite;
+
+// Gascan explosion ring buffer
+int   g_iGascanExplodeOwner[MAX_RECENT_GASCAN_EXPLODES];
+float g_fGascanExplodeTime[MAX_RECENT_GASCAN_EXPLODES];
+float g_vGascanExplodePos[MAX_RECENT_GASCAN_EXPLODES][3];
+int   g_iGascanExplodeWrite;
+
+// Molotov destroy ring buffer
+int   g_iMolotovDestroyOwner[MAX_RECENT_MOLOTOV_DESTROYS];
+float g_fMolotovDestroyTime[MAX_RECENT_MOLOTOV_DESTROYS];
+float g_vMolotovDestroyPos[MAX_RECENT_MOLOTOV_DESTROYS][3];
+int   g_iMolotovDestroyWrite;
+
+// SI/Tank fire source snapshot — track nguồn lửa hiện tại trên SI
+int   g_iSIFireSourceType[MAXPLAYERS + 1];    // HazardType
+int   g_iSIFireSourceOwner[MAXPLAYERS + 1];   // survivor owner gây cháy
+float g_fSIFireSourceTime[MAXPLAYERS + 1];    // thời điểm update gần nhất
+bool  g_bSIWasOnFire[MAXPLAYERS + 1];         // trạng thái cháy frame trước
 
 public Plugin myinfo =
 {

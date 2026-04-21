@@ -109,6 +109,7 @@ public void OnMapStart()
         g_sLastSpecialBulletWeapon[i][0] = '\0';
         g_iLastStaggerBy[i] = 0;
         g_fLastStaggerTime[i] = 0.0;
+        ClearSIFireSnapshot(i);
     }
 
     for (int i = 0; i < MAX_TRACKED_EDICTS; i++)
@@ -143,6 +144,26 @@ public void OnMapStart()
     }
     g_iSourceWrite = 0;
 
+    for (int i = 0; i < MAX_RECENT_GASCAN_EXPLODES; i++)
+    {
+        g_iGascanExplodeOwner[i] = 0;
+        g_fGascanExplodeTime[i]  = 0.0;
+        g_vGascanExplodePos[i][0] = 0.0;
+        g_vGascanExplodePos[i][1] = 0.0;
+        g_vGascanExplodePos[i][2] = 0.0;
+    }
+    g_iGascanExplodeWrite = 0;
+
+    for (int i = 0; i < MAX_RECENT_MOLOTOV_DESTROYS; i++)
+    {
+        g_iMolotovDestroyOwner[i] = 0;
+        g_fMolotovDestroyTime[i]  = 0.0;
+        g_vMolotovDestroyPos[i][0] = 0.0;
+        g_vMolotovDestroyPos[i][1] = 0.0;
+        g_vMolotovDestroyPos[i][2] = 0.0;
+    }
+    g_iMolotovDestroyWrite = 0;
+
     CreateTimer(1.0, Timer_DelayedEnsureAnchor, _, TIMER_FLAG_NO_MAPCHANGE);
     CreateTimer(2.0, Timer_HookExistingHazards, _, TIMER_FLAG_NO_MAPCHANGE);
 }
@@ -174,6 +195,7 @@ public void OnClientDisconnect(int client)
     g_sLastSpecialBulletWeapon[client][0] = '\0';
     g_iLastStaggerBy[client] = 0;
     g_fLastStaggerTime[client] = 0.0;
+    ClearSIFireSnapshot(client);
 }
 
 public void OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newValue)

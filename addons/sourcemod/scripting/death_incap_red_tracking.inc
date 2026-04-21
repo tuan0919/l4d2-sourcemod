@@ -265,7 +265,8 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     g_iLastDmgType[victim] = damagetype;
     g_fLastDmgTime[victim] = now;
 
-    if ((damagetype & DMG_BURN) != 0 && !g_bFireAssistLocked[victim])
+    // Survivor fire assist tracking
+    if (GetClientTeam(victim) == 2 && (damagetype & DMG_BURN) != 0 && !g_bFireAssistLocked[victim])
     {
         HazardType fireType = Hazard_None;
         int fireOwner = 0;
@@ -279,5 +280,73 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
         }
     }
 
+    // SI/Tank fire source tracking — luôn update khi nhận DMG_BURN
+    if (GetClientTeam(victim) == 3 && (damagetype & DMG_BURN) != 0)
+    {
+        HazardType fireType = Hazard_None;
+        int fireOwner = 0;
+        if (TryGetFireSourceMetaForDamage(victim, inflictor, fireType, fireOwner) && fireType != Hazard_None)
+        {
+            g_iSIFireSourceType[victim] = view_as<int>(fireType);
+            g_iSIFireSourceOwner[victim] = fireOwner;
+            g_fSIFireSourceTime[victim] = now;
+            g_bSIWasOnFire[victim] = true;
+        }
+        else if (!g_bSIWasOnFire[victim])
+        {
+            // Lần cháy mới nhưng không resolve được source — clear snapshot cũ
+            ClearSIFireSnapshot(victim);
+            g_bSIWasOnFire[victim] = true;
+        }
+    }
+
+    // SI/Tank hết cháy — clear snapshot để lần cháy tiếp theo resolve lại
+    if (GetClientTeam(victim) == 3 && (damagetype & DMG_BURN) == 0 && g_bSIWasOnFire[victim])
+    {
+        if (!IsClientCurrentlyOnFire(victim))
+        {
+            ClearSIFireSnapshot(victim);
+        }
+    }
+
     return Plugin_Continue;
+}
+
+void ClearSIFireSnapshot(int client)
+{
+    if (client <= 0 || client > MaxClients)
+    {
+        return;
+    }
+
+    g_iSIFireSourceType[client] = view_as<int>(Hazard_None);
+    g_iSIFireSourceOwner[client] = 0;
+    g_fSIFireSourceTime[client] = 0.0;
+    g_bSIWasOnFire[client] = false;
+}
+
+bool GetSIFireSnapshot(int victim, HazardType &source, int &sourceOwner)
+{
+    source = Hazard_None;
+    sourceOwner = 0;
+
+    if (victim <= 0 || victim > MaxClients)
+    {
+        return false;
+    }
+
+    if (view_as<HazardType>(g_iSIFireSourceType[victim]) == Hazard_None)
+    {
+        return false;
+    }
+
+    // Snapshot còn fresh trong 30s (SI/Tank có thể cháy lâu)
+    if ((GetGameTime() - g_fSIFireSourceTime[victim]) > 30.0)
+    {
+        return false;
+    }
+
+    source = view_as<HazardType>(g_iSIFireSourceType[victim]);
+    sourceOwner = g_iSIFireSourceOwner[victim];
+    return true;
 }

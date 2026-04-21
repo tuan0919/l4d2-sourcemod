@@ -251,12 +251,33 @@ bool ResolveFireSourceHeuristic(int fireEnt, HazardType &source, int &sourceOwne
 
     float origin[3];
     GetEntityAbsPos(fireEnt, origin);
+
+    // 1. Source event ring buffer (existing)
     source = FindBestFireSource(origin, sourceOwner);
     if (source != Hazard_None)
     {
         return true;
     }
 
+    // 2. Molotov destroy ring buffer — deterministic hơn WasRecentMolotovThrow
+    int mdOwner = 0;
+    if (FindRecentMolotovDestroy(origin, MOLOTOV_DESTROY_MATCH_WINDOW, MOLOTOV_DESTROY_MAX_DIST, mdOwner))
+    {
+        source = Hazard_Molotov;
+        sourceOwner = mdOwner;
+        return true;
+    }
+
+    // 3. Gascan explode ring buffer
+    int geOwner = 0;
+    if (FindRecentGascanExplode(origin, GASCAN_EXPLODE_MATCH_WINDOW, GASCAN_EXPLODE_MAX_DIST, geOwner))
+    {
+        source = Hazard_Gascan;
+        sourceOwner = geOwner;
+        return true;
+    }
+
+    // 4. Fallback: projectile owner + WasRecentMolotovThrow
     int owner = ResolveProjectileOwner(fireEnt);
     if (WasRecentMolotovThrow(owner, 20.0))
     {
@@ -395,13 +416,31 @@ bool HasExplicitMolotovEvidence(int victim, int attackerEnt, int sourceOwner)
     {
         int snapInflictor = g_iLastInflictor[victim];
         int snapWeapon = g_iLastWeapon[victim];
-        if (EntityIsMolotovProjectile(snapInflictor) || LinkedEntityIsMolotovProjectile(snapInflictor) || EntityIsMolotovProjectile(snapWeapon) || LinkedEntityIsMolotovProjectile(snapWeapon))
+        if (EntityIsMolotovProjectile(snapInflictor) || LinkedEntityIsMolotovProjectile(snapInflictor)
+            || EntityIsMolotovProjectile(snapWeapon) || LinkedEntityIsMolotovProjectile(snapWeapon))
         {
             return true;
         }
     }
 
-    return WasRecentMolotovThrow(sourceOwner, 3.0);
+    // WasRecentMolotovThrow với distance check — thu hẹp window 3.0 → 2.0s
+    if (IsInGameClient(sourceOwner) && GetClientTeam(sourceOwner) == 2)
+    {
+        float t = g_fLastMolotovThrow[sourceOwner];
+        if (t > 0.0 && (GetGameTime() - t) <= 2.0)
+        {
+            float firePos[3];
+            GetEntityAbsPos(attackerEnt, firePos);
+            if (firePos[0] != 0.0 || firePos[1] != 0.0 || firePos[2] != 0.0)
+            {
+                int mdOwner = 0;
+                return FindRecentMolotovDestroy(firePos, MOLOTOV_DESTROY_MATCH_WINDOW, MOLOTOV_DESTROY_MAX_DIST, mdOwner);
+            }
+            return true; // không có fire pos → fallback cũ
+        }
+    }
+
+    return false;
 }
 
 bool GetFireSourceMeta(int victim, int attackerEnt, HazardType &source, int &sourceOwner)
@@ -618,6 +657,56 @@ bool EntityIsOxygenTank(int entity)
     return false;
 }
 
+bool FindRecentGascanExplode(const float pos[3], float window, float maxDist, int &owner)
+{
+    float now = GetGameTime();
+    float bestScore = 999999.0;
+    owner = 0;
+    bool found = false;
+
+    for (int i = 0; i < MAX_RECENT_GASCAN_EXPLODES; i++)
+    {
+        if (g_fGascanExplodeTime[i] <= 0.0) continue;
+        float age = now - g_fGascanExplodeTime[i];
+        if (age < 0.0 || age > window) continue;
+        float dist = GetVectorDistance(pos, g_vGascanExplodePos[i]);
+        if (dist > maxDist) continue;
+        float score = dist + age * 60.0;
+        if (score < bestScore)
+        {
+            bestScore = score;
+            owner = g_iGascanExplodeOwner[i];
+            found = true;
+        }
+    }
+    return found;
+}
+
+bool FindRecentMolotovDestroy(const float pos[3], float window, float maxDist, int &owner)
+{
+    float now = GetGameTime();
+    float bestScore = 999999.0;
+    owner = 0;
+    bool found = false;
+
+    for (int i = 0; i < MAX_RECENT_MOLOTOV_DESTROYS; i++)
+    {
+        if (g_fMolotovDestroyTime[i] <= 0.0) continue;
+        float age = now - g_fMolotovDestroyTime[i];
+        if (age < 0.0 || age > window) continue;
+        float dist = GetVectorDistance(pos, g_vMolotovDestroyPos[i]);
+        if (dist > maxDist) continue;
+        float score = dist + age * 60.0;
+        if (score < bestScore)
+        {
+            bestScore = score;
+            owner = g_iMolotovDestroyOwner[i];
+            found = true;
+        }
+    }
+    return found;
+}
+
 bool IsGenericFireLabel(const char[] label)
 {
     return (StrEqual(label, "Inferno", false) || StrEqual(label, "Entityflame", false) || StrEqual(label, "Fire", false));
@@ -638,10 +727,31 @@ bool IsLikelyGascanInferno(int victim, int attackerClient, int attackerEnt, cons
         return false;
     }
 
-    bool infernoLike = (StrContains(eventWeapon, "inferno", false) != -1 || StrContains(eventWeapon, "entityflame", false) != -1 || EntityClassMatches(attackerEnt, "inferno") || EntityClassMatches(attackerEnt, "entityflame"));
+    bool infernoLike = (StrContains(eventWeapon, "inferno", false) != -1
+        || StrContains(eventWeapon, "entityflame", false) != -1
+        || EntityClassMatches(attackerEnt, "inferno")
+        || EntityClassMatches(attackerEnt, "entityflame"));
     if (!infernoLike) return false;
-    if (WasRecentMolotovThrow(attackerClient, 12.0)) return false;
-    if (IsFireworkSource(victim, attackerEnt, eventWeapon) || IsFuelBarrelSource(victim, attackerEnt, eventWeapon)) return false;
+
+    if (IsFireworkSource(victim, attackerEnt, eventWeapon)
+        || IsFuelBarrelSource(victim, attackerEnt, eventWeapon))
+        return false;
+
+    // Positive evidence: phải có gascan nổ gần vị trí fire
+    float firePos[3];
+    GetEntityAbsPos(attackerEnt, firePos);
+    if (firePos[0] == 0.0 && firePos[1] == 0.0 && firePos[2] == 0.0)
+        GetClientEyePosition(victim, firePos);
+
+    int gascanOwner = 0;
+    if (!FindRecentGascanExplode(firePos, GASCAN_EXPLODE_MATCH_WINDOW, GASCAN_EXPLODE_MAX_DIST, gascanOwner))
+        return false;
+
+    // Có gascan evidence — nhưng nếu molotov destroy còn gần hơn thì không đủ tự tin
+    int molotovOwner = 0;
+    if (FindRecentMolotovDestroy(firePos, MOLOTOV_DESTROY_MATCH_WINDOW, MOLOTOV_DESTROY_MAX_DIST, molotovOwner))
+        return false;
+
     return true;
 }
 

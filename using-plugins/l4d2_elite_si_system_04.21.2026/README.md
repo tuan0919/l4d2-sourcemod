@@ -1,4 +1,4 @@
-# l4d2_elite_si_system (rewrite 13/04/2026, update 20/04/2026)
+# l4d2_elite_si_system (rewrite 13/04/2026, update 21/04/2026)
 
 ## Muc tieu rewrite
 
@@ -177,6 +177,11 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khong con giu force subtype, UI card, config map hoac doc tham chieu cho 2 nhanh tren.
 
 ## Changelog tom tat
+
+### 21/04/2026
+
+- Da chuyen huong hoan toan attribution phu thuoc classname che phan do logic Entity tracker (targetname).
+- Update logic cho Smoker Toxic Gas, Boomer Leaker, va Smoker Ignitor de chung gan dung targetname len ent khi tao moi (cu the nhu `elite_boomer_leaker_fire`, `elite_smoker_ignitor_fire`, va `elite_smoker_toxic_gas`), dam bao dong bo plugin Red API bat duoc nguon goc va chuyen hoa dung ten Elite Type vao In-game chat thay vi ten tho Entity (`Info Particle System` / `Inferno`).
 
 ### 20/04/2026
 

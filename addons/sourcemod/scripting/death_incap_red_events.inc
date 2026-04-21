@@ -140,6 +140,30 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     {
         if (!IsInGameClient(attackerClient) || GetClientTeam(attackerClient) != 2 || attackerClient == victim)
         {
+            // Kiểm tra trường hợp SI chết bởi fire không có attacker rõ ràng
+            // (entityflame trên người SI sau khi chạy xa khỏi inferno gốc)
+            bool isFirDeath = IsFireCause(weapon, dmgType)
+                || EntityClassMatches(attackerEnt, "inferno")
+                || EntityClassMatches(attackerEnt, "entityflame");
+
+            if (isFirDeath)
+            {
+                HazardType snapSource = Hazard_None;
+                int snapOwner = 0;
+                if (GetSIFireSnapshot(victim, snapSource, snapOwner)
+                    && IsInGameClient(snapOwner) && GetClientTeam(snapOwner) == 2)
+                {
+                    char attackerName[64];
+                    char victimName[64];
+                    char cause[192];
+
+                    GetCleanClientName(snapOwner, attackerName, sizeof(attackerName));
+                    GetSpecialInfectedName(victim, victimName, sizeof(victimName), g_bAnnounceEliteSIKill);
+                    HazardTypeToLabel(snapSource, cause, sizeof(cause));
+
+                    PrintActionWithCause(Attacker_Survivor, attackerName, "killed", victimName, cause);
+                }
+            }
             return;
         }
 

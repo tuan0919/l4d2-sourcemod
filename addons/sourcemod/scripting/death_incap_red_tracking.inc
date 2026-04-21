@@ -301,6 +301,38 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     g_iLastDmgType[victim] = damagetype;
     g_fLastDmgTime[victim] = now;
 
+    // DEBUG: log khi nhận DMG_BLAST để trace heroic pipe
+    if ((damagetype & DMG_BLAST) != 0 && GetClientTeam(victim) == 2)
+    {
+        char inflictorCls[64];
+        char inflictorName[64];
+        if (IsValidEdict(inflictor))
+        {
+            GetEntityClassname(inflictor, inflictorCls, sizeof(inflictorCls));
+            GetEntPropStringSafe(inflictor, Prop_Data, "m_iName", inflictorName, sizeof(inflictorName));
+        }
+        else
+        {
+            strcopy(inflictorCls, sizeof(inflictorCls), "INVALID");
+            strcopy(inflictorName, sizeof(inflictorName), "INVALID");
+        }
+        char attackerCls[64];
+        if (IsValidEdict(attacker) && attacker > MaxClients)
+        {
+            GetEntityClassname(attacker, attackerCls, sizeof(attackerCls));
+        }
+        else if (IsInGameClient(attacker))
+        {
+            Format(attackerCls, sizeof(attackerCls), "client_%d_team%d", attacker, GetClientTeam(attacker));
+        }
+        else
+        {
+            strcopy(attackerCls, sizeof(attackerCls), "INVALID");
+        }
+        LogMessage("[HeroicPipeDebug] victim=%d attacker=%d(%s) inflictor=%d(cls=%s name=%s) dmgtype=%d",
+            victim, attacker, attackerCls, inflictor, inflictorCls, inflictorName, damagetype);
+    }
+
     // Survivor fire assist tracking
     if (GetClientTeam(victim) == 2 && (damagetype & DMG_BURN) != 0 && !g_bFireAssistLocked[victim])
     {

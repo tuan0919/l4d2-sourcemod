@@ -2,6 +2,27 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 {
     isSelf = false;
 
+    // DEBUG: log heroic pipe resolution
+    if ((dmgType & DMG_BLAST) != 0 && victim > 0 && victim <= MaxClients && IsClientInGame(victim) && GetClientTeam(victim) == 2)
+    {
+        char entCls[64];
+        char entName[64];
+        if (IsValidEdict(attackerEnt))
+        {
+            GetEntityClassname(attackerEnt, entCls, sizeof(entCls));
+            GetEntPropStringSafe(attackerEnt, Prop_Data, "m_iName", entName, sizeof(entName));
+        }
+        else
+        {
+            strcopy(entCls, sizeof(entCls), "INVALID");
+            strcopy(entName, sizeof(entName), "INVALID");
+        }
+        LogMessage("[HeroicPipeDebug] ResolveAttacker victim=%d attackerClient=%d(inGame=%d) attackerEnt=%d(cls=%s name=%s) weapon=%s snapTargetname=%s hasSnap=%d",
+            victim, attackerClient, IsInGameClient(attackerClient),
+            attackerEnt, entCls, entName, eventWeapon,
+            g_sLastInflictorTargetname[victim], HasRecentSnapshot(victim));
+    }
+
     if (GetFeatureStatus(FeatureType_Native, "EliteSI_ToxicGas_GetRecentDamageCause") == FeatureStatus_Available
         && EliteSI_ToxicGas_GetRecentDamageCause(victim) > 0)
     {

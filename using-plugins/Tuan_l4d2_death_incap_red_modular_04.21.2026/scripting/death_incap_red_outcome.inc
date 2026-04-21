@@ -158,6 +158,31 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 
     if (attackerClient <= 0 && ShouldTreatAsSelf(dmgType, eventWeapon))
     {
+        // Trước khi claim self-damage, check heroic hunter pipe targetname
+        // (hunter bot có thể đã chết trước khi pipe nổ → attackerClient invalid)
+        if (IsValidEdict(attackerEnt))
+        {
+            char tn[64];
+            if (GetEntPropStringSafe(attackerEnt, Prop_Data, "m_iName", tn, sizeof(tn)) && tn[0] != '\0')
+            {
+                if (StrEqual(tn, "elite_hunter_heroic_pipe", false))
+                {
+                    strcopy(attackerLabel, maxlen, "Elite Hunter (Heroic)");
+                    return Attacker_SI;
+                }
+            }
+        }
+
+        // Check snapshot targetname độc lập (không cần HasRecentSnapshot)
+        if (g_sLastInflictorTargetname[victim][0] != '\0')
+        {
+            if (StrEqual(g_sLastInflictorTargetname[victim], "elite_hunter_heroic_pipe", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Hunter (Heroic)");
+                return Attacker_SI;
+            }
+        }
+
         isSelf = true;
         GetCleanClientName(victim, attackerLabel, maxlen);
         return Attacker_Survivor;
@@ -719,7 +744,9 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
         }
     }
 
-    if (HasRecentSnapshot(victim) && g_sLastInflictorTargetname[victim][0] != '\0')
+    // Check snapshot targetname độc lập với HasRecentSnapshot
+    // (heroic hunter pipe có thể nổ sau khi hunter đã chết → snapshot stale)
+    if (g_sLastInflictorTargetname[victim][0] != '\0')
     {
         char targetname[64];
         strcopy(targetname, sizeof(targetname), g_sLastInflictorTargetname[victim]);

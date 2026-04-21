@@ -79,6 +79,7 @@ Handle g_hBurnWatchTimer;
 
 int g_iLastAttacker[MAXPLAYERS + 1];
 int g_iLastInflictor[MAXPLAYERS + 1];
+char g_sLastInflictorTargetname[MAXPLAYERS + 1][64];
 int g_iLastWeapon[MAXPLAYERS + 1];
 int g_iLastDmgType[MAXPLAYERS + 1];
 float g_fLastDmgTime[MAXPLAYERS + 1];

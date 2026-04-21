@@ -119,6 +119,33 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
             }
         }
 
+        char snapTargetname[64];
+        strcopy(snapTargetname, sizeof(snapTargetname), g_sLastInflictorTargetname[victim]);
+
+        if (snapTargetname[0] != '\0')
+        {
+            if (StrEqual(snapTargetname, "elite_boomer_leaker_fire", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Boomer (Leaker)");
+                return Attacker_SI;
+            }
+            if (StrEqual(snapTargetname, "elite_smoker_ignitor_fire", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Smoker (Ignitor Smoker)");
+                return Attacker_SI;
+            }
+            if (StrEqual(snapTargetname, "elite_smoker_toxic_gas", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Smoker (Toxic Gas)");
+                return Attacker_SI;
+            }
+            if (StrEqual(snapTargetname, "elite_hunter_heroic_pipe", false))
+            {
+                strcopy(attackerLabel, maxlen, "Elite Hunter (Heroic)");
+                return Attacker_SI;
+            }
+        }
+
         if (TryResolveFromEntity(snapInflictor, attackerLabel, maxlen) || TryResolveFromEntity(snapAttacker, attackerLabel, maxlen))
         {
             if (StrEqual(attackerLabel, "Common Infected"))
@@ -689,6 +716,33 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
                     return true;
                 }
             }
+        }
+    }
+
+    if (HasRecentSnapshot(victim) && g_sLastInflictorTargetname[victim][0] != '\0')
+    {
+        char targetname[64];
+        strcopy(targetname, sizeof(targetname), g_sLastInflictorTargetname[victim]);
+
+        if (StrEqual(targetname, "elite_boomer_leaker_fire", false))
+        {
+            strcopy(cause, maxlen, "Boomer Leaker Fire");
+            return true;
+        }
+        if (StrEqual(targetname, "elite_smoker_ignitor_fire", false))
+        {
+            strcopy(cause, maxlen, "Smoker Ignitor Fire Patch");
+            return true;
+        }
+        if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
+        {
+            strcopy(cause, maxlen, "Smoker Toxic Gas");
+            return true;
+        }
+        if (StrEqual(targetname, "elite_hunter_heroic_pipe", false))
+        {
+            strcopy(cause, maxlen, "Heroic Pipebomb");
+            return true;
         }
     }
 

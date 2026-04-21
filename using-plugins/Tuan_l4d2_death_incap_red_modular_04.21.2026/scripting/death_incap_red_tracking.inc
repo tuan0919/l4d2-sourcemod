@@ -292,6 +292,11 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
     float now = GetGameTime();
     g_iLastAttacker[victim] = attacker;
     g_iLastInflictor[victim] = inflictor;
+    g_sLastInflictorTargetname[victim][0] = '\0';
+    if (IsValidEdict(inflictor))
+    {
+        GetEntPropStringSafe(inflictor, Prop_Data, "m_iName", g_sLastInflictorTargetname[victim], sizeof(g_sLastInflictorTargetname[]));
+    }
     g_iLastWeapon[victim] = weapon;
     g_iLastDmgType[victim] = damagetype;
     g_fLastDmgTime[victim] = now;

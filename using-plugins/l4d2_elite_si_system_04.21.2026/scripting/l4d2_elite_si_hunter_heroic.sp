@@ -158,6 +158,15 @@ public void OnEntityDestroyed(int entity)
 		}
 	}
 
+	// Tìm attacker hợp lệ cho damage attribution
+	// Ưu tiên owner (hunter bot), nếu đã chết thì dùng entity làm inflictor
+	int dmgAttacker = 0;
+	int dmgInflictor = entity;
+	if (owner > 0 && owner <= MaxClients && IsClientInGame(owner))
+	{
+		dmgAttacker = owner;
+	}
+
 	// Gây damage thủ công lên tất cả survivor trong radius
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -177,9 +186,97 @@ public void OnEntityDestroyed(int entity)
 		if (finalDmg < 1.0)
 			continue;
 
-		// SDKHooks_TakeDamage bypass difficulty scaling hoàn toàn
-		SDKHooks_TakeDamage(i, owner > 0 ? owner : i, owner > 0 ? owner : i, finalDmg, DMG_BLAST);
+		bool isIncapped = (HasEntProp(i, Prop_Send, "m_isIncapacitated") && GetEntProp(i, Prop_Send, "m_isIncapacitated") != 0);
+		int curHealth = GetClientHealth(i);
+		int dmgAtt = dmgAttacker > 0 ? dmgAttacker : i;
+
+		if (isIncapped)
+		{
+			// Đang incap → gây damage trực tiếp lên incap HP
+			SDKHooks_TakeDamage(i, dmgAtt, dmgInflictor, finalDmg, DMG_BLAST);
+		}
+		else
+		{
+			float standingHP = float(curHealth);
+
+			if (finalDmg < standingHP)
+			{
+				// Không đủ incap → gây damage bình thường
+				SDKHooks_TakeDamage(i, dmgAtt, dmgInflictor, finalDmg, DMG_BLAST);
+			}
+			else
+			{
+				// Đủ để incap → tính damage dư
+				float overflow = finalDmg - standingHP;
+
+				// Lần 1: gây damage = standing HP → trigger incap
+				SDKHooks_TakeDamage(i, dmgAtt, dmgInflictor, standingHP + 1.0, DMG_BLAST);
+
+				if (overflow > 0.0)
+				{
+					// Lần 2: gây damage dư lên incap HP (delay 1 frame để engine xử lý incap)
+					// Lấy incap buffer HP từ CVAR
+					ConVar cvIncapHP = FindConVar("survivor_incap_health");
+					float incapHP = (cvIncapHP != null) ? cvIncapHP.FloatValue : 300.0;
+
+					// Chỉ gây damage dư, tối đa = incap HP (để kill nếu đủ)
+					float incapDmg = overflow;
+					if (incapDmg > incapHP)
+						incapDmg = incapHP + 1.0; // đảm bảo kill
+
+					DataPack pack = new DataPack();
+					pack.WriteCell(GetClientUserId(i));
+					pack.WriteCell(dmgAttacker > 0 ? GetClientUserId(dmgAttacker) : 0);
+					pack.WriteFloat(incapDmg);
+					RequestFrame(Frame_FinishKill, pack);
+				}
+			}
+		}
 	}
+
+	// Gây damage lên CI (common infected) trong radius
+	int ci = -1;
+	while ((ci = FindEntityByClassname(ci, "infected")) != -1)
+	{
+		if (!IsValidEdict(ci))
+			continue;
+
+		float ciPos[3];
+		GetEntPropVector(ci, Prop_Data, "m_vecAbsOrigin", ciPos);
+		float dist = GetVectorDistance(pipePos, ciPos);
+		if (dist > radius)
+			continue;
+
+		float scale = 1.0 - (dist / radius);
+		float ciDmg = survivorDmg * scale;
+		if (ciDmg < 1.0)
+			continue;
+
+		SDKHooks_TakeDamage(ci, dmgAttacker > 0 ? dmgAttacker : ci, dmgInflictor, ciDmg, DMG_BLAST);
+	}
+}
+
+public void Frame_FinishKill(DataPack pack)
+{
+	pack.Reset();
+	int victimUserId = pack.ReadCell();
+	int attackerUserId = pack.ReadCell();
+	float remainDmg = pack.ReadFloat();
+	delete pack;
+
+	int victim = GetClientOfUserId(victimUserId);
+	if (victim <= 0 || !IsClientInGame(victim) || !IsPlayerAlive(victim))
+		return;
+
+	// Chỉ finish kill nếu survivor đang incap
+	if (!HasEntProp(victim, Prop_Send, "m_isIncapacitated") || GetEntProp(victim, Prop_Send, "m_isIncapacitated") == 0)
+		return;
+
+	int attacker = 0;
+	if (attackerUserId > 0)
+		attacker = GetClientOfUserId(attackerUserId);
+
+	SDKHooks_TakeDamage(victim, attacker > 0 ? attacker : victim, attacker > 0 ? attacker : victim, remainDmg, DMG_BLAST);
 }
 
 public void OnAllPluginsLoaded()

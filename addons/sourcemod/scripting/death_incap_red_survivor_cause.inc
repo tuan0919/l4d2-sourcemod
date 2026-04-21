@@ -472,12 +472,21 @@ bool IsExplosiveFromEntities(int victim, int attackerEnt)
         return true;
     }
 
+    if (EntityIsPropaneTank(attackerEnt) || EntityIsOxygenTank(attackerEnt))
+    {
+        return true;
+    }
+
     if (!HasRecentSnapshot(victim))
     {
         return false;
     }
 
-    return EntityClassMatches(g_iLastInflictor[victim], "pipe_bomb_projectile") || EntityClassMatches(g_iLastInflictor[victim], "grenade_launcher_projectile");
+    int snapInflictor = g_iLastInflictor[victim];
+    return EntityClassMatches(snapInflictor, "pipe_bomb_projectile")
+        || EntityClassMatches(snapInflictor, "grenade_launcher_projectile")
+        || EntityIsPropaneTank(snapInflictor)
+        || EntityIsOxygenTank(snapInflictor);
 }
 
 bool IsMolotovSource(int victim, int attackerClient, int attackerEnt, const char[] eventWeapon)

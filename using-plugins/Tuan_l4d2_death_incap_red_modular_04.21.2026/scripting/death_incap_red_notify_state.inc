@@ -385,6 +385,47 @@ bool IsInGameClient(int client)
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
 
+public bool TraceFilter_IgnorePlayers(int entity, int contentsMask)
+{
+    return entity > MaxClients;
+}
+
+bool IsWallbangKill(int attacker, int victim)
+{
+    if (!IsInGameClient(attacker) || !IsInGameClient(victim))
+    {
+        return false;
+    }
+
+    float eyePos[3], victimPos[3], dir[3], eyeAng[3];
+    GetClientEyePosition(attacker, eyePos);
+    GetClientAbsOrigin(victim, victimPos);
+    victimPos[2] += 36.0; // center mass
+
+    SubtractVectors(victimPos, eyePos, dir);
+    GetVectorAngles(dir, eyeAng);
+
+    Handle trace = TR_TraceRayFilterEx(eyePos, eyeAng, MASK_SHOT, RayType_Infinite, TraceFilter_IgnorePlayers);
+
+    bool hitWorld = false;
+    if (TR_DidHit(trace))
+    {
+        float hitPos[3];
+        TR_GetEndPosition(hitPos, trace);
+        float distToHit    = GetVectorDistance(eyePos, hitPos);
+        float distToVictim = GetVectorDistance(eyePos, victimPos);
+
+        // Ray hit world trước victim và không quá gần attacker (tránh false positive)
+        if (distToHit < distToVictim && distToHit > 20.0)
+        {
+            hitWorld = true;
+        }
+    }
+
+    delete trace;
+    return hitWorld;
+}
+
 bool IsEliteSI(int client)
 {
     if (!g_bHasEliteNative || !IsInGameClient(client) || GetClientTeam(client) != 3)

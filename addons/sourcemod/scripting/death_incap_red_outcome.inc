@@ -232,6 +232,11 @@ bool TryResolveFromEntity(int entity, char[] label, int maxlen)
 			strcopy(label, maxlen, "Elite Smoker (Toxic Gas)");
 			return true;
 		}
+		if (StrEqual(targetname, "elite_hunter_heroic_pipe", false))
+		{
+			strcopy(label, maxlen, "Elite Hunter (Heroic)");
+			return true;
+		}
 	}
 
 	return false;
@@ -676,6 +681,11 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
                 if (StrEqual(targetname, "elite_smoker_toxic_gas", false))
                 {
                     strcopy(cause, maxlen, "Smoker Toxic Gas");
+                    return true;
+                }
+                if (StrEqual(targetname, "elite_hunter_heroic_pipe", false))
+                {
+                    strcopy(cause, maxlen, "Heroic Pipebomb");
                     return true;
                 }
             }

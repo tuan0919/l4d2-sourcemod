@@ -125,3 +125,38 @@ Loi ich:
 - `death_incap_red_tracking.inc`: them SI fire tracking trong `OnTakeDamageAlive`, them `ClearSIFireSnapshot`, `GetSIFireSnapshot`
 - `death_incap_red_events.inc`: them SI fire snapshot lookup trong `Event_PlayerDeath`
 - `death_incap_red_lifecycle.inc`: reset SI fire snapshot trong `OnMapStart` va `OnClientDisconnect`
+
+## Thay doi 21/04/2026 (4) - Chain fire owner + explosion entity fix
+
+### Van de
+
+- Chain fire (molotov → gascan t1 → gascan tn): `OnHazardTakeDamagePost` khong resolve duoc owner khi attacker la `inferno` entity (khong co `m_hOwnerEntity` tro ve survivor) → owner bi mat qua chain
+- `IsExplosiveFromEntities` thieu check propane/oxygen entity → neu attackerEnt la propane/oxygen con song luc damage thi `explosive=false`, phai doi vao `TryCauseFromHazardContext` (4s window), neu qua 4s thi miss
+
+### Fix
+
+- `OnHazardTakeDamagePost`: khi `ResolveDamageOwnerClient` tra ve 0, thu lookup `TryReadFreshFireSourceCache` tren `attacker` va `inflictor` de lay owner goc tu fire source cache → chain fire gio trace duoc owner xuyen qua nhieu gascan
+- `IsExplosiveFromEntities`: them check `EntityIsPropaneTank` va `EntityIsOxygenTank` tren ca `attackerEnt` va `snapInflictor`
+
+### Files thay doi
+
+- `death_incap_red_tracking.inc`: sua `OnHazardTakeDamagePost`
+- `death_incap_red_survivor_cause.inc`: sua `IsExplosiveFromEntities`
+
+## Thay doi 21/04/2026 (5) - Wallbang detection via trace ray
+
+### Van de
+
+- `penetrated` field trong `player_death` event cua L4D2 luon = 0, wallbang khong bao gio duoc detect du ban xuyen tuong/cua
+
+### Fix
+
+- Thay `event.GetInt("penetrated", 0) > 0` bang `IsWallbangKill(attacker, victim)`
+- `IsWallbangKill`: trace ray tu attacker eye position → victim center mass voi `MASK_SHOT` + `TraceFilter_IgnorePlayers`
+- Neu ray hit world geometry truoc khi reach victim va distance > 20 units → wallbang = true
+- Chi chay 1 lan tai killing blow → chi phi gan bang 0
+
+### Files thay doi
+
+- `death_incap_red_events.inc`: doi wallbang detection
+- `death_incap_red_notify_state.inc`: them `IsWallbangKill` + `TraceFilter_IgnorePlayers`

@@ -269,6 +269,8 @@ void DropActivePipebomb(int client)
 
 	if (entity > 0 && IsValidEntity(entity))
 	{
+		DispatchKeyValue(entity, "targetname", "elite_hunter_heroic_pipe");
+
 		// Decorate it just in case
 		int particleFuse = CreateEntityByName("info_particle_system");
 		if (particleFuse > 0)

@@ -112,7 +112,12 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
     char weapon[64];
     event.GetString("weapon", weapon, sizeof(weapon));
     bool headshot = event.GetBool("headshot", false);
-    bool wallbang = (event.GetInt("penetrated", 0) > 0);
+    bool wallbang = false;
+    if (IsInGameClient(attackerClient) && GetClientTeam(attackerClient) == 2
+        && (dmgType & DMG_BULLET) != 0)
+    {
+        wallbang = IsWallbangKill(attackerClient, victim);
+    }
 
     if (!IsInGameClient(victim))
     {

@@ -230,6 +230,37 @@ public void OnHazardTakeDamagePost(int entity, int attacker, int inflictor, floa
     }
 
     int owner = ResolveDamageOwnerClient(attacker, inflictor);
+
+    // Nếu không tìm được owner trực tiếp, thử resolve qua fire source cache
+    // (trường hợp chain fire: inferno từ molotov/gascan cháy lan sang hazard khác)
+    if (!IsInGameClient(owner) || GetClientTeam(owner) != 2)
+    {
+        // Check attacker là inferno/entityflame → lookup fire source cache để lấy owner gốc
+        if (IsValidEdict(attacker) && attacker > MaxClients)
+        {
+            HazardType fireSource = Hazard_None;
+            int fireOwner = 0;
+            if (TryReadFreshFireSourceCache(attacker, fireSource, fireOwner)
+                && IsInGameClient(fireOwner) && GetClientTeam(fireOwner) == 2)
+            {
+                owner = fireOwner;
+            }
+        }
+
+        // Fallback: check inflictor
+        if ((!IsInGameClient(owner) || GetClientTeam(owner) != 2)
+            && IsValidEdict(inflictor) && inflictor > MaxClients)
+        {
+            HazardType fireSource = Hazard_None;
+            int fireOwner = 0;
+            if (TryReadFreshFireSourceCache(inflictor, fireSource, fireOwner)
+                && IsInGameClient(fireOwner) && GetClientTeam(fireOwner) == 2)
+            {
+                owner = fireOwner;
+            }
+        }
+    }
+
     if (!IsInGameClient(owner) || GetClientTeam(owner) != 2)
     {
         return;

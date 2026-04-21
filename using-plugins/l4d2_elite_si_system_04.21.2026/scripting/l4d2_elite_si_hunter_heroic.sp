@@ -61,7 +61,7 @@ public void OnPluginStart()
 	g_cvExplodeTime = CreateConVar("l4d2_elite_si_hunter_heroic_explode_time", "6.0", "Pipebomb fuse time when dropped by Heroic hunter.", FCVAR_NOTIFY, true, 1.0, true, 20.0);
 	g_cvDamage = CreateConVar("l4d2_elite_si_hunter_heroic_damage", "800.0", "Massive damage dealt by the dropped pipebomb.", FCVAR_NOTIFY, true, 0.0);
 	g_cvRadius = CreateConVar("l4d2_elite_si_hunter_heroic_radius", "400.0", "Damage radius for the dropped pipebomb.", FCVAR_NOTIFY, true, 0.0);
-	g_cvSurvivorDamage = CreateConVar("l4d2_elite_si_hunter_heroic_survivor_damage", "800.0", "Direct damage override applied to survivors hit by heroic pipe blast (bypasses difficulty scaling). 0 = use engine default.", FCVAR_NOTIFY, true, 0.0);
+	g_cvSurvivorDamage = CreateConVar("l4d2_elite_si_hunter_heroic_survivor_damage", "800.0", "Direct damage applied to survivors in radius when heroic pipe explodes (bypasses difficulty scaling). 0 = disabled.", FCVAR_NOTIFY, true, 0.0);
 
 	CreateConVar("l4d2_elite_si_hunter_heroic_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_hunter_heroic");
@@ -73,15 +73,6 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
-
-	// Hook OnTakeDamage cho tất cả client hiện tại
-	for (int i = 1; i <= MaxClients; i++)
-	{
-		if (IsClientInGame(i))
-		{
-			SDKHook(i, SDKHook_OnTakeDamage, OnTakeDamage);
-		}
-	}
 
 	RefreshEliteState();
 }
@@ -127,72 +118,68 @@ public void OnClientDisconnect(int client)
 	ResetClientState(client);
 }
 
-public void OnClientPutInServer(int client)
+public void OnEntityDestroyed(int entity)
 {
-	SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
-}
+	if (entity <= 0 || entity >= sizeof(g_bIsHeroicPipe))
+		return;
 
-public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
-{
+	if (!g_bIsHeroicPipe[entity])
+		return;
+
+	g_bIsHeroicPipe[entity] = false;
+
 	if (!g_cvEnable.BoolValue)
-		return Plugin_Continue;
+		return;
 
-	float overrideDmg = g_cvSurvivorDamage.FloatValue;
-	if (overrideDmg <= 0.0)
-		return Plugin_Continue;
+	float survivorDmg = g_cvSurvivorDamage.FloatValue;
+	if (survivorDmg <= 0.0)
+		return;
 
-	// Chỉ override cho survivor nhận DMG_BLAST
-	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || GetClientTeam(victim) != TEAM_SURVIVOR)
-		return Plugin_Continue;
+	float radius = g_cvRadius.FloatValue;
+	if (radius <= 0.0)
+		return;
 
-	if ((damagetype & DMG_BLAST) == 0)
-		return Plugin_Continue;
+	// Lấy vị trí pipe trước khi destroy
+	float pipePos[3];
+	if (IsValidEdict(entity))
+		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pipePos);
+	else
+		return;
 
-	// Check inflictor là heroic pipe
-	bool isHeroicPipe = false;
-
-	if (inflictor > MaxClients && inflictor < sizeof(g_bIsHeroicPipe) && IsValidEdict(inflictor))
+	// Tìm owner từ per-client tracking
+	int owner = 0;
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (g_bIsHeroicPipe[inflictor])
+		if (g_iHunterActivePipe[i] != 0 && EntRefToEntIndex(g_iHunterActivePipe[i]) == entity)
 		{
-			isHeroicPipe = true;
-		}
-		else
-		{
-			// Fallback: check targetname
-			char tn[64];
-			GetEntPropString(inflictor, Prop_Data, "m_iName", tn, sizeof(tn));
-			if (StrEqual(tn, "elite_hunter_heroic_pipe", false))
-			{
-				isHeroicPipe = true;
-			}
+			owner = i;
+			g_iHunterActivePipe[i] = 0;
+			break;
 		}
 	}
 
-	// Cũng check attacker entity
-	if (!isHeroicPipe && attacker > MaxClients && attacker < sizeof(g_bIsHeroicPipe) && IsValidEdict(attacker))
+	// Gây damage thủ công lên tất cả survivor trong radius
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (g_bIsHeroicPipe[attacker])
-		{
-			isHeroicPipe = true;
-		}
-		else
-		{
-			char tn[64];
-			GetEntPropString(attacker, Prop_Data, "m_iName", tn, sizeof(tn));
-			if (StrEqual(tn, "elite_hunter_heroic_pipe", false))
-			{
-				isHeroicPipe = true;
-			}
-		}
+		if (!IsClientInGame(i) || !IsPlayerAlive(i) || GetClientTeam(i) != TEAM_SURVIVOR)
+			continue;
+
+		float survivorPos[3];
+		GetClientAbsOrigin(i, survivorPos);
+		float dist = GetVectorDistance(pipePos, survivorPos);
+
+		if (dist > radius)
+			continue;
+
+		// Scale damage theo khoảng cách (linear falloff)
+		float scale = 1.0 - (dist / radius);
+		float finalDmg = survivorDmg * scale;
+		if (finalDmg < 1.0)
+			continue;
+
+		// SDKHooks_TakeDamage bypass difficulty scaling hoàn toàn
+		SDKHooks_TakeDamage(i, owner > 0 ? owner : i, owner > 0 ? owner : i, finalDmg, DMG_BLAST);
 	}
-
-	if (!isHeroicPipe)
-		return Plugin_Continue;
-
-	// Override damage, bypass difficulty scaling
-	damage = overrideDmg;
-	return Plugin_Changed;
 }
 
 public void OnAllPluginsLoaded()

@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "3.1.0"
+#define PLUGIN_VERSION  "3.2.0"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -21,7 +21,7 @@ public Plugin myinfo =
 {
     name        = "[L4D2] Tuan Upgrade Ammo Pack",
     author      = "Tuan",
-    description = "Upgrade ammo pack: permanent fire/explosive bullets with real ammo consumption.",
+    description = "Revamped upgrade ammo: permanent fire/explosive bullets, persists across rounds and maps.",
     version     = PLUGIN_VERSION,
     url         = ""
 };
@@ -31,6 +31,11 @@ bool g_bWeaponUpgraded[MAXENTITIES + 1];
 int  g_iWeaponUpgradeType[MAXENTITIES + 1];
 bool g_bWeaponReloading[MAXENTITIES + 1];
 int  g_iReloadStartClip[MAXENTITIES + 1];
+
+// --- Save state per client (for map transition) ---
+bool g_bClientHasSave[MAXPLAYERS + 1];
+int  g_iClientSaveType[MAXPLAYERS + 1];
+char g_sClientSaveWeapon[MAXPLAYERS + 1][64];
 
 ConVar g_hEnable;
 bool g_bLateLoad;
@@ -55,11 +60,11 @@ public void OnPluginStart()
     g_hEnable = CreateConVar("tuan_upgrade_ammo_enable", "1", "Enable Tuan Upgrade Ammo Pack plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     AutoExecConfig(true, "Tuan_upgrade_ammo_pack");
 
-    HookEvent("round_start",   Event_RoundStart,  EventHookMode_PostNoCopy);
-    HookEvent("player_death",  Event_PlayerDeath,  EventHookMode_Post);
-    HookEvent("weapon_drop",   Event_WeaponDrop,   EventHookMode_Post);
-    HookEvent("ammo_pickup",   Event_AmmoPickup,   EventHookMode_Pre);
-    HookEvent("weapon_reload", Event_WeaponReload, EventHookMode_Pre);
+    HookEvent("ammo_pickup",       Event_AmmoPickup,    EventHookMode_Pre);
+    HookEvent("weapon_reload",     Event_WeaponReload,  EventHookMode_Pre);
+    HookEvent("map_transition",    Event_SaveAll,       EventHookMode_PostNoCopy);
+    HookEvent("mission_lost",      Event_SaveAll,       EventHookMode_PostNoCopy);
+    HookEvent("player_spawn",      Event_PlayerSpawn,   EventHookMode_Post);
 
     if (g_bLateLoad)
     {
@@ -96,6 +101,12 @@ public void OnClientPutInServer(int client)
     SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
 }
 
+public void OnClientDisconnect(int client)
+{
+    // Save before disconnect so bot replacement can inherit
+    SaveClientUpgradeState(client);
+}
+
 public void OnEntityCreated(int entity, const char[] classname)
 {
     if (entity < 1)
@@ -128,6 +139,92 @@ void Frame_HookUpgradeEnt(int entRef)
         return;
 
     SDKHook(entity, SDKHook_Use, OnUpgradeUse);
+}
+
+// ============================================================
+//  Save / Restore for map transition
+// ============================================================
+
+Action Event_SaveAll(Event event, const char[] name, bool dontBroadcast)
+{
+    for (int client = 1; client <= MaxClients; client++)
+        SaveClientUpgradeState(client);
+
+    return Plugin_Continue;
+}
+
+void SaveClientUpgradeState(int client)
+{
+    g_bClientHasSave[client] = false;
+
+    if (!IsValidClient(client) || GetClientTeam(client) != 2)
+        return;
+
+    int weapon = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
+        return;
+
+    if (!g_bWeaponUpgraded[weapon])
+        return;
+
+    char classname[64];
+    GetEdictClassname(weapon, classname, sizeof(classname));
+
+    g_bClientHasSave[client]  = true;
+    g_iClientSaveType[client] = g_iWeaponUpgradeType[weapon];
+    strcopy(g_sClientSaveWeapon[client], sizeof(g_sClientSaveWeapon[]), classname);
+}
+
+Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsValidClient(client) || IsFakeClient(client) || GetClientTeam(client) != 2)
+        return Plugin_Continue;
+
+    if (!g_bClientHasSave[client])
+        return Plugin_Continue;
+
+    // Delay restore — weapon may not be ready yet at spawn
+    CreateTimer(0.5, Timer_RestoreUpgrade, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+
+    return Plugin_Continue;
+}
+
+Action Timer_RestoreUpgrade(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
+        return Plugin_Stop;
+
+    if (!g_bClientHasSave[client])
+        return Plugin_Stop;
+
+    int weapon = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
+        return Plugin_Stop;
+
+    char classname[64];
+    GetEdictClassname(weapon, classname, sizeof(classname));
+
+    // Only restore if weapon classname matches saved
+    if (!StrEqual(classname, g_sClientSaveWeapon[client], false))
+        return Plugin_Stop;
+
+    // Restore upgrade state
+    g_bWeaponUpgraded[weapon]    = true;
+    g_iWeaponUpgradeType[weapon] = g_iClientSaveType[client];
+    g_bWeaponReloading[weapon]   = false;
+
+    // Apply visual
+    RequestFrame(Frame_ApplyVisual, EntIndexToEntRef(weapon));
+
+    char typeName[32];
+    GetUpgradeName(g_iClientSaveType[client], typeName, sizeof(typeName));
+    PrintToChat(client, "\x04[Upgrade Ammo]\x01 Dan \x05%s\x01 da duoc khoi phuc.", typeName);
+
+    g_bClientHasSave[client] = false;
+
+    return Plugin_Stop;
 }
 
 // ============================================================
@@ -405,40 +502,6 @@ Action Event_AmmoPickup(Event event, const char[] name, bool dontBroadcast)
 }
 
 // ============================================================
-//  Reset on drop / death / round
-// ============================================================
-
-Action Event_WeaponDrop(Event event, const char[] name, bool dontBroadcast)
-{
-    int weapon = event.GetInt("propid");
-    if (IsValidEntity(weapon) && weapon > MaxClients)
-        ClearWeaponState(weapon);
-
-    return Plugin_Continue;
-}
-
-Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
-{
-    int client = GetClientOfUserId(event.GetInt("userid"));
-    if (!IsValidClient(client))
-        return Plugin_Continue;
-
-    int weapon = GetPlayerWeaponSlot(client, 0);
-    if (IsValidEntity(weapon) && weapon > MaxClients)
-        ClearWeaponState(weapon);
-
-    return Plugin_Continue;
-}
-
-Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
-{
-    for (int i = 1; i <= MAXENTITIES; i++)
-        ClearWeaponState(i);
-
-    return Plugin_Continue;
-}
-
-// ============================================================
 //  Helpers
 // ============================================================
 
@@ -449,7 +512,6 @@ void ClearWeaponState(int weapon)
     g_bWeaponReloading[weapon]   = false;
     g_iReloadStartClip[weapon]   = 0;
 }
-
 
 void GetUpgradeName(int upgradeType, char[] buffer, int maxlen)
 {
@@ -465,4 +527,3 @@ bool IsValidClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
-

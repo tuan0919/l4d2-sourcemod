@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "2.1.0"
+#define PLUGIN_VERSION  "3.0.0"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -21,7 +21,7 @@ public Plugin myinfo =
 {
     name        = "[L4D2] Tuan Upgrade Ammo Pack",
     author      = "Tuan",
-    description = "Upgrade ammo pack makes every bullet fire/explosive via OnTakeDamage.",
+    description = "Upgrade ammo pack: permanent fire/explosive bullets with real ammo consumption.",
     version     = PLUGIN_VERSION,
     url         = ""
 };
@@ -30,8 +30,11 @@ public Plugin myinfo =
 bool g_bWeaponUpgraded[MAXENTITIES + 1];
 int  g_iWeaponUpgradeType[MAXENTITIES + 1];
 
-ConVar g_hEnable;
+// --- Offsets ---
+int g_iOffsetAmmo     = -1;
+int g_iOffsetAmmoType = -1;
 
+ConVar g_hEnable;
 bool g_bLateLoad;
 
 // ============================================================
@@ -54,10 +57,17 @@ public void OnPluginStart()
     g_hEnable = CreateConVar("tuan_upgrade_ammo_enable", "1", "Enable Tuan Upgrade Ammo Pack plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     AutoExecConfig(true, "Tuan_upgrade_ammo_pack");
 
+    g_iOffsetAmmo     = FindSendPropInfo("CTerrorPlayer",     "m_iAmmo");
+    g_iOffsetAmmoType = FindSendPropInfo("CBaseCombatWeapon", "m_iPrimaryAmmoType");
+
+    if (g_iOffsetAmmo == -1 || g_iOffsetAmmoType == -1)
+        SetFailState("Failed to find required netprop offsets.");
+
     HookEvent("round_start",   Event_RoundStart,  EventHookMode_PostNoCopy);
     HookEvent("player_death",  Event_PlayerDeath,  EventHookMode_Post);
     HookEvent("weapon_drop",   Event_WeaponDrop,   EventHookMode_Post);
     HookEvent("ammo_pickup",   Event_AmmoPickup,   EventHookMode_Pre);
+    HookEvent("weapon_reload", Event_WeaponReload, EventHookMode_Pre);
 
     if (g_bLateLoad)
     {
@@ -85,7 +95,7 @@ public void OnPluginStart()
 }
 
 // ============================================================
-//  Hook entities for OnTakeDamage + FireBulletsPost
+//  Hook entities
 // ============================================================
 
 public void OnClientPutInServer(int client)
@@ -129,25 +139,29 @@ void Frame_HookUpgradeEnt(int entRef)
 }
 
 // ============================================================
-//  FireBulletsPost: maintain visual tracer after each shot
+//  FireBulletsPost: sync m_nUpgradedPrimaryAmmoLoaded = clip
 // ============================================================
 
-void OnFireBulletsPost(int client, int shots, const char[] weaponname)
+public void OnFireBulletsPost(int client, int shots, const char[] weaponname)
 {
     if (!g_hEnable.BoolValue)
         return;
 
-    if (!IsClientInGame(client) || GetClientTeam(client) != 2 || !IsPlayerAlive(client))
+    if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
         return;
 
     int weapon = GetPlayerWeaponSlot(client, 0);
-    if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
         return;
 
     if (!g_bWeaponUpgraded[weapon])
         return;
 
-    // Sync m_nUpgradedPrimaryAmmoLoaded = clip so game renders upgrade tracer
+    // Check if active weapon is the primary
+    int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (active != weapon)
+        return;
+
     int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
     SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
 
@@ -159,6 +173,34 @@ void OnFireBulletsPost(int client, int shots, const char[] weaponname)
         bits |= upgBit;
         SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
     }
+}
+
+// ============================================================
+//  WeaponReload: show hint text with real reserve ammo
+// ============================================================
+
+Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
+{
+    if (!g_hEnable.BoolValue)
+        return Plugin_Continue;
+
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (!IsValidClient(client) || GetClientTeam(client) != 2)
+        return Plugin_Continue;
+
+    int weapon = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
+        return Plugin_Continue;
+
+    if (!g_bWeaponUpgraded[weapon])
+        return Plugin_Continue;
+
+    int reserve = GetReserveAmmo(client, weapon);
+    char typeName[32];
+    GetUpgradeName(g_iWeaponUpgradeType[weapon], typeName, sizeof(typeName));
+    PrintHintText(client, "Dan %s | Reserve: %d vien", typeName, reserve);
+
+    return Plugin_Continue;
 }
 
 // ============================================================
@@ -205,12 +247,8 @@ Action ApplyUpgradeDamage(int victim, int weapon, int &damagetype)
         return Plugin_Continue;
 
     int upgradeType = g_iWeaponUpgradeType[weapon];
-    if (upgradeType == UPGRADE_INCENDIARY)
-    {
-        damagetype |= DMG_BURN;
-        return Plugin_Changed;
-    }
-    else if (upgradeType == UPGRADE_EXPLOSIVE)
+
+    if (upgradeType == UPGRADE_EXPLOSIVE)
     {
         // Skip DMG_BLAST on Tank — prevents stagger
         if (victim >= 1 && victim <= MaxClients && IsClientInGame(victim))
@@ -219,6 +257,11 @@ Action ApplyUpgradeDamage(int victim, int weapon, int &damagetype)
                 return Plugin_Continue;
         }
         damagetype |= DMG_BLAST;
+        return Plugin_Changed;
+    }
+    else if (upgradeType == UPGRADE_INCENDIARY)
+    {
+        damagetype |= DMG_BURN;
         return Plugin_Changed;
     }
 
@@ -293,7 +336,7 @@ void Frame_ApplyVisual(int weaponRef)
     bits |= upgBit;
     SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
 
-    // Also set initial m_nUpgradedPrimaryAmmoLoaded for immediate visual
+    // Set initial upgrade ammo = clip for visual tracer
     int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
     SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
 }
@@ -363,6 +406,12 @@ void ClearWeaponState(int weapon)
 {
     g_bWeaponUpgraded[weapon]    = false;
     g_iWeaponUpgradeType[weapon] = UPGRADE_NONE;
+}
+
+int GetReserveAmmo(int client, int weapon)
+{
+    int ammoTypeOffset = GetEntData(weapon, g_iOffsetAmmoType) * 4;
+    return GetEntData(client, g_iOffsetAmmo + ammoTypeOffset);
 }
 
 void GetUpgradeName(int upgradeType, char[] buffer, int maxlen)

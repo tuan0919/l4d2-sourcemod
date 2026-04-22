@@ -96,6 +96,11 @@ public void OnEntityDestroyed(int entity)
 //  Core: upgrade pack used
 // ============================================================
 
+// Per-client pending upgrade data (used across RequestFrame)
+int  g_iPendingPackType[MAXPLAYERS + 1];
+int  g_iPendingTotal[MAXPLAYERS + 1];
+bool g_bPendingRefill[MAXPLAYERS + 1];
+
 Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float value)
 {
     if (!g_hEnable.BoolValue)
@@ -125,27 +130,52 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
         return Plugin_Continue;
     }
 
-    // Calculate total ammo: clip + reserve
+    // Calculate total ammo NOW (before game engine modifies anything)
     int clip    = GetEntProp(weapon, Prop_Send, "m_iClip1");
     int reserve = GetReserveAmmo(client, weapon);
     int total   = clip + reserve;
-    if (total > 254) total = 254;
-    if (total < 1)   total = 1;
+    if (total < 1) total = 1;
 
-    // Apply upgrade bits
+    // Store pending data — apply AFTER game engine runs via RequestFrame
+    g_iPendingPackType[client] = packType;
+    g_iPendingTotal[client]    = total;
+    g_bPendingRefill[client]   = g_bWeaponUpgraded[weapon];
+
+    // Pre-mark weapon state so poll timer doesn't interfere
+    g_bWeaponUpgraded[weapon]    = true;
+    g_iWeaponUpgradeType[weapon] = packType;
+    g_iWeaponLastClip[weapon]    = clip;
+
+    RequestFrame(Frame_ApplyUpgradeAmmo, GetClientUserId(client));
+
+    return Plugin_Continue;
+}
+
+void Frame_ApplyUpgradeAmmo(int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client) || !IsPlayerAlive(client))
+        return;
+
+    int weapon = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
+        return;
+
+    int packType = g_iPendingPackType[client];
+    int total    = g_iPendingTotal[client];
+    bool isRefill = g_bPendingRefill[client];
+
+    // Apply upgrade bit
     int upgBit = (packType == UPGRADE_INCENDIARY) ? UPGBIT_INCENDIARY : UPGBIT_EXPLOSIVE;
     int bits   = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
     bits |= upgBit;
     SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
 
-    // Set upgraded ammo count
+    // Override game's vanilla ammo count with our total
     SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", total);
 
-    // Mark weapon state
-    bool isRefill = g_bWeaponUpgraded[weapon];
-    g_bWeaponUpgraded[weapon]    = true;
-    g_iWeaponUpgradeType[weapon] = packType;
-    g_iWeaponLastClip[weapon]    = GetEntProp(weapon, Prop_Send, "m_iClip1");
+    // Update last clip
+    g_iWeaponLastClip[weapon] = GetEntProp(weapon, Prop_Send, "m_iClip1");
 
     char typeName[32];
     GetUpgradeName(packType, typeName, sizeof(typeName));
@@ -154,8 +184,6 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
         PrintToChat(client, "\x04[Upgrade Ammo]\x01 Refill \x05%d\x01 viên đạn \x05%s\x01.", total, typeName);
     else
         PrintToChat(client, "\x04[Upgrade Ammo]\x01 Nạp \x05%d\x01 viên đạn \x05%s\x01. Chỉ refill bằng pack cùng loại.", total, typeName);
-
-    return Plugin_Continue;
 }
 
 // ============================================================

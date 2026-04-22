@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "2.0.0"
+#define PLUGIN_VERSION  "2.1.0"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -14,6 +14,8 @@
 
 #define UPGBIT_INCENDIARY   (1 << 0)
 #define UPGBIT_EXPLOSIVE    (1 << 1)
+
+#define ZC_TANK             8
 
 public Plugin myinfo =
 {
@@ -62,7 +64,10 @@ public void OnPluginStart()
         for (int client = 1; client <= MaxClients; client++)
         {
             if (IsClientInGame(client))
+            {
                 SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage_Client);
+                SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
+            }
         }
         int entity = -1;
         while ((entity = FindEntityByClassname(entity, "infected")) != -1)
@@ -80,12 +85,13 @@ public void OnPluginStart()
 }
 
 // ============================================================
-//  Hook entities for OnTakeDamage
+//  Hook entities for OnTakeDamage + FireBulletsPost
 // ============================================================
 
 public void OnClientPutInServer(int client)
 {
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage_Client);
+    SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -123,6 +129,39 @@ void Frame_HookUpgradeEnt(int entRef)
 }
 
 // ============================================================
+//  FireBulletsPost: maintain visual tracer after each shot
+// ============================================================
+
+void OnFireBulletsPost(int client, int shots, const char[] weaponname)
+{
+    if (!g_hEnable.BoolValue)
+        return;
+
+    if (!IsClientInGame(client) || GetClientTeam(client) != 2 || !IsPlayerAlive(client))
+        return;
+
+    int weapon = GetPlayerWeaponSlot(client, 0);
+    if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
+        return;
+
+    if (!g_bWeaponUpgraded[weapon])
+        return;
+
+    // Sync m_nUpgradedPrimaryAmmoLoaded = clip so game renders upgrade tracer
+    int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
+    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
+
+    // Re-apply upgradeBitVec in case game cleared it
+    int upgBit = (g_iWeaponUpgradeType[weapon] == UPGRADE_INCENDIARY) ? UPGBIT_INCENDIARY : UPGBIT_EXPLOSIVE;
+    int bits = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
+    if (!(bits & upgBit))
+    {
+        bits |= upgBit;
+        SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
+    }
+}
+
+// ============================================================
 //  OnTakeDamage: inject DMG_BURN / DMG_BLAST
 // ============================================================
 
@@ -140,7 +179,7 @@ Action OnTakeDamage_Client(int victim, int &attacker, int &inflictor, float &dam
     if (!IsClientInGame(victim) || GetClientTeam(victim) != 3)
         return Plugin_Continue;
 
-    return ApplyUpgradeDamage(weapon, damagetype);
+    return ApplyUpgradeDamage(victim, weapon, damagetype);
 }
 
 Action OnTakeDamage_Infected(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
@@ -154,10 +193,10 @@ Action OnTakeDamage_Infected(int victim, int &attacker, int &inflictor, float &d
     if (!IsClientInGame(attacker) || GetClientTeam(attacker) != 2 || !IsPlayerAlive(attacker))
         return Plugin_Continue;
 
-    return ApplyUpgradeDamage(weapon, damagetype);
+    return ApplyUpgradeDamage(victim, weapon, damagetype);
 }
 
-Action ApplyUpgradeDamage(int weapon, int &damagetype)
+Action ApplyUpgradeDamage(int victim, int weapon, int &damagetype)
 {
     if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
         return Plugin_Continue;
@@ -173,6 +212,12 @@ Action ApplyUpgradeDamage(int weapon, int &damagetype)
     }
     else if (upgradeType == UPGRADE_EXPLOSIVE)
     {
+        // Skip DMG_BLAST on Tank — prevents stagger
+        if (victim >= 1 && victim <= MaxClients && IsClientInGame(victim))
+        {
+            if (GetEntProp(victim, Prop_Send, "m_zombieClass") == ZC_TANK)
+                return Plugin_Continue;
+        }
         damagetype |= DMG_BLAST;
         return Plugin_Changed;
     }
@@ -183,9 +228,6 @@ Action ApplyUpgradeDamage(int weapon, int &damagetype)
 // ============================================================
 //  Core: upgrade pack used
 // ============================================================
-
-// Per-client pending data across RequestFrame
-int  g_iPendingPackType[MAXPLAYERS + 1];
 
 Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float value)
 {
@@ -226,9 +268,8 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
     // Mark weapon state
     g_bWeaponUpgraded[weapon]    = true;
     g_iWeaponUpgradeType[weapon] = packType;
-    g_iPendingPackType[client]   = packType;
 
-    // Apply visual via RequestFrame (after game engine sets upgradeBitVec)
+    // Apply visual via RequestFrame (after game engine processes the pack)
     RequestFrame(Frame_ApplyVisual, EntIndexToEntRef(weapon));
 
     char typeName[32];
@@ -251,6 +292,10 @@ void Frame_ApplyVisual(int weaponRef)
     int bits = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
     bits |= upgBit;
     SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
+
+    // Also set initial m_nUpgradedPrimaryAmmoLoaded for immediate visual
+    int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
+    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
 }
 
 // ============================================================
@@ -334,4 +379,3 @@ bool IsValidClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
-

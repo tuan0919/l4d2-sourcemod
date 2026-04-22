@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "3.2.0"
+#define PLUGIN_VERSION  "3.3.0"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -220,7 +220,7 @@ Action Timer_RestoreUpgrade(Handle timer, int userid)
 
     char typeName[32];
     GetUpgradeName(g_iClientSaveType[client], typeName, sizeof(typeName));
-    PrintToChat(client, "\x04[Upgrade Ammo]\x01 Dan \x05%s\x01 da duoc khoi phuc.", typeName);
+    PrintToChat(client, "\x04[Upgrade Ammo]\x01 \x05%s\x01 ammo restored.", typeName);
 
     g_bClientHasSave[client] = false;
 
@@ -429,23 +429,9 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
                     ? UPGRADE_EXPLOSIVE
                     : UPGRADE_INCENDIARY;
 
-    // Already upgraded with different type — block
-    if (g_bWeaponUpgraded[weapon] && g_iWeaponUpgradeType[weapon] != packType)
-    {
-        char typeName[32];
-        GetUpgradeName(g_iWeaponUpgradeType[weapon], typeName, sizeof(typeName));
-        PrintToChat(client, "\x04[Upgrade Ammo]\x01 Sung dang dung dan \x05%s\x01. Khong the doi loai.", typeName);
-        return Plugin_Continue;
-    }
+    // Apply / switch upgrade type freely
+    bool isSwitch = g_bWeaponUpgraded[weapon] && g_iWeaponUpgradeType[weapon] != packType;
 
-    // Already upgraded with same type — no-op
-    if (g_bWeaponUpgraded[weapon])
-    {
-        PrintToChat(client, "\x04[Upgrade Ammo]\x01 Sung da duoc nang cap roi.");
-        return Plugin_Continue;
-    }
-
-    // Mark weapon state
     g_bWeaponUpgraded[weapon]    = true;
     g_iWeaponUpgradeType[weapon] = packType;
     g_bWeaponReloading[weapon]   = false;
@@ -455,7 +441,10 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
 
     char typeName[32];
     GetUpgradeName(packType, typeName, sizeof(typeName));
-    PrintToChat(client, "\x04[Upgrade Ammo]\x01 Nap dan \x05%s\x01 vinh vien cho sung nay.", typeName);
+    if (isSwitch)
+        PrintToChat(client, "\x04[Upgrade Ammo]\x01 Switched to \x05%s\x01 ammo.", typeName);
+    else
+        PrintToChat(client, "\x04[Upgrade Ammo]\x01 Weapon upgraded with permanent \x05%s\x01 ammo.", typeName);
 
     return Plugin_Continue;
 }
@@ -517,9 +506,9 @@ void GetUpgradeName(int upgradeType, char[] buffer, int maxlen)
 {
     switch (upgradeType)
     {
-        case UPGRADE_INCENDIARY: strcopy(buffer, maxlen, "Lua");
-        case UPGRADE_EXPLOSIVE:  strcopy(buffer, maxlen, "No");
-        default:                 strcopy(buffer, maxlen, "Khong ro");
+        case UPGRADE_INCENDIARY: strcopy(buffer, maxlen, "Incendiary");
+        case UPGRADE_EXPLOSIVE:  strcopy(buffer, maxlen, "Explosive");
+        default:                 strcopy(buffer, maxlen, "Unknown");
     }
 }
 
@@ -527,3 +516,5 @@ bool IsValidClient(int client)
 {
     return (client > 0 && client <= MaxClients && IsClientInGame(client));
 }
+
+

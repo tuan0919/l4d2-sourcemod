@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.8"
+#define PLUGIN_VERSION "1.0.9"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -37,6 +37,8 @@ bool g_bPipeConsumed[MAXPLAYERS + 1];
 bool g_bHasPipeLastPos[MAXPLAYERS + 1];
 float g_vPipeLastPos[MAXPLAYERS + 1][3];
 int g_iForceKillVictimUserId[MAXPLAYERS + 1];
+int g_iRecentKillAttackerUserId[MAXPLAYERS + 1];
+float g_fRecentKillTime[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -57,7 +59,32 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 	MarkNativeAsOptional("EliteSI_IsElite");
 	MarkNativeAsOptional("EliteSI_GetSubtype");
+	CreateNative("EliteSI_JockeyHeroic_GetRecentDamageCause", Native_GetRecentDamageCause);
+	CreateNative("EliteSI_JockeyHeroic_GetRecentDamageAttacker", Native_GetRecentDamageAttacker);
+	RegPluginLibrary("l4d2_elite_si_jockey_heroic");
 	return APLRes_Success;
+}
+
+public any Native_GetRecentDamageCause(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	if (victim <= 0 || victim > MaxClients)
+	{
+		return 0;
+	}
+
+	return (GetGameTime() - g_fRecentKillTime[victim]) <= 4.0 ? 1 : 0;
+}
+
+public any Native_GetRecentDamageAttacker(Handle plugin, int numParams)
+{
+	int victim = GetNativeCell(1);
+	if (victim <= 0 || victim > MaxClients || (GetGameTime() - g_fRecentKillTime[victim]) > 4.0)
+	{
+		return 0;
+	}
+
+	return GetClientOfUserId(g_iRecentKillAttackerUserId[victim]);
 }
 
 public void OnPluginStart()
@@ -945,6 +972,9 @@ void ForceKillRideVictimNow(int victimUserId, int attackerUserId, bool allowSuic
 	}
 
 	int attacker = GetClientOfUserId(attackerUserId);
+	g_iRecentKillAttackerUserId[victim] = attackerUserId;
+	g_fRecentKillTime[victim] = GetGameTime();
+
 	int damageAttacker = attacker > 0 ? attacker : victim;
 	SDKHooks_TakeDamage(victim, damageAttacker, damageAttacker, 10000.0, DMG_BLAST);
 
@@ -1032,6 +1062,8 @@ void RemoveTrackedPipe(int client)
 	g_bPipeDecorated[client] = false;
 	g_bHasPipeLastPos[client] = false;
 	g_iForceKillVictimUserId[client] = 0;
+	g_iRecentKillAttackerUserId[client] = 0;
+	g_fRecentKillTime[client] = 0.0;
 }
 
 bool HasTrackedPipe(int client)

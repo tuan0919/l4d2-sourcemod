@@ -88,6 +88,7 @@ Loi ich:
 - Logic nay dung chung path targetname + snapshot inflictor + recent explosion ring buffer voi Hunter Heroic.
 - Neu Jockey Heroic module dung `ForcePlayerSuicide` de ket lieu survivor dang bi ride sau khi pipe no, Red Announce van uu tien recent heroic pipe ring buffer truoc self/suicide fallback.
 - Suicide fallback gan pipe Jockey se hien `Elite Jockey (Heroic)` killed survivor voi cause `Heroic Pipebomb`.
+- Them native integration voi `l4d2_elite_si_jockey_heroic`: `EliteSI_JockeyHeroic_GetRecentDamageCause/Attacker` de resolve chac chan case forced suicide thanh `Elite Jockey (Heroic)` + `Heroic Pipebomb`.
 
 ## Khuyen nghi sau khi deploy
 

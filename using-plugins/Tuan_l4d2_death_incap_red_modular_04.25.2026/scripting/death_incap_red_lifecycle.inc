@@ -10,6 +10,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
     MarkNativeAsOptional("EliteSI_Ignitor_GetRecentDamageAttacker");
     MarkNativeAsOptional("EliteSI_Leaker_GetRecentDamageCause");
     MarkNativeAsOptional("EliteSI_Leaker_GetRecentDamageAttacker");
+    MarkNativeAsOptional("EliteSI_JockeyHeroic_GetRecentDamageCause");
+    MarkNativeAsOptional("EliteSI_JockeyHeroic_GetRecentDamageAttacker");
     return APLRes_Success;
 }
 

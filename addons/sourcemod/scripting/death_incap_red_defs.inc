@@ -17,8 +17,10 @@ native int EliteSI_Ignitor_GetRecentDamageCause(int victim);
 native int EliteSI_Ignitor_GetRecentDamageAttacker(int victim);
 native int EliteSI_Leaker_GetRecentDamageCause(int victim);
 native int EliteSI_Leaker_GetRecentDamageAttacker(int victim);
+native int EliteSI_JockeyHeroic_GetRecentDamageCause(int victim);
+native int EliteSI_JockeyHeroic_GetRecentDamageAttacker(int victim);
 
-#define PLUGIN_VERSION "1.0.2"
+#define PLUGIN_VERSION "1.0.3"
 #define ANCHOR_NAME "SI_RedAnchor"
 #define SNAPSHOT_VALID_WINDOW 1.5
 #define INCAP_ANNOUNCE_DELAY 0.45

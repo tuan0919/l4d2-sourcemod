@@ -237,7 +237,8 @@ OnEntityDestroyed(pipe)
 ResolveAttacker / ResolveSpecialInfectedCause
         ├─ uu tien targetname tren attackerEnt/snapshot inflictor
         ├─ neu entity da mat: FindRecentHeroicPipeExplosion(victimPos)
-        └─ neu death event la self/suicide gan thoi diem pipe no: van uu tien recent heroic pipe truoc self fallback
+        ├─ neu death event la self/suicide gan thoi diem pipe no: van uu tien recent heroic pipe truoc self fallback
+        └─ neu Jockey Heroic dung forced suicide: query native `EliteSI_JockeyHeroic_GetRecentDamageCause`
                 ├─ Hunter -> "Elite Hunter (Heroic)"
                 └─ Jockey -> "Elite Jockey (Heroic)"
 ```

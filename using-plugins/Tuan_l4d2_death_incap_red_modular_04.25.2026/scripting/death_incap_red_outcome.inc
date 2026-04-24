@@ -59,6 +59,13 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 		return Attacker_SI;
     }
 
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_JockeyHeroic_GetRecentDamageCause") == FeatureStatus_Available
+        && EliteSI_JockeyHeroic_GetRecentDamageCause(victim) > 0)
+    {
+        strcopy(attackerLabel, maxlen, "Elite Jockey (Heroic)");
+        return Attacker_SI;
+    }
+
     int pipeKind = HEROIC_PIPE_NONE;
     int pipeOwner = 0;
     if (FindRecentHeroicPipeExplosionForVictim(victim, 1.25, 600.0, pipeOwner, pipeKind))
@@ -746,6 +753,13 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
                 case 1: { strcopy(cause, maxlen, "Boomer Leaker Fire"); return true; }
             }
         }
+    }
+
+    if (GetFeatureStatus(FeatureType_Native, "EliteSI_JockeyHeroic_GetRecentDamageCause") == FeatureStatus_Available
+        && EliteSI_JockeyHeroic_GetRecentDamageCause(victim) > 0)
+    {
+        strcopy(cause, maxlen, "Heroic Pipebomb");
+        return true;
     }
 
     int noxiousCause = 0;

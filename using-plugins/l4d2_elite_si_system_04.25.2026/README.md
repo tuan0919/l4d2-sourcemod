@@ -210,6 +210,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Hotfix damage khi pipe con tren tay: them pre-detonate drop sat thoi diem fuse het de engine explosion va manual damage cung dung tam no nhu case pipe da roi dat.
 - Don gian hoa rule bounce: neu pipebomb het fuse khi Jockey van dang ride survivor, survivor dang bi ride se bi force-kill truc tiep, khong phu thuoc tinh damage/radius.
 - Force-kill bounce gio chay bang timer rieng sau thoi diem pipe no va co fallback `ForcePlayerSuicide` neu damage cua engine chi lam survivor incap.
+- Expose native `EliteSI_JockeyHeroic_GetRecentDamageCause/Attacker` de Red Announce resolve dung kill message khi fallback suicide duoc dung sau pipe no.
 
 ### 24/04/2026
 

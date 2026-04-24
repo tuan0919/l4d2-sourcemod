@@ -203,6 +203,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khi ride bi gian doan hoac Jockey bi giet, active pipebomb duoc `ClearParent`, roi xuong dat/xac va tiep tuc dem nguoc thay vi reset timer.
 - Khi Jockey chet truoc khi bat survivor, module spawn pipebomb projectile that duoi chan voi fuse day du.
 - Damage va attribution cua `Jockey Heroic` da dong bo voi `Hunter Heroic`: direct survivor damage bypass difficulty scaling, co falloff theo radius, co damage common infected va inflictor la pipe entity targetname `elite_jockey_heroic_pipe` de Red Announce trace credit.
+- Hotfix damage khi pipebomb no luc van parent tren tay Jockey: manual blast gio lay tam no theo survivor dang bi ride/Jockey hien tai thay vi origin stale cua projectile dang parent.
 
 ### 24/04/2026
 

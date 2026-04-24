@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.4"
+#define PLUGIN_VERSION "1.0.5"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -32,6 +32,8 @@ Handle g_hStateTimer[MAXPLAYERS + 1];
 bool g_bPipeArmed[MAXPLAYERS + 1];
 bool g_bPipeAttached[MAXPLAYERS + 1];
 bool g_bPipeDecorated[MAXPLAYERS + 1];
+bool g_bHasPipeLastPos[MAXPLAYERS + 1];
+float g_vPipeLastPos[MAXPLAYERS + 1][3];
 
 public Plugin myinfo =
 {
@@ -179,20 +181,16 @@ public void OnEntityDestroyed(int entity)
 		if (g_iPipeEnt[i] != 0 && EntRefToEntIndex(g_iPipeEnt[i]) == entity)
 		{
 			bool wasArmed = g_bPipeArmed[i];
+			bool wasAttached = g_bPipeAttached[i];
 			float pipePos[3];
-			bool hasPipePos = false;
-
-			if (wasArmed && IsValidEdict(entity))
-			{
-				GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pipePos);
-				hasPipePos = true;
-			}
+			bool hasPipePos = wasArmed && GetExplosionDamagePosition(i, entity, wasAttached, pipePos);
 
 			StopStateTimer(i);
 			g_iPipeEnt[i] = 0;
 			g_bPipeArmed[i] = false;
 			g_bPipeAttached[i] = false;
 			g_bPipeDecorated[i] = false;
+			g_bHasPipeLastPos[i] = false;
 
 			if (wasArmed && g_cvEnable.BoolValue && hasPipePos)
 			{
@@ -288,6 +286,7 @@ void CreatePipeProp(int client, bool attachToHand)
 	g_bPipeArmed[client] = false;
 	g_bPipeAttached[client] = false;
 	g_bPipeDecorated[client] = false;
+	UpdatePipeLastPosition(client, false);
 	StartStateTimer(client);
 
 	if (attachToHand)
@@ -313,6 +312,7 @@ void AttachPipeToHand(int client)
 	SetVariantString(PIPE_ATTACHMENT);
 	AcceptEntityInput(entity, "SetParentAttachment", client);
 	g_bPipeAttached[client] = true;
+	UpdatePipeLastPosition(client, true);
 }
 
 void ArmPipebomb(int client, bool keepAttached)
@@ -343,6 +343,7 @@ void ArmPipebomb(int client, bool keepAttached)
 	g_bPipeArmed[client] = true;
 	g_bPipeAttached[client] = false;
 	g_bPipeDecorated[client] = false;
+	UpdatePipeLastPosition(client, false);
 	DecoratePipebomb(client);
 	StartStateTimer(client);
 
@@ -461,6 +462,8 @@ Action Timer_CheckHeroicState(Handle timer, int userId)
 
 	if (g_bPipeArmed[client])
 	{
+		UpdatePipeLastPosition(client, g_bPipeAttached[client]);
+
 		if (g_bPipeAttached[client] && !IsJockeyCurrentlyRiding(client))
 		{
 			DropPipebomb(client);
@@ -503,6 +506,8 @@ Action Timer_MonitorRide(Handle timer, int userId)
 		return Plugin_Stop;
 	}
 
+	UpdatePipeLastPosition(client, true);
+
 	return Plugin_Continue;
 }
 
@@ -533,7 +538,11 @@ void DropPipebomb(int client)
 	AcceptEntityInput(entity, "ClearParent");
 
 	float pos[3], vel[3];
-	if (client > 0 && client <= MaxClients && IsClientInGame(client))
+	if (GetLiveJockeyRidePosition(client, pos))
+	{
+		pos[2] += 6.0;
+	}
+	else if (client > 0 && client <= MaxClients && IsClientInGame(client))
 	{
 		GetClientAbsOrigin(client, pos);
 		pos[2] += 6.0;
@@ -543,6 +552,95 @@ void DropPipebomb(int client)
 		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
 	}
 	TeleportEntity(entity, pos, NULL_VECTOR, vel);
+	StorePipeLastPosition(client, pos);
+}
+
+bool GetExplosionDamagePosition(int client, int entity, bool wasAttached, float pos[3])
+{
+	if (wasAttached && GetLiveJockeyRidePosition(client, pos))
+	{
+		return true;
+	}
+
+	if (wasAttached && client > 0 && client <= MaxClients && IsClientInGame(client))
+	{
+		GetClientAbsOrigin(client, pos);
+		return true;
+	}
+
+	if (g_bHasPipeLastPos[client])
+	{
+		pos[0] = g_vPipeLastPos[client][0];
+		pos[1] = g_vPipeLastPos[client][1];
+		pos[2] = g_vPipeLastPos[client][2];
+		return true;
+	}
+
+	if (IsValidEdict(entity))
+	{
+		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
+		return true;
+	}
+
+	return false;
+}
+
+bool GetLiveJockeyRidePosition(int client, float pos[3])
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
+		return false;
+	}
+
+	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
+	if (victim > 0 && victim <= MaxClients && IsClientInGame(victim) && GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") == client)
+	{
+		GetClientAbsOrigin(victim, pos);
+		return true;
+	}
+
+	if (IsPlayerAlive(client))
+	{
+		GetClientAbsOrigin(client, pos);
+		return true;
+	}
+
+	return false;
+}
+
+void UpdatePipeLastPosition(int client, bool attached)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	float pos[3];
+	if (attached && GetLiveJockeyRidePosition(client, pos))
+	{
+		StorePipeLastPosition(client, pos);
+		return;
+	}
+
+	int entity = GetPipeEntity(client);
+	if (entity > 0 && IsValidEdict(entity))
+	{
+		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
+		StorePipeLastPosition(client, pos);
+	}
+}
+
+void StorePipeLastPosition(int client, const float pos[3])
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	g_bHasPipeLastPos[client] = true;
+	g_vPipeLastPos[client][0] = pos[0];
+	g_vPipeLastPos[client][1] = pos[1];
+	g_vPipeLastPos[client][2] = pos[2];
 }
 
 void DecoratePipebomb(int client)
@@ -762,6 +860,7 @@ void RemoveTrackedPipe(int client)
 	g_bPipeArmed[client] = false;
 	g_bPipeAttached[client] = false;
 	g_bPipeDecorated[client] = false;
+	g_bHasPipeLastPos[client] = false;
 }
 
 bool HasTrackedPipe(int client)

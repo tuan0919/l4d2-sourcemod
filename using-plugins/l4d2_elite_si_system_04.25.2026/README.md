@@ -206,6 +206,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khi Jockey chet truoc khi bat survivor, module spawn pipebomb projectile that duoi chan voi fuse day du.
 - Damage va attribution cua `Jockey Heroic` da dong bo voi `Hunter Heroic`: direct survivor damage bypass difficulty scaling, co falloff theo radius, co damage common infected va inflictor la pipe entity targetname `elite_jockey_heroic_pipe` de Red Announce trace credit.
 - Hotfix damage khi pipebomb no luc van parent tren tay Jockey: manual blast gio lay tam no theo survivor dang bi ride/Jockey hien tai thay vi origin stale cua projectile dang parent.
+- Hotfix lifecycle pipebomb: active pipe chi duoc consume mot lan. Sau khi pipe dang cam da no, death event cua Jockey khong con spawn them pipe moi tu xac.
+- Hotfix damage khi pipe con tren tay: them pre-detonate drop sat thoi diem fuse het de engine explosion va manual damage cung dung tam no nhu case pipe da roi dat.
 
 ### 24/04/2026
 

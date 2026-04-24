@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.5"
+#define PLUGIN_VERSION "1.0.6"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -29,9 +29,11 @@ bool g_bHasEliteApi;
 Handle g_hSdkActivatePipe;
 int g_iPipeEnt[MAXPLAYERS + 1];
 Handle g_hStateTimer[MAXPLAYERS + 1];
+Handle g_hPreDetonateTimer[MAXPLAYERS + 1];
 bool g_bPipeArmed[MAXPLAYERS + 1];
 bool g_bPipeAttached[MAXPLAYERS + 1];
 bool g_bPipeDecorated[MAXPLAYERS + 1];
+bool g_bPipeConsumed[MAXPLAYERS + 1];
 bool g_bHasPipeLastPos[MAXPLAYERS + 1];
 float g_vPipeLastPos[MAXPLAYERS + 1][3];
 
@@ -153,6 +155,7 @@ public void EliteSI_OnEliteAssigned(int client, int zClass, int subtype)
 {
 	if (zClass == ZC_JOCKEY && subtype == ELITE_SUBTYPE_JOCKEY_HEROIC)
 	{
+		g_bPipeConsumed[client] = false;
 		CreatePipeProp(client, true);
 		StartStateTimer(client);
 	}
@@ -186,6 +189,7 @@ public void OnEntityDestroyed(int entity)
 			bool hasPipePos = wasArmed && GetExplosionDamagePosition(i, entity, wasAttached, pipePos);
 
 			StopStateTimer(i);
+			StopPreDetonateTimer(i);
 			g_iPipeEnt[i] = 0;
 			g_bPipeArmed[i] = false;
 			g_bPipeAttached[i] = false;
@@ -249,6 +253,11 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	if (g_bPipeArmed[client])
 	{
 		DropPipebomb(client);
+		return;
+	}
+
+	if (g_bPipeConsumed[client])
+	{
 		return;
 	}
 
@@ -343,9 +352,11 @@ void ArmPipebomb(int client, bool keepAttached)
 	g_bPipeArmed[client] = true;
 	g_bPipeAttached[client] = false;
 	g_bPipeDecorated[client] = false;
+	g_bPipeConsumed[client] = true;
 	UpdatePipeLastPosition(client, false);
 	DecoratePipebomb(client);
 	StartStateTimer(client);
+	StartPreDetonateTimer(client);
 
 	if (keepAttached)
 	{
@@ -384,6 +395,51 @@ void StopStateTimer(int client)
 		KillTimer(g_hStateTimer[client]);
 		g_hStateTimer[client] = null;
 	}
+}
+
+void StartPreDetonateTimer(int client)
+{
+	StopPreDetonateTimer(client);
+
+	float delay = g_cvExplodeTime.FloatValue - 0.12;
+	if (delay < 0.10)
+	{
+		delay = 0.10;
+	}
+
+	g_hPreDetonateTimer[client] = CreateTimer(delay, Timer_PreDetonatePipebomb, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void StopPreDetonateTimer(int client)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
+	}
+
+	if (g_hPreDetonateTimer[client] != null)
+	{
+		KillTimer(g_hPreDetonateTimer[client]);
+		g_hPreDetonateTimer[client] = null;
+	}
+}
+
+Action Timer_PreDetonatePipebomb(Handle timer, int userId)
+{
+	int client = GetClientOfUserId(userId);
+	if (client <= 0 || client > MaxClients)
+	{
+		return Plugin_Stop;
+	}
+
+	g_hPreDetonateTimer[client] = null;
+
+	if (g_bPipeArmed[client] && g_bPipeAttached[client] && GetPipeEntity(client) > 0)
+	{
+		DropPipebomb(client);
+	}
+
+	return Plugin_Stop;
 }
 
 int CreateActivePipebomb(int client)
@@ -456,7 +512,6 @@ Action Timer_CheckHeroicState(Handle timer, int userId)
 	if (!IsPlayerAlive(client))
 	{
 		DropPipebomb(client);
-		ArmPipebomb(client, false);
 		return Plugin_Continue;
 	}
 
@@ -836,8 +891,10 @@ void ResetClientState(int client, bool cancelTimer)
 	if (cancelTimer)
 	{
 		g_bPipeArmed[client] = false;
+		g_bPipeConsumed[client] = false;
 	}
 	StopStateTimer(client);
+    StopPreDetonateTimer(client);
 
 	RemoveTrackedPipe(client);
 }

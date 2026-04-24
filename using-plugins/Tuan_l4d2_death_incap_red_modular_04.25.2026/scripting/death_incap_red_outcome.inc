@@ -59,6 +59,14 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 		return Attacker_SI;
     }
 
+    int pipeKind = HEROIC_PIPE_NONE;
+    int pipeOwner = 0;
+    if (FindRecentHeroicPipeExplosionForVictim(victim, 1.25, 600.0, pipeOwner, pipeKind))
+    {
+        GetHeroicPipeAttackerLabel(pipeKind, attackerLabel, maxlen);
+        return Attacker_SI;
+    }
+
     if (IsInGameClient(attackerClient))
     {
         if (attackerClient == victim)
@@ -184,11 +192,11 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
         {
             float victimPos[3];
             GetClientEyePosition(victim, victimPos);
-            int pipeOwner = 0;
-            int pipeKind = HEROIC_PIPE_NONE;
-            if (FindRecentHeroicPipeExplosion(victimPos, 3.0, 600.0, pipeOwner, pipeKind))
+            int selfPipeOwner = 0;
+            int selfPipeKind = HEROIC_PIPE_NONE;
+            if (FindRecentHeroicPipeExplosion(victimPos, 3.0, 600.0, selfPipeOwner, selfPipeKind))
             {
-                GetHeroicPipeAttackerLabel(pipeKind, attackerLabel, maxlen);
+                GetHeroicPipeAttackerLabel(selfPipeKind, attackerLabel, maxlen);
                 return Attacker_SI;
             }
         }
@@ -200,6 +208,21 @@ AttackerKind ResolveAttacker(int victim, int attackerClient, int attackerEnt, in
 
     attackerLabel[0] = '\0';
     return Attacker_Unknown;
+}
+
+bool FindRecentHeroicPipeExplosionForVictim(int victim, float window, float maxDist, int &owner, int &pipeKind)
+{
+    owner = 0;
+    pipeKind = HEROIC_PIPE_NONE;
+
+    if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+    {
+        return false;
+    }
+
+    float victimPos[3];
+    GetClientEyePosition(victim, victimPos);
+    return FindRecentHeroicPipeExplosion(victimPos, window, maxDist, owner, pipeKind);
 }
 
 int GetHeroicPipeKindFromTargetname(const char[] targetname)
@@ -821,6 +844,14 @@ bool ResolveSpecialInfectedCause(int victim, int attackerClient, int attackerEnt
     }
 
     // Check heroic pipe explosion ring buffer (pipe entity đã destroy trước damage)
+    int recentPipeOwner = 0;
+    int recentPipeKind = HEROIC_PIPE_NONE;
+    if (FindRecentHeroicPipeExplosionForVictim(victim, 1.25, 600.0, recentPipeOwner, recentPipeKind))
+    {
+        strcopy(cause, maxlen, "Heroic Pipebomb");
+        return true;
+    }
+
     if ((dmgType & DMG_BLAST) != 0 && victim > 0 && victim <= MaxClients && IsClientInGame(victim))
     {
         float victimPos[3];

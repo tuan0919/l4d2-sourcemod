@@ -86,6 +86,8 @@ Loi ich:
 - Ring buffer heroic pipe explosion gio luu them loai pipe (`Hunter`/`Jockey`) de khi pipe entity destroy truoc damage event van resolve dung attacker label.
 - Incap/death do pipebomb Jockey Heroic gio hien credit `Elite Jockey (Heroic)` va cause `Heroic Pipebomb` thay vi fallback sang self/explosive hoac nham Hunter Heroic.
 - Logic nay dung chung path targetname + snapshot inflictor + recent explosion ring buffer voi Hunter Heroic.
+- Neu Jockey Heroic module dung `ForcePlayerSuicide` de ket lieu survivor dang bi ride sau khi pipe no, Red Announce van uu tien recent heroic pipe ring buffer truoc self/suicide fallback.
+- Suicide fallback gan pipe Jockey se hien `Elite Jockey (Heroic)` killed survivor voi cause `Heroic Pipebomb`.
 
 ## Khuyen nghi sau khi deploy
 

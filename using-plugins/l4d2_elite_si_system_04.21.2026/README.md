@@ -92,8 +92,20 @@ He thong moi da tach thanh bo module nho, load doc lap:
    - Export native `EliteSI_IsChargerAction(client)` de plugin charger action logic goi truc tiep
 
 13. `scripting/l4d2_elite_si_boomer_flashbang.sp`
-   - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
-   - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
+    - Nhanh subtype rieng cho Boomer elite theo trait Flashbang
+    - Khi bi giet, boomer se gay hieu ung flash cho survivor dang thay no
+
+14. `scripting/l4d2_elite_si_jockey_jumper.sp`
+    - Nhanh subtype rieng cho Jockey elite theo trait `Jumper`
+    - Khi da cuoi trung survivor, Jockey se lien tuc day survivor nay nhay len cao
+    - Muc tieu la tao them fall damage khi survivor bi roi xuong sau moi lan nhay
+
+15. `scripting/l4d2_elite_si_jockey_heroic.sp`
+    - Nhanh subtype rieng cho Jockey elite theo trait `Heroic`
+    - Gan pipebomb len mieng Jockey khi spawn
+    - Khi bat survivor, pipebomb that duoc kich hoat va dem nguoc tren mieng Jockey
+    - Neu ride bi gian doan hoac Jockey bi giet, pipebomb roi xuong duoi chan/xac va tiep tuc dem nguoc
+    - Khi no gay damage lon trong vung xung quanh
 
 ## Subtype mapping dang dung
 
@@ -111,6 +123,9 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `32`: Sneaky
 - `33`: Leaker
 - `34`: Heroic
+- `35`: Unstoppable
+- `36`: Jumper
+- `37`: Jockey Heroic
 
 ## Rule gan subtype hien tai
 
@@ -132,10 +147,10 @@ He thong moi da tach thanh bo module nho, load doc lap:
   - Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Acid Pool`, `Sneaky`
 
 - `Jockey`
-  - Hien tai chi co `Abnormal behavior`
+  - Roll trong so giua `Abnormal behavior`, `Jumper` va `Heroic`
 
 - `Charger`
-  - Roll trong so giua `Abnormal behavior`, `ChargerSteering`, `ChargerAction`
+  - Roll trong so giua `Abnormal behavior`, `ChargerSteering`, `ChargerAction`, `Unstoppable`
 
 - `Tank`
   - Roll trong so giua `Abnormal behavior` va `Strange Movement`
@@ -155,8 +170,11 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_boomer_leaker_*`
 - `l4d2_elite_charger_steering_*`
 - `l4d2_elite_charger_action_*`
+- `l4d2_elite_si_charger_unstoppable_*`
 - `l4d2_elite_si_boomer_flashbang_*`
 - `l4d2_elite_si_hunter_heroic_*`
+- `l4d2_elite_si_jockey_jumper_*`
+- `l4d2_elite_si_jockey_heroic_*`
 
 ## Flow hien tai
 
@@ -177,6 +195,12 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khong con giu force subtype, UI card, config map hoac doc tham chieu cho 2 nhanh tren.
 
 ## Changelog tom tat
+
+### 24/04/2026
+
+- Them `Jockey Jumper`: Elite Jockey lien tuc nhay khi dang ride survivor, moi lan nhay day survivor len cao de tao them fall damage khi roi xuong.
+- Them subtype roll weight `l4d2_elite_si_core_jockey_jumper_subtype_chance` va module config rieng `l4d2_elite_si_jockey_jumper_*`.
+- Them thu nghiem `Jockey Heroic`: Jockey mang pipebomb tren mieng, kich hoat khi ride survivor, roi pipebomb neu bi gian doan/bi giet, va no gay damage lon quanh khu vuc.
 
 ### 21/04/2026
 

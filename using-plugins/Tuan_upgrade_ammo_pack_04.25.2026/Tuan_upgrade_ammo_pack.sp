@@ -277,7 +277,7 @@ public void OnFireBulletsPost(int client, int shots, const char[] weaponname)
 }
 
 // ============================================================
-//  WeaponReload: keep visual synced while game reloads
+//  WeaponReload: clear visual while game reloads so HUD shows real ammo
 // ============================================================
 
 Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
@@ -296,15 +296,16 @@ Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
     if (!g_bWeaponUpgraded[weapon])
         return Plugin_Continue;
 
-    // Track reload instead of clearing upgrade props. Clearing them can drop the
-    // upgraded magazine if reload is interrupted by stagger or SI control.
+    // Clear upgrade visual during reload so HUD shows the real clip/reserve.
+    // The watcher restores it after mag reload completes, shotgun reload ends,
+    // or reload gets interrupted by stagger/SI control.
     int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
     g_iReloadStartClip[weapon] = clip;
     g_iReloadLastClip[weapon]  = clip;
     g_fReloadStartTime[weapon] = GetGameTime();
     g_bWeaponReloading[weapon] = true;
 
-    ApplyUpgradeVisualNow(weapon);
+    ClearUpgradeVisualNow(weapon);
 
     // Watch for reload completion via PostThink
     StartReloadWatch(client);
@@ -313,7 +314,7 @@ Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
 }
 
 // ============================================================
-//  PostThink: keep upgrade visual alive until reload ends or is interrupted
+//  PostThink: restore upgrade visual when reload ends or is interrupted
 // ============================================================
 
 public void OnPostThink_ReloadWatch(int client)
@@ -337,14 +338,16 @@ public void OnPostThink_ReloadWatch(int client)
         g_iReloadLastClip[weapon] = clip;
     }
 
-    ApplyUpgradeVisualNow(weapon);
+    if (!IsShotgunWeapon(weapon) && clip > g_iReloadStartClip[weapon])
+    {
+        FinishReloadWatch(client, weapon);
+        return;
+    }
 
     if (ShouldContinueReloadWatch(client, weapon))
         return;
 
-    g_bWeaponReloading[weapon] = false;
-    ApplyUpgradeVisualNow(weapon);
-    StopReloadWatch(client);
+    FinishReloadWatch(client, weapon);
 }
 
 // ============================================================
@@ -514,6 +517,25 @@ void ApplyUpgradeVisualNow(int weapon)
 
     int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
     SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
+}
+
+void ClearUpgradeVisualNow(int weapon)
+{
+    if (!IsValidEntity(weapon) || weapon <= MaxClients)
+        return;
+
+    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", 0);
+
+    int bits = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
+    bits &= ~(UPGBIT_INCENDIARY | UPGBIT_EXPLOSIVE);
+    SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
+}
+
+void FinishReloadWatch(int client, int weapon)
+{
+    g_bWeaponReloading[weapon] = false;
+    ApplyUpgradeVisualNow(weapon);
+    StopReloadWatch(client);
 }
 
 void StartReloadWatch(int client)

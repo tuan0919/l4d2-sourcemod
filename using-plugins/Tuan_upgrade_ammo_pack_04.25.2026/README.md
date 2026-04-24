@@ -28,10 +28,10 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 ### Khi reload
 
 - Hook event `weapon_reload`.
-- Không clear `m_nUpgradedPrimaryAmmoLoaded` hoặc `m_upgradeBitVec` ở reload start.
-- Dùng `SDKHook_PostThink` để giữ visual upgrade sống trong suốt reload.
-- Mỗi tick reload đều sync `m_nUpgradedPrimaryAmmoLoaded` theo clip hiện tại.
-- Với shotgun nạp từng viên, watcher không dừng ở viên đầu tiên nên các viên nạp sau vẫn được hiển thị là đạn upgrade.
+- Clear `m_nUpgradedPrimaryAmmoLoaded` và upgrade ammo bit ở reload start để HUD hiển thị lượng đạn thật trong súng/reserve.
+- Dùng `SDKHook_PostThink` để restore upgrade visual sau khi reload xong hoặc bị interrupt.
+- Với súng nạp cả băng một lần, restore khi clip tăng so với clip lúc bắt đầu reload.
+- Với shotgun nạp từng viên, watcher không restore ở viên đầu tiên; nó chờ reload kết thúc hoặc bị interrupt rồi mới restore upgrade visual theo clip hiện tại.
 - Nếu reload bị interrupt do stagger, bị SI bắt, đổi weapon hoặc reload prop báo kết thúc, plugin restore lại upgrade visual theo clip hiện tại rồi dừng watcher.
 
 ### Block ammo pile
@@ -62,7 +62,8 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 
 - Fix shotgun reload từng viên chỉ hiển thị upgrade ammo ở viên đầu tiên sau khi reload.
 - Fix upgrade ammo visual/state có thể biến mất khi reload bị interrupt bởi stagger, bị SI bắt hoặc đổi weapon.
-- Không còn clear upgrade props ở reload start; thay bằng PostThink watcher để sync liên tục theo clip.
+- Giữ behavior cũ: clear upgrade visual trong lúc reload để người chơi thấy lượng đạn thật.
+- Riêng shotgun chờ reload kết thúc/interrupted rồi mới restore upgrade visual, tránh kẹt ở viên đầu tiên.
 - Thêm guard chống hook PostThink trùng trên cùng client.
 
 ### v3.3.0 (22/04/2026)

@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.3"
+#define PLUGIN_VERSION "1.0.4"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -196,7 +196,7 @@ public void OnEntityDestroyed(int entity)
 
 			if (wasArmed && g_cvEnable.BoolValue && hasPipePos)
 			{
-				ApplyManualExplosionDamage(pipePos, i);
+				ApplyManualExplosionDamage(pipePos, i, entity);
 			}
 			return;
 		}
@@ -586,16 +586,16 @@ void DecoratePipebomb(int client)
 		AcceptEntityInput(particleLight, "SetParentAttachment", entity);
 	}
 }
-void ApplyManualExplosionDamage(const float pipePos[3], int owner)
+void ApplyManualExplosionDamage(const float pipePos[3], int owner, int inflictor)
 {
 	float survivorDmg = g_cvSurvivorDamage.FloatValue;
 	if (survivorDmg <= 0.0)
 	{
-		survivorDmg = g_cvDamage.FloatValue;
+		return;
 	}
 
 	float radius = g_cvRadius.FloatValue;
-	if (survivorDmg <= 0.0 || radius <= 0.0)
+	if (radius <= 0.0)
 	{
 		return;
 	}
@@ -627,30 +627,55 @@ void ApplyManualExplosionDamage(const float pipePos[3], int owner)
 			continue;
 		}
 
-		ApplySurvivorBlastDamage(i, attacker, finalDmg);
+		ApplySurvivorBlastDamage(i, attacker, inflictor, finalDmg);
+	}
+
+	int ci = -1;
+	while ((ci = FindEntityByClassname(ci, "infected")) != -1)
+	{
+		if (!IsValidEdict(ci))
+		{
+			continue;
+		}
+
+		float ciPos[3];
+		GetEntPropVector(ci, Prop_Data, "m_vecAbsOrigin", ciPos);
+		float dist = GetVectorDistance(pipePos, ciPos);
+		if (dist > radius)
+		{
+			continue;
+		}
+
+		float ciDmg = survivorDmg * (1.0 - (dist / radius));
+		if (ciDmg < 1.0)
+		{
+			continue;
+		}
+
+		SDKHooks_TakeDamage(ci, attacker > 0 ? attacker : ci, inflictor, ciDmg, DMG_BLAST);
 	}
 }
 
-void ApplySurvivorBlastDamage(int survivor, int attacker, float damage)
+void ApplySurvivorBlastDamage(int survivor, int attacker, int inflictor, float damage)
 {
 	int damageAttacker = attacker > 0 ? attacker : survivor;
 	bool incapped = HasEntProp(survivor, Prop_Send, "m_isIncapacitated") && GetEntProp(survivor, Prop_Send, "m_isIncapacitated") != 0;
 
 	if (incapped)
 	{
-		SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, damage, DMG_BLAST);
+		SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, damage, DMG_BLAST);
 		return;
 	}
 
 	float standingHp = float(GetClientHealth(survivor));
 	if (damage < standingHp)
 	{
-		SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, damage, DMG_BLAST);
+		SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, damage, DMG_BLAST);
 		return;
 	}
 
 	float overflow = damage - standingHp;
-	SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, standingHp + 1.0, DMG_BLAST);
+	SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, standingHp + 1.0, DMG_BLAST);
 
 	if (overflow <= 0.0)
 	{

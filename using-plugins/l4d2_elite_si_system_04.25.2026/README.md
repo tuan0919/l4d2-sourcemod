@@ -209,6 +209,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Hotfix lifecycle pipebomb: active pipe chi duoc consume mot lan. Sau khi pipe dang cam da no, death event cua Jockey khong con spawn them pipe moi tu xac.
 - Hotfix damage khi pipe con tren tay: them pre-detonate drop sat thoi diem fuse het de engine explosion va manual damage cung dung tam no nhu case pipe da roi dat.
 - Don gian hoa rule bounce: neu pipebomb het fuse khi Jockey van dang ride survivor, survivor dang bi ride se bi force-kill truc tiep, khong phu thuoc tinh damage/radius.
+- Force-kill bounce gio chay bang timer rieng sau thoi diem pipe no va co fallback `ForcePlayerSuicide` neu damage cua engine chi lam survivor incap.
 
 ### 24/04/2026
 

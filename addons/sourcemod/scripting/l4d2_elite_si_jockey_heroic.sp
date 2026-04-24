@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.7"
+#define PLUGIN_VERSION "1.0.8"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -444,6 +444,7 @@ Action Timer_PreDetonatePipebomb(Handle timer, int userId)
 		if (victim > 0)
 		{
 			g_iForceKillVictimUserId[client] = GetClientUserId(victim);
+			ScheduleRideVictimKill(victim, client);
 		}
 
 		DropPipebomb(client);
@@ -906,6 +907,25 @@ void ForceKillRideVictim(int victimUserId, int attacker, int inflictor)
 	RequestFrame(Frame_ForceKillRideVictim, pack);
 }
 
+void ScheduleRideVictimKill(int victim, int attacker)
+{
+	DataPack pack = new DataPack();
+	pack.WriteCell(GetClientUserId(victim));
+	pack.WriteCell(attacker > 0 ? GetClientUserId(attacker) : 0);
+	CreateTimer(0.18, Timer_ForceKillRideVictim, pack, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action Timer_ForceKillRideVictim(Handle timer, DataPack pack)
+{
+	pack.Reset();
+	int victimUserId = pack.ReadCell();
+	int attackerUserId = pack.ReadCell();
+	delete pack;
+
+	ForceKillRideVictimNow(victimUserId, attackerUserId, false);
+	return Plugin_Stop;
+}
+
 public void Frame_ForceKillRideVictim(DataPack pack)
 {
 	pack.Reset();
@@ -913,14 +933,34 @@ public void Frame_ForceKillRideVictim(DataPack pack)
 	int attackerUserId = pack.ReadCell();
 	delete pack;
 
+	ForceKillRideVictimNow(victimUserId, attackerUserId, true);
+}
+
+void ForceKillRideVictimNow(int victimUserId, int attackerUserId, bool allowSuicideFallback)
+{
 	int victim = GetClientOfUserId(victimUserId);
-	if (victim <= 0 || !IsClientInGame(victim) || !IsPlayerAlive(victim))
+	if (victim <= 0 || !IsClientInGame(victim) || !IsPlayerAlive(victim) || GetClientTeam(victim) != TEAM_SURVIVOR)
 	{
 		return;
 	}
 
 	int attacker = GetClientOfUserId(attackerUserId);
-	SDKHooks_TakeDamage(victim, attacker > 0 ? attacker : victim, attacker > 0 ? attacker : victim, 10000.0, DMG_BLAST);
+	int damageAttacker = attacker > 0 ? attacker : victim;
+	SDKHooks_TakeDamage(victim, damageAttacker, damageAttacker, 10000.0, DMG_BLAST);
+
+	if (!allowSuicideFallback)
+	{
+		DataPack pack = new DataPack();
+		pack.WriteCell(victimUserId);
+		pack.WriteCell(attackerUserId);
+		RequestFrame(Frame_ForceKillRideVictim, pack);
+		return;
+	}
+
+	if (IsClientInGame(victim) && IsPlayerAlive(victim))
+	{
+		ForcePlayerSuicide(victim);
+	}
 }
 
 public void Frame_FinishIncapDamage(DataPack pack)

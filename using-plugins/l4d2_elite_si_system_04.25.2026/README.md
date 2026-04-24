@@ -198,6 +198,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 ### 25/04/2026
 
+- Fix `Strange Movement Spitter`: sau khi `ability_spit`, module gio ep velocity ve survivor gan nhat/huong nhin de Spitter tiep tuc di chuyen trong luc khac acid thay vi chi unlock maxspeed.
+- Fix `Strange Movement Smoker`: them tracking `tongue_grab`; Smoker gio di chuyen khi ban tongue, tiep tuc di lui keo survivor sau khi grab thanh cong, va reset speed ve `z_gas_speed` thay vi `tongue_victim_max_speed`.
 - Fix `Jockey Heroic`: doi tu prop/timer tu no sang `CPipeBombProjectile_Create` giong `Hunter Heroic`, de pipebomb co tieng beep countdown that cua engine.
 - Khi Jockey bat survivor, active pipebomb that duoc parent vao tay phai va tiep tuc fuse/beep trong luc ride.
 - Khi ride bi gian doan hoac Jockey bi giet, active pipebomb duoc `ClearParent`, roi xuong dat/xac va tiep tuc dem nguoc thay vi reset timer.

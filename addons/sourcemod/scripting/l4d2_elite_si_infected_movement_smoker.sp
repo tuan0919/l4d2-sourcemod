@@ -8,6 +8,7 @@
 #define PLUGIN_VERSION "1.0.0"
 
 #define TEAM_INFECTED 3
+#define TEAM_SURVIVOR 2
 #define ZC_SMOKER 1
 
 enum
@@ -29,6 +30,7 @@ ConVar g_cvDefaultSpeed;
 
 bool g_bHasEliteApi;
 float g_fActiveUntil[MAXPLAYERS + 1];
+int g_iTongueVictim[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -63,9 +65,10 @@ public void OnPluginStart()
 	CreateConVar("l4d2_elite_si_infected_movement_smoker_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_infected_movement_smoker");
 
-	g_cvDefaultSpeed = FindConVar("tongue_victim_max_speed");
+	g_cvDefaultSpeed = FindConVar("z_gas_speed");
 
 	HookEvent("ability_use", Event_AbilityUse);
+	HookEvent("tongue_grab", Event_TongueGrab, EventHookMode_Post);
 	HookEvent("player_death", Event_ResetState);
 	HookEvent("player_team", Event_ResetState);
 	HookEvent("tongue_release", Event_ResetState);
@@ -101,6 +104,7 @@ public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		g_fActiveUntil[i] = 0.0;
+		g_iTongueVictim[i] = 0;
 		UnhookThink(i);
 	}
 }
@@ -114,12 +118,39 @@ public void Event_ResetState(Event event, const char[] name, bool dontBroadcast)
 	}
 
 	g_fActiveUntil[client] = 0.0;
+	g_iTongueVictim[client] = 0;
 	UnhookThink(client);
+
+	for (int smoker = 1; smoker <= MaxClients; smoker++)
+	{
+		if (g_iTongueVictim[smoker] == client)
+		{
+			g_iTongueVictim[smoker] = 0;
+		}
+	}
 
 	if (GetClientTeam(client) == TEAM_INFECTED)
 	{
 		ResetClientSpeed(client);
 	}
+}
+
+public void Event_TongueGrab(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_cvEnable.BoolValue)
+	{
+		return;
+	}
+
+	int smoker = GetClientOfUserId(event.GetInt("userid"));
+	int victim = GetClientOfUserId(event.GetInt("victim"));
+	if (!ShouldApplyMovement(smoker) || !IsValidAliveSurvivor(victim))
+	{
+		return;
+	}
+
+	g_iTongueVictim[smoker] = victim;
+	EnableMovementWindow(smoker);
 }
 
 public void Event_AbilityUse(Event event, const char[] name, bool dontBroadcast)
@@ -207,6 +238,7 @@ public void OnThinkMovement(int client)
 	}
 
 	SetEntPropFloat(client, Prop_Send, "m_flStamina", 0.0);
+	ApplyMovementVelocity(client);
 }
 
 bool HandleSmokerContinueWindow(int client)
@@ -221,14 +253,82 @@ bool HandleSmokerContinueWindow(int client)
 		return true;
 	}
 
-	int sequence = GetEntProp(client, Prop_Send, "m_nSequence");
-	if ((mode == 2 || sequence != 31) && (sequence != 2 && sequence != 5))
+	int victim = GetActiveTongueVictim(client);
+	if (victim > 0)
 	{
 		g_fActiveUntil[client] = GetGameTime() + 0.5;
 		return true;
 	}
 
-	return false;
+	if (g_iTongueVictim[client] > 0)
+	{
+		g_iTongueVictim[client] = 0;
+	}
+
+	return mode == 2;
+}
+
+void ApplyMovementVelocity(int client)
+{
+	float direction[3];
+	int victim = GetActiveTongueVictim(client);
+	if (victim > 0)
+	{
+		float origin[3];
+		float victimOrigin[3];
+		GetClientAbsOrigin(client, origin);
+		GetClientAbsOrigin(victim, victimOrigin);
+		MakeVectorFromPoints(victimOrigin, origin, direction);
+	}
+	else
+	{
+		int target = FindClosestSurvivor(client);
+		if (target > 0)
+		{
+			float origin[3];
+			float targetOrigin[3];
+			GetClientAbsOrigin(client, origin);
+			GetClientAbsOrigin(target, targetOrigin);
+			MakeVectorFromPoints(origin, targetOrigin, direction);
+		}
+		else
+		{
+			float eyeAngles[3];
+			GetClientEyeAngles(client, eyeAngles);
+			GetAngleVectors(eyeAngles, direction, NULL_VECTOR, NULL_VECTOR);
+		}
+	}
+
+	direction[2] = 0.0;
+	if (NormalizeVector(direction, direction) == 0.0)
+	{
+		return;
+	}
+
+	float velocity[3];
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", velocity);
+	velocity[0] = direction[0] * g_cvSpeed.FloatValue;
+	velocity[1] = direction[1] * g_cvSpeed.FloatValue;
+	if ((GetEntityFlags(client) & FL_ONGROUND) != 0)
+	{
+		velocity[2] = 0.0;
+	}
+
+	int flags = GetEntityFlags(client);
+	SetEntityFlags(client, (flags & ~FL_FROZEN) & ~FL_ONGROUND);
+	TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, velocity);
+	SetEntityFlags(client, flags);
+}
+
+int GetActiveTongueVictim(int client)
+{
+	int victim = g_iTongueVictim[client];
+	if (IsValidAliveSurvivor(victim))
+	{
+		return victim;
+	}
+
+	return 0;
 }
 
 void ResetClientSpeed(int client)
@@ -249,6 +349,43 @@ void UnhookThink(int client)
 	SDKUnhook(client, SDKHook_PostThinkPost, OnThinkMovement);
 	SDKUnhook(client, SDKHook_PreThink, OnThinkMovement);
 	SDKUnhook(client, SDKHook_PreThinkPost, OnThinkMovement);
+}
+
+int FindClosestSurvivor(int client)
+{
+	float origin[3];
+	GetClientAbsOrigin(client, origin);
+
+	int closest = 0;
+	float closestDistance = 999999.0;
+
+	for (int survivor = 1; survivor <= MaxClients; survivor++)
+	{
+		if (!IsValidAliveSurvivor(survivor))
+		{
+			continue;
+		}
+
+		float survivorOrigin[3];
+		GetClientAbsOrigin(survivor, survivorOrigin);
+		float distance = GetVectorDistance(origin, survivorOrigin);
+		if (distance < closestDistance)
+		{
+			closestDistance = distance;
+			closest = survivor;
+		}
+	}
+
+	return closest;
+}
+
+bool IsValidAliveSurvivor(int client)
+{
+	return client > 0
+		&& client <= MaxClients
+		&& IsClientInGame(client)
+		&& GetClientTeam(client) == TEAM_SURVIVOR
+		&& IsPlayerAlive(client);
 }
 
 bool ShouldApplyMovement(int client)

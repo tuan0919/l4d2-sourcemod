@@ -8,6 +8,7 @@
 #define PLUGIN_VERSION "1.0.0"
 
 #define TEAM_INFECTED 3
+#define TEAM_SURVIVOR 2
 #define ZC_SPITTER 4
 
 enum
@@ -196,6 +197,47 @@ public void OnThinkMovement(int client)
 
 	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", g_cvSpeed.FloatValue);
 	SetEntPropFloat(client, Prop_Send, "m_flStamina", 0.0);
+	ApplyMovementVelocity(client);
+}
+
+void ApplyMovementVelocity(int client)
+{
+	float direction[3];
+	int target = FindClosestSurvivor(client);
+	if (target > 0)
+	{
+		float origin[3];
+		float targetOrigin[3];
+		GetClientAbsOrigin(client, origin);
+		GetClientAbsOrigin(target, targetOrigin);
+		MakeVectorFromPoints(origin, targetOrigin, direction);
+	}
+	else
+	{
+		float eyeAngles[3];
+		GetClientEyeAngles(client, eyeAngles);
+		GetAngleVectors(eyeAngles, direction, NULL_VECTOR, NULL_VECTOR);
+	}
+
+	direction[2] = 0.0;
+	if (NormalizeVector(direction, direction) == 0.0)
+	{
+		return;
+	}
+
+	float velocity[3];
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", velocity);
+	velocity[0] = direction[0] * g_cvSpeed.FloatValue;
+	velocity[1] = direction[1] * g_cvSpeed.FloatValue;
+	if ((GetEntityFlags(client) & FL_ONGROUND) != 0)
+	{
+		velocity[2] = 0.0;
+	}
+
+	int flags = GetEntityFlags(client);
+	SetEntityFlags(client, (flags & ~FL_FROZEN) & ~FL_ONGROUND);
+	TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, velocity);
+	SetEntityFlags(client, flags);
 }
 
 void ResetClientSpeed(int client)
@@ -216,6 +258,43 @@ void UnhookThink(int client)
 	SDKUnhook(client, SDKHook_PostThinkPost, OnThinkMovement);
 	SDKUnhook(client, SDKHook_PreThink, OnThinkMovement);
 	SDKUnhook(client, SDKHook_PreThinkPost, OnThinkMovement);
+}
+
+int FindClosestSurvivor(int client)
+{
+	float origin[3];
+	GetClientAbsOrigin(client, origin);
+
+	int closest = 0;
+	float closestDistance = 999999.0;
+
+	for (int survivor = 1; survivor <= MaxClients; survivor++)
+	{
+		if (!IsValidAliveSurvivor(survivor))
+		{
+			continue;
+		}
+
+		float survivorOrigin[3];
+		GetClientAbsOrigin(survivor, survivorOrigin);
+		float distance = GetVectorDistance(origin, survivorOrigin);
+		if (distance < closestDistance)
+		{
+			closestDistance = distance;
+			closest = survivor;
+		}
+	}
+
+	return closest;
+}
+
+bool IsValidAliveSurvivor(int client)
+{
+	return client > 0
+		&& client <= MaxClients
+		&& IsClientInGame(client)
+		&& GetClientTeam(client) == TEAM_SURVIVOR
+		&& IsPlayerAlive(client);
 }
 
 bool ShouldApplyMovement(int client)

@@ -747,7 +747,7 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_HUNTER_HEROIC: strcopy(buffer, maxlen, "holds a loaded pipe bomb, dropping it upon pinning a survivor or upon death to cause a massive explosion");
 		case ELITE_SUBTYPE_CHARGER_UNSTOPPABLE: strcopy(buffer, maxlen, "temporarily invisible and invincible during charges, knocks targets into the air on melee, and stops carrying midway");
 		case ELITE_SUBTYPE_JOCKEY_JUMPER: strcopy(buffer, maxlen, "keeps bouncing upward while riding a survivor to create extra fall damage");
-		case ELITE_SUBTYPE_JOCKEY_HEROIC: strcopy(buffer, maxlen, "carries a pipe bomb on its mouth, activating it when riding a survivor and dropping it if interrupted or killed");
+		case ELITE_SUBTYPE_JOCKEY_HEROIC: strcopy(buffer, maxlen, "carries a pipe bomb in hand, activating it when riding a survivor and dropping it if interrupted or killed");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }

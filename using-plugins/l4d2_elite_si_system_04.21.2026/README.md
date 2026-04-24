@@ -102,8 +102,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 15. `scripting/l4d2_elite_si_jockey_heroic.sp`
     - Nhanh subtype rieng cho Jockey elite theo trait `Heroic`
-    - Gan pipebomb len mieng Jockey khi spawn
-    - Khi bat survivor, pipebomb that duoc kich hoat va dem nguoc tren mieng Jockey
+    - Gan pipebomb len tay phai Jockey khi spawn
+    - Khi bat survivor, pipebomb duoc kich hoat va dem nguoc tren tay Jockey
     - Neu ride bi gian doan hoac Jockey bi giet, pipebomb roi xuong duoi chan/xac va tiep tuc dem nguoc
     - Khi no gay damage lon trong vung xung quanh
 
@@ -200,7 +200,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 - Them `Jockey Jumper`: Elite Jockey lien tuc nhay khi dang ride survivor, moi lan nhay day survivor len cao de tao them fall damage khi roi xuong.
 - Them subtype roll weight `l4d2_elite_si_core_jockey_jumper_subtype_chance` va module config rieng `l4d2_elite_si_jockey_jumper_*`.
-- Them thu nghiem `Jockey Heroic`: Jockey mang pipebomb tren mieng, kich hoat khi ride survivor, roi pipebomb neu bi gian doan/bi giet, va no gay damage lon quanh khu vuc.
+- Them thu nghiem `Jockey Heroic`: Jockey mang pipebomb tren tay, kich hoat khi ride survivor, roi pipebomb neu bi gian doan/bi giet, va no gay damage lon quanh khu vuc.
 
 ### 21/04/2026
 

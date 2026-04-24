@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -14,6 +14,7 @@
 #define ELITE_SUBTYPE_JOCKEY_HEROIC 37
 
 #define PIPE_MODEL "models/w_models/weapons/w_eq_pipebomb.mdl"
+#define PIPE_ATTACHMENT "rhand"
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
@@ -24,13 +25,11 @@ ConVar g_cvDamage;
 ConVar g_cvRadius;
 ConVar g_cvSurvivorDamage;
 
-Handle g_hSdkCreatePipe;
 bool g_bHasEliteApi;
-
-int g_iFakePipe[MAXPLAYERS + 1];
-int g_iActivePipe[MAXPLAYERS + 1];
-bool g_bActivePipeAttached[MAXPLAYERS + 1];
-bool g_bIsHeroicPipe[2049];
+int g_iPipeEnt[MAXPLAYERS + 1];
+Handle g_hDetonateTimer[MAXPLAYERS + 1];
+bool g_bPipeArmed[MAXPLAYERS + 1];
+bool g_bPipeAttached[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -57,15 +56,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 public void OnPluginStart()
 {
 	g_cvEnable = CreateConVar("l4d2_elite_si_jockey_heroic_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvExplodeTime = CreateConVar("l4d2_elite_si_jockey_heroic_explode_time", "6.0", "Pipebomb fuse time when activated by Heroic Jockey.", FCVAR_NOTIFY, true, 1.0, true, 20.0);
-	g_cvDamage = CreateConVar("l4d2_elite_si_jockey_heroic_damage", "800.0", "Engine damage set on the Heroic Jockey pipebomb.", FCVAR_NOTIFY, true, 0.0);
+	g_cvExplodeTime = CreateConVar("l4d2_elite_si_jockey_heroic_explode_time", "6.0", "Pipebomb fuse time after Heroic Jockey catches a survivor or dies.", FCVAR_NOTIFY, true, 1.0, true, 20.0);
+	g_cvDamage = CreateConVar("l4d2_elite_si_jockey_heroic_damage", "800.0", "Manual blast damage dealt by the Heroic Jockey pipebomb.", FCVAR_NOTIFY, true, 0.0);
 	g_cvRadius = CreateConVar("l4d2_elite_si_jockey_heroic_radius", "400.0", "Damage radius for the Heroic Jockey pipebomb.", FCVAR_NOTIFY, true, 0.0);
 	g_cvSurvivorDamage = CreateConVar("l4d2_elite_si_jockey_heroic_survivor_damage", "800.0", "Direct survivor damage in radius when the Heroic Jockey pipebomb explodes. 0=disabled.", FCVAR_NOTIFY, true, 0.0);
 
 	CreateConVar("l4d2_elite_si_jockey_heroic_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_jockey_heroic");
-
-	LoadGamedata();
 
 	HookEvent("jockey_ride", Event_JockeyRide, EventHookMode_Post);
 	HookEvent("jockey_ride_end", Event_JockeyRideEnd, EventHookMode_Post);
@@ -74,36 +71,6 @@ public void OnPluginStart()
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
 
 	RefreshEliteState();
-}
-
-void LoadGamedata()
-{
-	Handle gameData = LoadGameConfigFile("l4d_pipebomb_shove");
-	if (gameData == null)
-	{
-		SetFailState("Failed to load l4d_pipebomb_shove gamedata.");
-	}
-
-	StartPrepSDKCall(SDKCall_Static);
-	if (!PrepSDKCall_SetFromConf(gameData, SDKConf_Signature, "CPipeBombProjectile_Create"))
-	{
-		SetFailState("Could not load CPipeBombProjectile_Create signature.");
-	}
-	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
-	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
-	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
-	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
-	PrepSDKCall_AddParameter(SDKType_CBasePlayer, SDKPass_Pointer);
-	PrepSDKCall_AddParameter(SDKType_Float, SDKPass_Plain);
-	PrepSDKCall_SetReturnInfo(SDKType_CBaseEntity, SDKPass_Pointer);
-	g_hSdkCreatePipe = EndPrepSDKCall();
-
-	delete gameData;
-
-	if (g_hSdkCreatePipe == null)
-	{
-		SetFailState("Could not prep CPipeBombProjectile_Create SDKCall.");
-	}
 }
 
 public void OnMapStart()
@@ -142,49 +109,33 @@ public void EliteSI_OnEliteAssigned(int client, int zClass, int subtype)
 {
 	if (zClass == ZC_JOCKEY && subtype == ELITE_SUBTYPE_JOCKEY_HEROIC)
 	{
-		CreateFakePipebomb(client);
+		CreatePipeProp(client, true);
 	}
 }
 
 public void EliteSI_OnEliteCleared(int client)
 {
-	RemoveFakePipebomb(client);
+	ResetClientState(client, true);
 }
 
 public void OnEntityDestroyed(int entity)
 {
-	if (entity <= 0 || entity >= sizeof(g_bIsHeroicPipe) || !g_bIsHeroicPipe[entity])
+	if (entity <= 0)
 	{
 		return;
 	}
 
-	g_bIsHeroicPipe[entity] = false;
-
-	float pipePos[3];
-	if (!IsValidEdict(entity))
-	{
-		return;
-	}
-	GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pipePos);
-
-	int owner = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (g_iActivePipe[i] != 0 && EntRefToEntIndex(g_iActivePipe[i]) == entity)
+		if (g_iPipeEnt[i] != 0 && EntRefToEntIndex(g_iPipeEnt[i]) == entity)
 		{
-			owner = i;
-			g_iActivePipe[i] = 0;
-			g_bActivePipeAttached[i] = false;
-			break;
+			StopDetonateTimer(i);
+			g_iPipeEnt[i] = 0;
+			g_bPipeArmed[i] = false;
+			g_bPipeAttached[i] = false;
+			return;
 		}
 	}
-
-	if (!g_cvEnable.BoolValue)
-	{
-		return;
-	}
-
-	ApplyManualExplosionDamage(pipePos, owner, entity);
 }
 
 void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
@@ -205,14 +156,14 @@ void Event_JockeyRide(Event event, const char[] name, bool dontBroadcast)
 		return;
 	}
 
-	ActivateMouthPipebomb(jockey);
+	ArmPipebomb(jockey, true);
 }
 
 void Event_JockeyRideEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (g_bActivePipeAttached[i])
+		if (g_bPipeArmed[i] && g_bPipeAttached[i])
 		{
 			RequestFrame(Frame_CheckRideStillActive, GetClientUserId(i));
 		}
@@ -232,33 +183,28 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		return;
 	}
 
-	if (g_iActivePipe[client] != 0)
+	if (GetPipeEntity(client) <= 0)
 	{
-		DropAttachedPipebomb(client);
+		CreatePipeProp(client, false);
+	}
+
+	DropPipebomb(client);
+	ArmPipebomb(client, false);
+}
+
+void CreatePipeProp(int client, bool attachToHand)
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
 		return;
 	}
 
-	RemoveFakePipebomb(client);
-	CreateActivePipebomb(client, false);
-}
-
-void ActivateMouthPipebomb(int client)
-{
-	if (g_iActivePipe[client] != 0)
+	if (GetPipeEntity(client) > 0)
 	{
-		return;
-	}
-
-	RemoveFakePipebomb(client);
-	CreateActivePipebomb(client, true);
-}
-
-void CreateFakePipebomb(int client)
-{
-	RemoveFakePipebomb(client);
-
-	if (!IsHeroicJockey(client, true))
-	{
+		if (attachToHand)
+		{
+			AttachPipeToHand(client);
+		}
 		return;
 	}
 
@@ -270,96 +216,192 @@ void CreateFakePipebomb(int client)
 
 	DispatchKeyValue(entity, "model", PIPE_MODEL);
 	DispatchKeyValue(entity, "solid", "0");
+	DispatchKeyValue(entity, "targetname", "elite_jockey_heroic_pipe");
 	DispatchSpawn(entity);
+
+	g_iPipeEnt[client] = EntIndexToEntRef(entity);
+	g_bPipeArmed[client] = false;
+	g_bPipeAttached[client] = false;
+
+	if (attachToHand)
+	{
+		AttachPipeToHand(client);
+	}
+	else
+	{
+		DropPipebomb(client);
+	}
+}
+
+void AttachPipeToHand(int client)
+{
+	int entity = GetPipeEntity(client);
+	if (entity <= 0 || !IsClientInGame(client))
+	{
+		return;
+	}
 
 	SetVariantString("!activator");
 	AcceptEntityInput(entity, "SetParent", client);
-	SetVariantString("mouth");
+	SetVariantString(PIPE_ATTACHMENT);
 	AcceptEntityInput(entity, "SetParentAttachment", client);
-
-	g_iFakePipe[client] = EntIndexToEntRef(entity);
+	g_bPipeAttached[client] = true;
 }
 
-void RemoveFakePipebomb(int client)
+void ArmPipebomb(int client, bool keepAttached)
 {
 	if (client <= 0 || client > MaxClients)
 	{
 		return;
 	}
 
-	int entity = EntRefToEntIndex(g_iFakePipe[client]);
-	if (entity > 0 && IsValidEntity(entity))
+	if (GetPipeEntity(client) <= 0)
 	{
-		RemoveEntity(entity);
+		CreatePipeProp(client, keepAttached);
 	}
-	g_iFakePipe[client] = 0;
-}
 
-void CreateActivePipebomb(int client, bool attachToMouth)
-{
-	if (g_iActivePipe[client] != 0)
+	if (keepAttached)
+	{
+		AttachPipeToHand(client);
+	}
+
+	if (g_bPipeArmed[client])
 	{
 		return;
 	}
 
-	float pos[3], ang[3], vel[3], spin[3];
-	GetClientAbsOrigin(client, pos);
-	pos[2] += attachToMouth ? 45.0 : 8.0;
+	g_bPipeArmed[client] = true;
+	DecoratePipebomb(GetPipeEntity(client));
+	StartDetonateTimer(client);
 
-	ConVar cvTimer = FindConVar("pipe_bomb_timer_duration");
-	float oldFuse = 6.0;
-	if (cvTimer != null)
+	if (keepAttached)
 	{
-		oldFuse = cvTimer.FloatValue;
-		cvTimer.SetFloat(g_cvExplodeTime.FloatValue);
+		CreateTimer(0.10, Timer_MonitorRide, GetClientUserId(client), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	}
+}
+
+void StartDetonateTimer(int client)
+{
+	StopDetonateTimer(client);
+	g_hDetonateTimer[client] = CreateTimer(g_cvExplodeTime.FloatValue, Timer_DetonatePipebomb, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void StopDetonateTimer(int client)
+{
+	if (client <= 0 || client > MaxClients)
+	{
+		return;
 	}
 
-	int entity = SDKCall(g_hSdkCreatePipe, pos, ang, vel, spin, client, 2.0);
-
-	if (cvTimer != null)
+	if (g_hDetonateTimer[client] != null)
 	{
-		cvTimer.SetFloat(oldFuse);
+		KillTimer(g_hDetonateTimer[client]);
+		g_hDetonateTimer[client] = null;
+	}
+}
+
+Action Timer_DetonatePipebomb(Handle timer, int userId)
+{
+	int client = GetClientOfUserId(userId);
+	if (client <= 0 || client > MaxClients)
+	{
+		return Plugin_Stop;
 	}
 
+	g_hDetonateTimer[client] = null;
+
+	int entity = GetPipeEntity(client);
+	if (entity <= 0)
+	{
+		ResetClientState(client, false);
+		return Plugin_Stop;
+	}
+
+	float pipePos[3];
+	GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pipePos);
+	SpawnExplosionEffect(pipePos);
+	ApplyManualExplosionDamage(pipePos, client);
+	ResetClientState(client, false);
+
+	return Plugin_Stop;
+}
+
+Action Timer_MonitorRide(Handle timer, int userId)
+{
+	int client = GetClientOfUserId(userId);
+	if (client <= 0 || client > MaxClients || !g_bPipeArmed[client] || !g_bPipeAttached[client])
+	{
+		return Plugin_Stop;
+	}
+
+	if (GetPipeEntity(client) <= 0)
+	{
+		ResetClientState(client, false);
+		return Plugin_Stop;
+	}
+
+	if (!IsClientInGame(client) || !IsPlayerAlive(client))
+	{
+		DropPipebomb(client);
+		return Plugin_Stop;
+	}
+
+	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") != client)
+	{
+		DropPipebomb(client);
+		return Plugin_Stop;
+	}
+
+	return Plugin_Continue;
+}
+
+void Frame_CheckRideStillActive(int userId)
+{
+	int client = GetClientOfUserId(userId);
+	if (client <= 0 || client > MaxClients || !g_bPipeArmed[client] || !g_bPipeAttached[client])
+	{
+		return;
+	}
+
+	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") != client)
+	{
+		DropPipebomb(client);
+	}
+}
+
+void DropPipebomb(int client)
+{
+	int entity = GetPipeEntity(client);
+	if (entity <= 0)
+	{
+		return;
+	}
+
+	g_bPipeAttached[client] = false;
+	AcceptEntityInput(entity, "ClearParent");
+
+	float pos[3], vel[3];
+	if (client > 0 && client <= MaxClients && IsClientInGame(client))
+	{
+		GetClientAbsOrigin(client, pos);
+		pos[2] += 6.0;
+	}
+	else
+	{
+		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
+	}
+	TeleportEntity(entity, pos, NULL_VECTOR, vel);
+}
+
+void DecoratePipebomb(int entity)
+{
 	if (entity <= 0 || !IsValidEntity(entity))
 	{
 		return;
 	}
 
-	DispatchKeyValue(entity, "targetname", "elite_jockey_heroic_pipe");
-	DecoratePipebomb(entity);
-
-	float damage = g_cvDamage.FloatValue;
-	float radius = g_cvRadius.FloatValue;
-	if (damage > 0.0)
-	{
-		SetEntPropFloat(entity, Prop_Data, "m_flDamage", damage);
-	}
-	if (radius > 0.0)
-	{
-		SetEntPropFloat(entity, Prop_Data, "m_DmgRadius", radius);
-	}
-
-	if (entity < sizeof(g_bIsHeroicPipe))
-	{
-		g_bIsHeroicPipe[entity] = true;
-	}
-
-	g_iActivePipe[client] = EntIndexToEntRef(entity);
-	g_bActivePipeAttached[client] = attachToMouth;
-
-	if (attachToMouth)
-	{
-		SetVariantString("!activator");
-		AcceptEntityInput(entity, "SetParent", client);
-		SetVariantString("mouth");
-		AcceptEntityInput(entity, "SetParentAttachment", client);
-		CreateTimer(0.10, Timer_MonitorRide, GetClientUserId(client), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-	}
-}
-
-void DecoratePipebomb(int entity)
-{
 	int particleFuse = CreateEntityByName("info_particle_system");
 	if (particleFuse > 0)
 	{
@@ -387,80 +429,30 @@ void DecoratePipebomb(int entity)
 	}
 }
 
-Action Timer_MonitorRide(Handle timer, int userId)
+void SpawnExplosionEffect(const float pos[3])
 {
-	int client = GetClientOfUserId(userId);
-	if (client <= 0 || client > MaxClients || !g_bActivePipeAttached[client])
-	{
-		return Plugin_Stop;
-	}
-
-	int entity = EntRefToEntIndex(g_iActivePipe[client]);
-	if (entity <= 0 || !IsValidEntity(entity))
-	{
-		g_iActivePipe[client] = 0;
-		g_bActivePipeAttached[client] = false;
-		return Plugin_Stop;
-	}
-
-	if (!IsClientInGame(client) || !IsPlayerAlive(client))
-	{
-		DropAttachedPipebomb(client);
-		return Plugin_Stop;
-	}
-
-	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
-	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") != client)
-	{
-		DropAttachedPipebomb(client);
-		return Plugin_Stop;
-	}
-
-	return Plugin_Continue;
-}
-
-void Frame_CheckRideStillActive(int userId)
-{
-	int client = GetClientOfUserId(userId);
-	if (client <= 0 || client > MaxClients || !g_bActivePipeAttached[client])
+	int explosion = CreateEntityByName("env_explosion");
+	if (explosion <= 0 || !IsValidEntity(explosion))
 	{
 		return;
 	}
 
-	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
-	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim) || GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") != client)
-	{
-		DropAttachedPipebomb(client);
-	}
+	DispatchKeyValue(explosion, "iMagnitude", "1");
+	DispatchKeyValue(explosion, "spawnflags", "1916");
+	DispatchSpawn(explosion);
+	TeleportEntity(explosion, pos, NULL_VECTOR, NULL_VECTOR);
+	AcceptEntityInput(explosion, "Explode");
+	RemoveEntity(explosion);
 }
 
-void DropAttachedPipebomb(int client)
-{
-	if (client <= 0 || client > MaxClients)
-	{
-		return;
-	}
-
-	int entity = EntRefToEntIndex(g_iActivePipe[client]);
-	if (entity <= 0 || !IsValidEntity(entity))
-	{
-		g_iActivePipe[client] = 0;
-		g_bActivePipeAttached[client] = false;
-		return;
-	}
-
-	g_bActivePipeAttached[client] = false;
-	AcceptEntityInput(entity, "ClearParent");
-
-	float pos[3], vel[3];
-	GetClientAbsOrigin(client, pos);
-	pos[2] += 6.0;
-	TeleportEntity(entity, pos, NULL_VECTOR, vel);
-}
-
-void ApplyManualExplosionDamage(const float pipePos[3], int owner, int inflictor)
+void ApplyManualExplosionDamage(const float pipePos[3], int owner)
 {
 	float survivorDmg = g_cvSurvivorDamage.FloatValue;
+	if (survivorDmg <= 0.0)
+	{
+		survivorDmg = g_cvDamage.FloatValue;
+	}
+
 	float radius = g_cvRadius.FloatValue;
 	if (survivorDmg <= 0.0 || radius <= 0.0)
 	{
@@ -494,30 +486,30 @@ void ApplyManualExplosionDamage(const float pipePos[3], int owner, int inflictor
 			continue;
 		}
 
-		ApplySurvivorBlastDamage(i, attacker, inflictor, finalDmg);
+		ApplySurvivorBlastDamage(i, attacker, finalDmg);
 	}
 }
 
-void ApplySurvivorBlastDamage(int survivor, int attacker, int inflictor, float damage)
+void ApplySurvivorBlastDamage(int survivor, int attacker, float damage)
 {
 	int damageAttacker = attacker > 0 ? attacker : survivor;
 	bool incapped = HasEntProp(survivor, Prop_Send, "m_isIncapacitated") && GetEntProp(survivor, Prop_Send, "m_isIncapacitated") != 0;
 
 	if (incapped)
 	{
-		SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, damage, DMG_BLAST);
+		SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, damage, DMG_BLAST);
 		return;
 	}
 
 	float standingHp = float(GetClientHealth(survivor));
 	if (damage < standingHp)
 	{
-		SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, damage, DMG_BLAST);
+		SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, damage, DMG_BLAST);
 		return;
 	}
 
 	float overflow = damage - standingHp;
-	SDKHooks_TakeDamage(survivor, damageAttacker, inflictor, standingHp + 1.0, DMG_BLAST);
+	SDKHooks_TakeDamage(survivor, damageAttacker, damageAttacker, standingHp + 1.0, DMG_BLAST);
 
 	if (overflow <= 0.0)
 	{
@@ -570,30 +562,45 @@ void ResetAllState()
 	}
 }
 
-void ResetClientState(int client, bool removeActivePipe)
+void ResetClientState(int client, bool cancelTimer)
 {
 	if (client <= 0 || client > MaxClients)
 	{
 		return;
 	}
 
-	RemoveFakePipebomb(client);
-
-	if (removeActivePipe)
+	if (cancelTimer)
 	{
-		int entity = EntRefToEntIndex(g_iActivePipe[client]);
-		if (entity > 0 && IsValidEntity(entity))
-		{
-			if (entity < sizeof(g_bIsHeroicPipe))
-			{
-				g_bIsHeroicPipe[entity] = false;
-			}
-			RemoveEntity(entity);
-		}
+		StopDetonateTimer(client);
 	}
 
-	g_iActivePipe[client] = 0;
-	g_bActivePipeAttached[client] = false;
+	int entity = GetPipeEntity(client);
+	if (entity > 0)
+	{
+		g_iPipeEnt[client] = 0;
+		RemoveEntity(entity);
+	}
+
+	g_iPipeEnt[client] = 0;
+	g_bPipeArmed[client] = false;
+	g_bPipeAttached[client] = false;
+}
+
+int GetPipeEntity(int client)
+{
+	if (client <= 0 || client > MaxClients || g_iPipeEnt[client] == 0)
+	{
+		return 0;
+	}
+
+	int entity = EntRefToEntIndex(g_iPipeEnt[client]);
+	if (entity <= 0 || !IsValidEntity(entity))
+	{
+		g_iPipeEnt[client] = 0;
+		return 0;
+	}
+
+	return entity;
 }
 
 bool IsHeroicJockey(int client, bool requireAlive)

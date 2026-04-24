@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.6"
+#define PLUGIN_VERSION "1.0.7"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -36,6 +36,7 @@ bool g_bPipeDecorated[MAXPLAYERS + 1];
 bool g_bPipeConsumed[MAXPLAYERS + 1];
 bool g_bHasPipeLastPos[MAXPLAYERS + 1];
 float g_vPipeLastPos[MAXPLAYERS + 1][3];
+int g_iForceKillVictimUserId[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -185,6 +186,7 @@ public void OnEntityDestroyed(int entity)
 		{
 			bool wasArmed = g_bPipeArmed[i];
 			bool wasAttached = g_bPipeAttached[i];
+			int forceKillVictimUserId = g_iForceKillVictimUserId[i];
 			float pipePos[3];
 			bool hasPipePos = wasArmed && GetExplosionDamagePosition(i, entity, wasAttached, pipePos);
 
@@ -195,10 +197,12 @@ public void OnEntityDestroyed(int entity)
 			g_bPipeAttached[i] = false;
 			g_bPipeDecorated[i] = false;
 			g_bHasPipeLastPos[i] = false;
+			g_iForceKillVictimUserId[i] = 0;
 
 			if (wasArmed && g_cvEnable.BoolValue && hasPipePos)
 			{
 				ApplyManualExplosionDamage(pipePos, i, entity);
+				ForceKillRideVictim(forceKillVictimUserId, i, entity);
 			}
 			return;
 		}
@@ -436,6 +440,12 @@ Action Timer_PreDetonatePipebomb(Handle timer, int userId)
 
 	if (g_bPipeArmed[client] && g_bPipeAttached[client] && GetPipeEntity(client) > 0)
 	{
+		int victim = GetCurrentRideVictim(client);
+		if (victim > 0)
+		{
+			g_iForceKillVictimUserId[client] = GetClientUserId(victim);
+		}
+
 		DropPipebomb(client);
 	}
 
@@ -647,8 +657,8 @@ bool GetLiveJockeyRidePosition(int client, float pos[3])
 		return false;
 	}
 
-	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
-	if (victim > 0 && victim <= MaxClients && IsClientInGame(victim) && GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") == client)
+	int victim = GetCurrentRideVictim(client);
+	if (victim > 0)
 	{
 		GetClientAbsOrigin(victim, pos);
 		return true;
@@ -661,6 +671,22 @@ bool GetLiveJockeyRidePosition(int client, float pos[3])
 	}
 
 	return false;
+}
+
+int GetCurrentRideVictim(int client)
+{
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
+		return 0;
+	}
+
+	int victim = GetEntPropEnt(client, Prop_Send, "m_jockeyVictim");
+	if (victim <= 0 || victim > MaxClients || !IsClientInGame(victim))
+	{
+		return 0;
+	}
+
+	return GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") == client ? victim : 0;
 }
 
 void UpdatePipeLastPosition(int client, bool attached)
@@ -850,6 +876,53 @@ void ApplySurvivorBlastDamage(int survivor, int attacker, int inflictor, float d
 	RequestFrame(Frame_FinishIncapDamage, pack);
 }
 
+void ForceKillRideVictim(int victimUserId, int attacker, int inflictor)
+{
+	if (victimUserId <= 0)
+	{
+		return;
+	}
+
+	int victim = GetClientOfUserId(victimUserId);
+	if (victim <= 0 || !IsClientInGame(victim) || !IsPlayerAlive(victim) || GetClientTeam(victim) != TEAM_SURVIVOR)
+	{
+		return;
+	}
+
+	int damageAttacker = (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker)) ? attacker : victim;
+	bool incapped = HasEntProp(victim, Prop_Send, "m_isIncapacitated") && GetEntProp(victim, Prop_Send, "m_isIncapacitated") != 0;
+
+	if (incapped)
+	{
+		SDKHooks_TakeDamage(victim, damageAttacker, inflictor, 10000.0, DMG_BLAST);
+		return;
+	}
+
+	SDKHooks_TakeDamage(victim, damageAttacker, inflictor, float(GetClientHealth(victim)) + 1.0, DMG_BLAST);
+
+	DataPack pack = new DataPack();
+	pack.WriteCell(victimUserId);
+	pack.WriteCell(attacker > 0 ? GetClientUserId(attacker) : 0);
+	RequestFrame(Frame_ForceKillRideVictim, pack);
+}
+
+public void Frame_ForceKillRideVictim(DataPack pack)
+{
+	pack.Reset();
+	int victimUserId = pack.ReadCell();
+	int attackerUserId = pack.ReadCell();
+	delete pack;
+
+	int victim = GetClientOfUserId(victimUserId);
+	if (victim <= 0 || !IsClientInGame(victim) || !IsPlayerAlive(victim))
+	{
+		return;
+	}
+
+	int attacker = GetClientOfUserId(attackerUserId);
+	SDKHooks_TakeDamage(victim, attacker > 0 ? attacker : victim, attacker > 0 ? attacker : victim, 10000.0, DMG_BLAST);
+}
+
 public void Frame_FinishIncapDamage(DataPack pack)
 {
 	pack.Reset();
@@ -918,6 +991,7 @@ void RemoveTrackedPipe(int client)
 	g_bPipeAttached[client] = false;
 	g_bPipeDecorated[client] = false;
 	g_bHasPipeLastPos[client] = false;
+	g_iForceKillVictimUserId[client] = 0;
 }
 
 bool HasTrackedPipe(int client)

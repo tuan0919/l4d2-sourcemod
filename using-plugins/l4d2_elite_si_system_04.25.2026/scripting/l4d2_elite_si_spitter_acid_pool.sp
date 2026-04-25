@@ -29,6 +29,7 @@ ConVar g_cvTrailMinDistance;
 
 bool g_bHasEliteApi;
 bool g_bTrackedAcidPool[MAXPLAYERS + 1];
+bool g_bIsJumping[MAXPLAYERS + 1];
 float g_fNextTrailAt[MAXPLAYERS + 1];
 float g_fNextJumpAt[MAXPLAYERS + 1];
 float g_fNextMeleePoolAt[MAXPLAYERS + 1];
@@ -202,6 +203,12 @@ public void OnAcidPoolThinkPost(int client)
 		SetEntPropFloat(ability, Prop_Send, "m_timestamp", GetGameTime() + 9999.0);
 	}
 
+	// Detect landing: clear jump flag once back on ground
+	if (g_bIsJumping[client] && (GetEntityFlags(client) & FL_ONGROUND) != 0)
+	{
+		g_bIsJumping[client] = false;
+	}
+
 	TryDropTrailAcid(client);
 	TryPressureClosestSurvivor(client);
 	TryDropJumpAcid(client);
@@ -268,7 +275,19 @@ void TryPressureClosestSurvivor(int spitter)
 	float velocity[3];
 	velocity[0] = direction[0] * speed;
 	velocity[1] = direction[1] * speed;
-	velocity[2] = 0.0;
+
+	// Preserve vertical velocity while mid-jump, only zero out when grounded
+	if (g_bIsJumping[spitter])
+	{
+		float currentVel[3];
+		GetEntPropVector(spitter, Prop_Data, "m_vecVelocity", currentVel);
+		velocity[2] = currentVel[2];
+	}
+	else
+	{
+		velocity[2] = 0.0;
+	}
+
 	TeleportEntity(spitter, NULL_VECTOR, NULL_VECTOR, velocity);
 }
 
@@ -313,6 +332,7 @@ void TryDropJumpAcid(int spitter)
 	velocity[2] = 220.0;
 	TeleportEntity(spitter, NULL_VECTOR, NULL_VECTOR, velocity);
 
+	g_bIsJumping[spitter] = true;
 	DropAcidPoolAt(spitter, spitterOrigin);
 	g_fNextJumpAt[spitter] = now + g_cvJumpCooldown.FloatValue;
 }
@@ -373,6 +393,7 @@ void ResetClientState(int client)
 	}
 
 	g_bTrackedAcidPool[client] = false;
+	g_bIsJumping[client] = false;
 	g_fNextTrailAt[client] = 0.0;
 	g_fNextJumpAt[client] = 0.0;
 	g_fNextMeleePoolAt[client] = 0.0;

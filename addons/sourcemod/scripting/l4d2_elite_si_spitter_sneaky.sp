@@ -29,13 +29,17 @@ ConVar g_cvCloakCooldown;
 ConVar g_cvShotInterval;
 ConVar g_cvShotSpreadDistance;
 ConVar g_cvShotRange;
+ConVar g_cvRetreatCooldown;
+ConVar g_cvRetreatJitter;
 
 bool g_bHasEliteApi;
 bool g_bTrackedSneaky[MAXPLAYERS + 1];
 bool g_bCloaked[MAXPLAYERS + 1];
+bool g_bRetreating[MAXPLAYERS + 1];
 float g_fCloakUntil[MAXPLAYERS + 1];
 float g_fNextCloakAt[MAXPLAYERS + 1];
 float g_fNextShotAt[MAXPLAYERS + 1];
+float g_fNextRetreatAt[MAXPLAYERS + 1];
 int g_iShotsRemaining[MAXPLAYERS + 1];
 
 public Plugin myinfo =
@@ -72,6 +76,8 @@ public void OnPluginStart()
 	g_cvShotInterval = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_interval", "0.45", "Delay between the two Sneaky Spitter acid shots.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
 	g_cvShotSpreadDistance = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_spread_distance", "140.0", "Offset used to spread the second acid shot away from the first target point.", FCVAR_NOTIFY, true, 10.0, true, 1000.0);
 	g_cvShotRange = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_range", "1400.0", "Max range to pick survivor targets for Sneaky Spitter acid bursts.", FCVAR_NOTIFY, true, 100.0, true, 5000.0);
+	g_cvRetreatCooldown = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_cooldown", "0.35", "Minimum seconds between each retreat speed update tick.", FCVAR_NOTIFY, true, 0.05, true, 2.0);
+	g_cvRetreatJitter = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_jitter", "20.0", "Max random angle offset (degrees) applied to retreat direction for natural movement.", FCVAR_NOTIFY, true, 0.0, true, 60.0);
 
 	CreateConVar("l4d2_elite_si_spitter_sneaky_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_spitter_sneaky");
@@ -285,9 +291,18 @@ void LockSpitCooldown(int client, float now)
 
 void TryRetreatFromNearbySurvivor(int client)
 {
-	int threat = FindClosestSurvivor(client, g_cvRetreatRange.FloatValue);
+	float retreatRange = g_cvRetreatRange.FloatValue;
+	float stopRange = retreatRange * 1.3;
+
+	int threat = FindClosestSurvivor(client, stopRange);
+
 	if (threat <= 0)
 	{
+		if (g_bRetreating[client])
+		{
+			g_bRetreating[client] = false;
+			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+		}
 		return;
 	}
 
@@ -295,19 +310,60 @@ void TryRetreatFromNearbySurvivor(int client)
 	float threatOrigin[3];
 	GetClientAbsOrigin(client, selfOrigin);
 	GetClientAbsOrigin(threat, threatOrigin);
+	float distance = GetVectorDistance(selfOrigin, threatOrigin);
+
+	if (!g_bRetreating[client])
+	{
+		if (distance > retreatRange)
+		{
+			return;
+		}
+		g_bRetreating[client] = true;
+	}
+	else
+	{
+		if (distance > stopRange)
+		{
+			g_bRetreating[client] = false;
+			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+			return;
+		}
+	}
+
+	float now = GetGameTime();
+	if (now < g_fNextRetreatAt[client])
+	{
+		return;
+	}
+	g_fNextRetreatAt[client] = now + g_cvRetreatCooldown.FloatValue;
+
+	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvRetreatSpeedMultiplier.FloatValue);
+	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", 210.0 * g_cvRetreatSpeedMultiplier.FloatValue);
 
 	float direction[3];
 	MakeVectorFromPoints(threatOrigin, selfOrigin, direction);
-	NormalizeVector(direction, direction);
+	direction[2] = 0.0;
+	if (NormalizeVector(direction, direction) == 0.0)
+	{
+		return;
+	}
 
-	float speed = 210.0 * g_cvRetreatSpeedMultiplier.FloatValue;
-	float velocity[3];
-	velocity[0] = direction[0] * speed;
-	velocity[1] = direction[1] * speed;
-	velocity[2] = 0.0;
-	TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, velocity);
-	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvRetreatSpeedMultiplier.FloatValue);
-	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", speed);
+	float jitter = g_cvRetreatJitter.FloatValue;
+	if (jitter > 0.0)
+	{
+		float angle = GetRandomFloat(-jitter, jitter);
+		float rad = DegToRad(angle);
+		float cosA = Cosine(rad);
+		float sinA = Sine(rad);
+		float newX = direction[0] * cosA - direction[1] * sinA;
+		float newY = direction[0] * sinA + direction[1] * cosA;
+		direction[0] = newX;
+		direction[1] = newY;
+	}
+
+	float eyeAng[3];
+	GetVectorAngles(direction, eyeAng);
+	TeleportEntity(client, NULL_VECTOR, eyeAng, NULL_VECTOR);
 }
 
 void TryFireBurstShot(int client, float now)
@@ -414,9 +470,11 @@ void ResetClientState(int client)
 
 	g_bTrackedSneaky[client] = false;
 	g_bCloaked[client] = false;
+	g_bRetreating[client] = false;
 	g_fCloakUntil[client] = 0.0;
 	g_fNextCloakAt[client] = 0.0;
 	g_fNextShotAt[client] = 0.0;
+	g_fNextRetreatAt[client] = 0.0;
 	g_iShotsRemaining[client] = 0;
 }
 

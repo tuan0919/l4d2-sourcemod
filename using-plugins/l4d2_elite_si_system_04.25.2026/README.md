@@ -212,6 +212,11 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 ## Changelog tom tat
 
+### 25/04/2026 (update 2)
+
+- Revamp di chuyển `Sneaky Spitter`: bỏ `TeleportEntity` force velocity mỗi tick, thay bằng boost `m_flLaggedMovementValue` + `m_flMaxspeed` để AI tự pathfind ra xa. Thêm hysteresis (bắt đầu retreat khi survivor vào trong `retreat_range`, dừng khi ra ngoài `retreat_range * 1.3`) tránh on/off liên tục. Thêm cooldown giữa các lần update retreat (`retreat_cooldown`, default 0.35s). Thêm random jitter góc hướng retreat (`retreat_jitter`, default ±20°) để trông tự nhiên hơn. Thêm cvar `l4d2_elite_si_spitter_sneaky_retreat_cooldown` và `l4d2_elite_si_spitter_sneaky_retreat_jitter`.
+- Fix di chuyển `Acid Pool Spitter`: thêm flag `g_bIsJumping` để `TryPressureClosestSurvivor` không zero out `velocity[2]` trong khi spitter đang mid-air sau jump. Detect land bằng `FL_ONGROUND`. Kết quả: spitter giờ nhảy lên thật sự thay vì bị cancel vertical velocity ngay tick tiếp theo.
+
 ### 25/04/2026
 
 - Them `Tank Explosive`: Elite Tank subtype moi (subtype 39). Rock nem ra se no khi cham bat ky thu gi, gay AOE blast damage + rung man hinh cho survivor trong radius. Neu trung truc tiep survivor se no ngay duoi chan, gay them bonus damage.

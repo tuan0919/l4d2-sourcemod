@@ -12,7 +12,7 @@
 
 #define ELITE_TYPE_DATA_FILE "data/elite_si_type_descriptions.cfg"
 #define ELITE_CLASS_COUNT 7
-#define ELITE_SUBTYPE_COUNT 38
+#define ELITE_SUBTYPE_COUNT 40
 #define ELITE_TYPE_NAME_LEN 48
 #define ELITE_TYPE_DESC_LEN 192
 
@@ -55,7 +55,9 @@ enum
 	ELITE_SUBTYPE_HUNTER_HEROIC,
 	ELITE_SUBTYPE_CHARGER_UNSTOPPABLE,
 	ELITE_SUBTYPE_JOCKEY_JUMPER,
-	ELITE_SUBTYPE_JOCKEY_HEROIC
+	ELITE_SUBTYPE_JOCKEY_HEROIC,
+	ELITE_SUBTYPE_TANK_IGNITOR,
+	ELITE_SUBTYPE_TANK_EXPLOSIVE
 }
 
 enum
@@ -207,6 +209,8 @@ public void OnPluginStart()
 
 	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABNORMAL_BEHAVIOR, "l4d2_elite_si_core_tank_abnormal_subtype_chance", "1", "Relative weight for Tank elite to roll Abnormal behavior.");
 	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_ABILITY_MOVEMENT, "l4d2_elite_si_core_tank_movement_subtype_chance", "1", "Relative weight for Tank elite to roll Strange Movement.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_TANK_IGNITOR, "l4d2_elite_si_core_tank_ignitor_subtype_chance", "1", "Relative weight for Tank elite to roll Ignitor.");
+	RegisterSubtypeChanceConVar(ELITE_CLASS_TANK, ELITE_SUBTYPE_TANK_EXPLOSIVE, "l4d2_elite_si_core_tank_explosive_subtype_chance", "1", "Relative weight for Tank elite to roll Explosive.");
 
 	CreateConVar("l4d2_elite_si_core_version", PLUGIN_VERSION, "Elite SI core version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_core");
@@ -313,7 +317,7 @@ public Action Timer_ProcessSpawn(Handle timer, int userId)
 
 	g_bIsElite[client] = true;
 	g_iEliteSubtype[client] = RollSubtypeByClass(zClass);
-	g_bIsFireImmune[client] = (g_iEliteSubtype[client] == ELITE_SUBTYPE_SMOKER_IGNITOR || g_iEliteSubtype[client] == ELITE_SUBTYPE_BOOMER_LEAKER);
+	g_bIsFireImmune[client] = (g_iEliteSubtype[client] == ELITE_SUBTYPE_SMOKER_IGNITOR || g_iEliteSubtype[client] == ELITE_SUBTYPE_BOOMER_LEAKER || g_iEliteSubtype[client] == ELITE_SUBTYPE_TANK_IGNITOR);
 
 	ApplyEliteHealth(client);
 	ApplyEliteColor(client, zClass, g_iEliteSubtype[client]);
@@ -457,6 +461,18 @@ void ApplyEliteColor(int client, int zClass, int subtype)
 	if (subtype == ELITE_SUBTYPE_HUNTER_HEROIC)
 	{
 		SetEntityRenderColor(client, 255, 60, 0, 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_TANK_IGNITOR)
+	{
+		SetEntityRenderColor(client, 255, 80, 0, 255);
+		return;
+	}
+
+	if (subtype == ELITE_SUBTYPE_TANK_EXPLOSIVE)
+	{
+		SetEntityRenderColor(client, 255, 30, 0, 255);
 		return;
 	}
 
@@ -724,6 +740,8 @@ void GetSubtypeLabelDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_CHARGER_UNSTOPPABLE: strcopy(buffer, maxlen, "Unstoppable");
 		case ELITE_SUBTYPE_JOCKEY_JUMPER: strcopy(buffer, maxlen, "Jumper");
 		case ELITE_SUBTYPE_JOCKEY_HEROIC: strcopy(buffer, maxlen, "Heroic");
+		case ELITE_SUBTYPE_TANK_IGNITOR: strcopy(buffer, maxlen, "Ignitor");
+		case ELITE_SUBTYPE_TANK_EXPLOSIVE: strcopy(buffer, maxlen, "Explosive");
 		default: strcopy(buffer, maxlen, "Unknown");
 	}
 }
@@ -748,6 +766,8 @@ void GetSubtypeDescriptionDefault(int subtype, char[] buffer, int maxlen)
 		case ELITE_SUBTYPE_CHARGER_UNSTOPPABLE: strcopy(buffer, maxlen, "temporarily invisible and invincible during charges, knocks targets into the air on melee, and stops carrying midway");
 		case ELITE_SUBTYPE_JOCKEY_JUMPER: strcopy(buffer, maxlen, "keeps bouncing upward while riding a survivor to create extra fall damage");
 		case ELITE_SUBTYPE_JOCKEY_HEROIC: strcopy(buffer, maxlen, "carries a pipe bomb in hand, activating it when riding a survivor and dropping it if interrupted or killed");
+		case ELITE_SUBTYPE_TANK_IGNITOR: strcopy(buffer, maxlen, "always on fire and immune to burn damage, throws burning rocks that create fire patches on impact");
+		case ELITE_SUBTYPE_TANK_EXPLOSIVE: strcopy(buffer, maxlen, "throws rocks that explode on impact, dealing massive AOE blast damage and shaking the screen; direct hits detonate under the survivor's feet");
 		default: strcopy(buffer, maxlen, "unknown elite trait");
 	}
 }
@@ -814,7 +834,7 @@ bool IsSubtypeSupportedByClassIndex(int classIdx, int subtype)
 
 		case ELITE_CLASS_TANK:
 		{
-			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT;
+			return subtype == ELITE_SUBTYPE_ABNORMAL_BEHAVIOR || subtype == ELITE_SUBTYPE_ABILITY_MOVEMENT || subtype == ELITE_SUBTYPE_TANK_IGNITOR || subtype == ELITE_SUBTYPE_TANK_EXPLOSIVE;
 		}
 	}
 

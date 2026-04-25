@@ -151,24 +151,73 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
                 || EntityClassMatches(attackerEnt, "inferno")
                 || EntityClassMatches(attackerEnt, "entityflame");
 
-            if (isFirDeath)
+        if (isFirDeath)
+        {
+            HazardType snapSource = Hazard_None;
+            int snapOwner = 0;
+            bool hasSnapshot = GetSIFireSnapshot(victim, snapSource, snapOwner);
+
+            // Fallback: nếu không có HazardType snapshot nhưng có fire bullet snapshot
+            if (!hasSnapshot && g_bSIFireBulletSource[victim]
+                && g_iSIFireSourceOwner[victim] > 0 && g_iSIFireSourceOwner[victim] <= MaxClients
+                && IsInGameClient(g_iSIFireSourceOwner[victim]) && GetClientTeam(g_iSIFireSourceOwner[victim]) == 2
+                && (GetGameTime() - g_fSIFireSourceTime[victim]) <= 30.0)
             {
-                HazardType snapSource = Hazard_None;
-                int snapOwner = 0;
-                if (GetSIFireSnapshot(victim, snapSource, snapOwner)
-                    && IsInGameClient(snapOwner) && GetClientTeam(snapOwner) == 2)
-                {
-                    char attackerName[64];
-                    char victimName[64];
-                    char cause[192];
-
-                    GetCleanClientName(snapOwner, attackerName, sizeof(attackerName));
-                    GetSpecialInfectedName(victim, victimName, sizeof(victimName), g_bAnnounceEliteSIKill);
-                    HazardTypeToLabel(snapSource, cause, sizeof(cause));
-
-                    PrintActionWithCause(Attacker_Survivor, attackerName, "killed", victimName, cause);
-                }
+                snapOwner = g_iSIFireSourceOwner[victim];
+                hasSnapshot = true;
             }
+
+            if (hasSnapshot && IsInGameClient(snapOwner) && GetClientTeam(snapOwner) == 2)
+            {
+                char attackerName[64];
+                char victimName[64];
+                char cause[192];
+
+                GetCleanClientName(snapOwner, attackerName, sizeof(attackerName));
+                GetSpecialInfectedName(victim, victimName, sizeof(victimName), g_bAnnounceEliteSIKill);
+
+                // Nếu nguồn cháy là fire bullet — build cause với weapon name
+                if (g_bSIFireBulletSource[victim])
+                {
+                    char bulletWeapon[64];
+                    strcopy(bulletWeapon, sizeof(bulletWeapon), g_sSIFireBulletWeapon[victim]);
+
+                    // Fallback: lấy từ g_sLastSpecialBulletWeapon của owner
+                    if (bulletWeapon[0] == '\0' && g_sLastSpecialBulletWeapon[snapOwner][0] != '\0')
+                        strcopy(bulletWeapon, sizeof(bulletWeapon), g_sLastSpecialBulletWeapon[snapOwner]);
+
+                    if (bulletWeapon[0] != '\0' && IsBulletWeaponLabel(bulletWeapon))
+                    {
+                        // Format: "WeaponName/fire bullet" hoặc "WeaponName/fire bullet/hazard"
+                        BuildPrimaryCause(bulletWeapon, true, true, "", cause, sizeof(cause));
+                        if (snapSource != Hazard_None)
+                        {
+                            char hazardLabel[64];
+                            HazardTypeToLabel(snapSource, hazardLabel, sizeof(hazardLabel));
+                            AppendCauseToken(cause, sizeof(cause), hazardLabel);
+                        }
+                    }
+                    else
+                    {
+                        // Không có weapon label — fallback về hazard hoặc "fire bullet"
+                        if (snapSource != Hazard_None)
+                            HazardTypeToLabel(snapSource, cause, sizeof(cause));
+                        else
+                            strcopy(cause, sizeof(cause), "fire bullet");
+                    }
+                }
+                else
+                {
+                    // Không phải fire bullet — dùng HazardType label như cũ
+                    if (snapSource != Hazard_None)
+                        HazardTypeToLabel(snapSource, cause, sizeof(cause));
+                    else
+                        strcopy(cause, sizeof(cause), "fire");
+                }
+
+                PrintActionWithCause(Attacker_Survivor, attackerName, "killed", victimName, cause);
+            }
+        }
             return;
         }
 

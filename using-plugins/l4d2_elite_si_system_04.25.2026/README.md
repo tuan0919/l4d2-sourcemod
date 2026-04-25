@@ -107,7 +107,19 @@ He thong moi da tach thanh bo module nho, load doc lap:
     - Neu ride bi gian doan hoac Jockey bi giet, pipebomb roi xuong duoi chan/xac va tiep tuc dem nguoc
     - Khi no gay damage lon trong vung xung quanh
 
-## Subtype mapping dang dung
+16. `scripting/l4d2_elite_si_tank_ignitor.sp`
+    - Nhanh subtype rieng cho Tank elite theo trait `Ignitor`
+    - Tank luon luon boc chay khi spawn, mien nhiem hoan toan DMG_BURN
+    - Tat ca rock nem ra deu tu dong boc chay (burning rock)
+    - Khi burning rock cham bat ky thu gi (world, survivor, props) se tao bai lua (inferno) tai diem va cham, giong Boomer Leaker
+    - Rock chay gay them bonus damage % len survivor
+    - Attribution thong qua targetname `elite_tank_ignitor_fire` de Red Announce trace credit
+
+17. `scripting/l4d2_elite_si_tank_explosive.sp`
+    - Nhanh subtype rieng cho Tank elite theo trait `Explosive`
+    - Khi ném đá chạm vào bất kỳ thứ gì sẽ gây nổ với AOE damage + rung màn hình cho survivor trong radius
+    - Nếu trúng trực tiếp survivor sẽ nổ ngay dưới chân survivor đó, gây thêm bonus damage
+    - Attribution system expose native `EliteSI_TankExplosive_GetRecentDamageCause/Attacker` cho Red Announce trace credit
 
 - `0`: none
 - `1`: Abnormal behavior
@@ -126,6 +138,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `35`: Unstoppable
 - `36`: Jumper
 - `37`: Jockey Heroic
+- `38`: Tank Ignitor
+- `39`: Tank Explosive
 
 ## Rule gan subtype hien tai
 
@@ -153,7 +167,7 @@ He thong moi da tach thanh bo module nho, load doc lap:
   - Roll trong so giua `Abnormal behavior`, `ChargerSteering`, `ChargerAction`, `Unstoppable`
 
 - `Tank`
-  - Roll trong so giua `Abnormal behavior` va `Strange Movement`
+  - Roll trong so giua `Abnormal behavior`, `Strange Movement`, `Ignitor` va `Explosive`
 
 ## Prefix cvar con su dung
 
@@ -175,6 +189,8 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - `l4d2_elite_si_hunter_heroic_*`
 - `l4d2_elite_si_jockey_jumper_*`
 - `l4d2_elite_si_jockey_heroic_*`
+- `l4d2_elite_si_tank_ignitor_*`
+- `l4d2_elite_si_tank_explosive_*`
 
 ## Flow hien tai
 
@@ -198,6 +214,16 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 ### 25/04/2026
 
+- Them `Tank Explosive`: Elite Tank subtype moi (subtype 39). Rock nem ra se no khi cham bat ky thu gi, gay AOE blast damage + rung man hinh cho survivor trong radius. Neu trung truc tiep survivor se no ngay duoi chan, gay them bonus damage.
+- Them subtype roll weight `l4d2_elite_si_core_tank_explosive_subtype_chance` va module config rieng `l4d2_elite_si_tank_explosive_*`.
+- Attribution system expose native `EliteSI_TankExplosive_GetRecentDamageCause/Attacker` de Red Announce trace credit.
+- Webapp UI: them card `Tank - Explosive` voi day du cvar toggle/number.
+- Tank Ignitor (subtype 38) giu nguyen, khong xung dot voi Explosive (subtype 39).
+
+- Them `Tank Ignitor`: Elite Tank luon boc chay, mien nhiem DMG_BURN hoan toan, tat ca rock nem ra deu tu dong chay va tao bai lua (inferno) tai diem va cham.
+- Burning rock gay them bonus damage % len survivor (mac dinh +15%).
+- Bai lua tao ra co targetname `elite_tank_ignitor_fire` de ho tro attribution cho Red Announce.
+- Them subtype roll weight `l4d2_elite_si_core_tank_ignitor_subtype_chance` va module config rieng `l4d2_elite_si_tank_ignitor_*`.
 - Fix `Strange Movement Spitter`: sau khi `ability_spit`, module gio ep velocity ve survivor gan nhat/huong nhin de Spitter tiep tuc di chuyen trong luc khac acid thay vi chi unlock maxspeed.
 - Fix `Strange Movement Smoker`: them tracking `tongue_grab`; Smoker gio di chuyen khi ban tongue, tiep tuc di lui keo survivor sau khi grab thanh cong, va reset speed ve `z_gas_speed` thay vi `tongue_victim_max_speed`.
 - Fix `Jockey Heroic`: doi tu prop/timer tu no sang `CPipeBombProjectile_Create` giong `Hunter Heroic`, de pipebomb co tieng beep countdown that cua engine.

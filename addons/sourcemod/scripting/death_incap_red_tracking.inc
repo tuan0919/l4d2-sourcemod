@@ -327,12 +327,49 @@ public Action OnTakeDamageAlive(int victim, int &attacker, int &inflictor, float
             g_iSIFireSourceOwner[victim] = fireOwner;
             g_fSIFireSourceTime[victim] = now;
             g_bSIWasOnFire[victim] = true;
+
+            // Kiểm tra thêm: attacker có bắn fire bullet gần đây không
+            // (fire bullet tạo entityflame trực tiếp trên SI, không qua inferno)
+            if (IsInGameClient(attacker) && GetClientTeam(attacker) == 2)
+            {
+                if ((now - g_fLastIncendiaryShot[attacker]) <= 6.0)
+                {
+                    g_bSIFireBulletSource[victim] = true;
+                    if (g_sLastSpecialBulletWeapon[attacker][0] != '\0')
+                        strcopy(g_sSIFireBulletWeapon[victim], sizeof(g_sSIFireBulletWeapon[]), g_sLastSpecialBulletWeapon[attacker]);
+                    else
+                        GetClientActiveWeaponClassname(attacker, g_sSIFireBulletWeapon[victim], sizeof(g_sSIFireBulletWeapon[]));
+                    // owner có thể chưa được set nếu HazardType resolve từ heuristic xa
+                    if (fireOwner <= 0 || fireOwner > MaxClients)
+                    {
+                        g_iSIFireSourceOwner[victim] = attacker;
+                    }
+                }
+            }
         }
-        else if (!g_bSIWasOnFire[victim])
+        else
         {
-            // Lần cháy mới nhưng không resolve được source — clear snapshot cũ
-            ClearSIFireSnapshot(victim);
-            g_bSIWasOnFire[victim] = true;
+            // Không resolve được HazardType — kiểm tra fire bullet trực tiếp
+            // (entityflame gắn trực tiếp lên SI từ incendiary ammo, không qua inferno)
+            if (IsInGameClient(attacker) && GetClientTeam(attacker) == 2
+                && (now - g_fLastIncendiaryShot[attacker]) <= 6.0)
+            {
+                g_iSIFireSourceType[victim] = view_as<int>(Hazard_None); // không có hazard entity
+                g_iSIFireSourceOwner[victim] = attacker;
+                g_fSIFireSourceTime[victim] = now;
+                g_bSIWasOnFire[victim] = true;
+                g_bSIFireBulletSource[victim] = true;
+                if (g_sLastSpecialBulletWeapon[attacker][0] != '\0')
+                    strcopy(g_sSIFireBulletWeapon[victim], sizeof(g_sSIFireBulletWeapon[]), g_sLastSpecialBulletWeapon[attacker]);
+                else
+                    GetClientActiveWeaponClassname(attacker, g_sSIFireBulletWeapon[victim], sizeof(g_sSIFireBulletWeapon[]));
+            }
+            else if (!g_bSIWasOnFire[victim])
+            {
+                // Lần cháy mới nhưng không resolve được source — clear snapshot cũ
+                ClearSIFireSnapshot(victim);
+                g_bSIWasOnFire[victim] = true;
+            }
         }
     }
 
@@ -359,6 +396,28 @@ void ClearSIFireSnapshot(int client)
     g_iSIFireSourceOwner[client] = 0;
     g_fSIFireSourceTime[client] = 0.0;
     g_bSIWasOnFire[client] = false;
+    g_bSIFireBulletSource[client] = false;
+    g_sSIFireBulletWeapon[client][0] = '\0';
+}
+
+bool GetClientActiveWeaponClassname(int client, char[] outLabel, int maxlen)
+{
+    if (!IsInGameClient(client))
+    {
+        outLabel[0] = '\0';
+        return false;
+    }
+
+    int active = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+    if (!IsValidEdict(active))
+    {
+        outLabel[0] = '\0';
+        return false;
+    }
+
+    char cls[64];
+    GetEntityClassname(active, cls, sizeof(cls));
+    return FormatWeaponName(cls, outLabel, maxlen);
 }
 
 bool GetSIFireSnapshot(int victim, HazardType &source, int &sourceOwner)

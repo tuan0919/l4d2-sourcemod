@@ -90,6 +90,45 @@ Loi ich:
 - Suicide fallback gan pipe Jockey se hien `Elite Jockey (Heroic)` killed survivor voi cause `Heroic Pipebomb`.
 - Them native integration voi `l4d2_elite_si_jockey_heroic`: `EliteSI_JockeyHeroic_GetRecentDamageCause/Attacker` de resolve chac chan case forced suicide thanh `Elite Jockey (Heroic)` + `Heroic Pipebomb`.
 
+## Thay doi 25/04/2026 (2) - Fix fire bullet cause cho SI/Tank
+
+### Van de
+
+- Khi survivor ban chet SI (Hunter, Smoker, Jockey, Charger, Spitter, Boomer) bang fire bullet, cause hien thi la `(fire)` thay vi `(WeaponName/fire bullet)`.
+- Loi nay chi xay ra o Flow 2: SI bat lua tu fire bullet roi chay xa, `entityflame` tren nguoi SI mat link ve attacker → `player_death` event co attacker=0.
+- Tank da duoc fix truoc do vi Tank thuong giu attacker reference lau hon (Flow 1), nhung cac SI nho thi khong.
+
+### Nguyen nhan
+
+- `g_iSIFireSourceType` chi luu `HazardType` (Molotov/Gascan/...), khong co field nao track fire bullet state.
+- Khi fire bullet gay chay SI, `TryGetFireSourceMetaForDamage` tra ve `Hazard_None` (khong co inferno/gascan entity) → snapshot khong duoc luu → announce miss hoac chi hien "fire".
+- Flow 2 trong `Event_PlayerDeath` chi goi `HazardTypeToLabel(snapSource)`, khong co logic fire bullet.
+
+### Fix
+
+1. Them 2 field moi vao `death_incap_red_defs.inc`:
+   - `g_bSIFireBulletSource[MAXPLAYERS+1]`: true neu SI dang chay do fire bullet
+   - `g_sSIFireBulletWeapon[MAXPLAYERS+1][64]`: ten vu khi fire bullet gay chay
+
+2. `OnTakeDamageAlive` trong `death_incap_red_tracking.inc`:
+   - Khi SI nhan `DMG_BURN` va `TryGetFireSourceMetaForDamage` tra ve HazardType hop le: kiem tra them attacker co ban fire bullet trong 6s → set `g_bSIFireBulletSource` + luu weapon name.
+   - Khi `TryGetFireSourceMetaForDamage` tra ve `Hazard_None`: neu attacker la survivor co `g_fLastIncendiaryShot` trong 6s → luu snapshot voi owner=attacker + set fire bullet flag.
+
+3. `ClearSIFireSnapshot` trong `death_incap_red_tracking.inc`:
+   - Clear them `g_bSIFireBulletSource` va `g_sSIFireBulletWeapon`.
+   - Them helper `GetClientActiveWeaponClassname`.
+
+4. Flow 2 trong `Event_PlayerDeath` (`death_incap_red_events.inc`):
+   - Neu `g_bSIFireBulletSource[victim]` = true: build cause bang `BuildPrimaryCause(weapon, true, true, ...)` → hien `WeaponName/fire bullet` (+ hazard label neu co).
+   - Neu khong co HazardType snapshot nhung co fire bullet snapshot → van announce duoc.
+   - Fallback: neu khong co weapon label → hien "fire bullet".
+
+### Files thay doi
+
+- `death_incap_red_defs.inc`: them 2 per-client SI fire bullet arrays
+- `death_incap_red_tracking.inc`: sua `OnTakeDamageAlive`, sua `ClearSIFireSnapshot`, them `GetClientActiveWeaponClassname`
+- `death_incap_red_events.inc`: sua Flow 2 trong `Event_PlayerDeath`
+
 ## Khuyen nghi sau khi deploy
 
 - Theo doi map/coi nao co nhieu fire chain de so sanh tickrate/trai nghiem truoc va sau.

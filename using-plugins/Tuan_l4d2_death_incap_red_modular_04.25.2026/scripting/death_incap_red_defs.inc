@@ -163,6 +163,8 @@ int   g_iSIFireSourceType[MAXPLAYERS + 1];    // HazardType
 int   g_iSIFireSourceOwner[MAXPLAYERS + 1];   // survivor owner gây cháy
 float g_fSIFireSourceTime[MAXPLAYERS + 1];    // thời điểm update gần nhất
 bool  g_bSIWasOnFire[MAXPLAYERS + 1];         // trạng thái cháy frame trước
+bool  g_bSIFireBulletSource[MAXPLAYERS + 1];  // true nếu nguồn cháy là fire bullet
+char  g_sSIFireBulletWeapon[MAXPLAYERS + 1][64]; // tên vũ khí fire bullet gây cháy
 
 public Plugin myinfo =
 {

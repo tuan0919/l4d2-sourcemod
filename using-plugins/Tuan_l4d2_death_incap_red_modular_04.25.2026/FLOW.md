@@ -200,6 +200,19 @@ OnTakeDamageAlive(victim=SI, DMG_BURN)
                 g_iSIFireSourceOwner[SI] = owner
                 g_fSIFireSourceTime[SI]  = now
                 g_bSIWasOnFire[SI]       = true
+        └─ Kiểm tra fire bullet:
+                nếu attacker là survivor + g_fLastIncendiaryShot[attacker] <= 6s:
+                        g_bSIFireBulletSource[SI] = true
+                        g_sSIFireBulletWeapon[SI] = weapon name
+        │
+        ▼
+(Trường hợp fire bullet trực tiếp — không qua inferno)
+OnTakeDamageAlive(victim=SI, DMG_BURN, attacker=survivor)
+        └─ TryGetFireSourceMetaForDamage → Hazard_None (không có inferno entity)
+        └─ Fallback: attacker có g_fLastIncendiaryShot <= 6s
+                g_iSIFireSourceOwner[SI] = attacker
+                g_bSIFireBulletSource[SI] = true
+                g_sSIFireBulletWeapon[SI] = weapon name
         │
         ▼
 SI chạy ra xa, entityflame gắn trên người SI
@@ -209,11 +222,16 @@ SI chạy ra xa, entityflame gắn trên người SI
 SI chết cháy → player_death (attacker=0, weapon="entityflame")
         └─ Event_PlayerDeath
                 └─ isFirDeath = true
-                └─ GetSIFireSnapshot(SI) → (HazardType, owner=Tuan) ✓
-                └─ announce: "Tuan killed Hunter (gascan)"
+                └─ GetSIFireSnapshot(SI) → (HazardType, owner=Tuan)
+                └─ Kiểm tra g_bSIFireBulletSource[SI]:
+                        true  → BuildPrimaryCause(weapon, fire bullet, hazard)
+                                → announce: "Tuan killed Hunter (AK-47/fire bullet)"
+                                   hoặc:   "Tuan killed Hunter (AK-47/fire bullet/molotov)"
+                        false → HazardTypeToLabel(snapSource)
+                                → announce: "Tuan killed Hunter (gascan)"
         │
 SI hết cháy (IsClientCurrentlyOnFire = false)
-        └─ ClearSIFireSnapshot(SI) ← reset để lần cháy tiếp theo resolve lại
+        └─ ClearSIFireSnapshot(SI) ← reset tất cả bao gồm fire bullet fields
 ```
 
 ---
@@ -280,7 +298,7 @@ SI chết → Event_PlayerDeath
 | `propane tank` | entity classname chứa `propan` hoặc model path |
 | `oxygen tank` | entity classname chứa `oxygen`/`oxygentank` hoặc model path |
 | `pipebomb` | classname `pipe_bomb_projectile` hoặc weapon chứa `pipe` |
-| `fire bullet` | `g_fLastIncendiaryShot[attacker]` trong 6s + baseWeapon là bullet weapon |
+| `fire bullet` | `g_fLastIncendiaryShot[attacker]` trong 6s + baseWeapon là bullet weapon. Hoạt động cho cả Flow 1 (SI chết có attacker) và Flow 2 (SI chết bởi entityflame không có attacker — qua SI fire bullet snapshot) |
 | `explosive bullet` | `g_fLastExplosiveShot[attacker]` trong 6s + baseWeapon là bullet weapon |
 | `Hunter pounce` | `m_pounceAttacker == attackerClient` |
 | `Smoker choke` | `m_tongueOwner == attackerClient` |

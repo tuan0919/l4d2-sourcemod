@@ -330,6 +330,9 @@ void TryRetreatFromNearbySurvivor(int client)
 		}
 	}
 
+	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvRetreatSpeedMultiplier.FloatValue);
+	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", 210.0 * g_cvRetreatSpeedMultiplier.FloatValue);
+
 	float now = GetGameTime();
 	if (now < g_fNextRetreatAt[client])
 	{
@@ -337,9 +340,7 @@ void TryRetreatFromNearbySurvivor(int client)
 	}
 	g_fNextRetreatAt[client] = now + g_cvRetreatCooldown.FloatValue;
 
-	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvRetreatSpeedMultiplier.FloatValue);
-	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", 210.0 * g_cvRetreatSpeedMultiplier.FloatValue);
-
+	// Tính hướng ra xa survivor
 	float direction[3];
 	MakeVectorFromPoints(threatOrigin, selfOrigin, direction);
 	direction[2] = 0.0;
@@ -348,6 +349,7 @@ void TryRetreatFromNearbySurvivor(int client)
 		return;
 	}
 
+	// Jitter ngẫu nhiên để không đi thẳng cứng nhắc
 	float jitter = g_cvRetreatJitter.FloatValue;
 	if (jitter > 0.0)
 	{
@@ -361,9 +363,25 @@ void TryRetreatFromNearbySurvivor(int client)
 		direction[1] = newY;
 	}
 
-	float eyeAng[3];
-	GetVectorAngles(direction, eyeAng);
-	TeleportEntity(client, NULL_VECTOR, eyeAng, NULL_VECTOR);
+	// Push velocity theo hướng retreat — blend với velocity hiện tại
+	// để AI vẫn có ảnh hưởng lên hướng di chuyển (tránh vật cản, v.v.)
+	float speed = 210.0 * g_cvRetreatSpeedMultiplier.FloatValue;
+	float currentVel[3];
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", currentVel);
+	float currentZ = currentVel[2];
+	currentVel[2] = 0.0;
+
+	// Blend: 70% retreat direction + 30% AI velocity hiện tại
+	float retreatVel[3];
+	retreatVel[0] = direction[0] * speed;
+	retreatVel[1] = direction[1] * speed;
+
+	float velocity[3];
+	velocity[0] = retreatVel[0] * 0.7 + currentVel[0] * 0.3;
+	velocity[1] = retreatVel[1] * 0.7 + currentVel[1] * 0.3;
+	velocity[2] = (GetEntityFlags(client) & FL_ONGROUND) != 0 ? 0.0 : currentZ;
+
+	TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, velocity);
 }
 
 void TryFireBurstShot(int client, float now)

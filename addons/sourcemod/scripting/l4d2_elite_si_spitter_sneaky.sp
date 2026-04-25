@@ -6,41 +6,31 @@
 #include <sdkhooks>
 #include <left4dhooks>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "2.0.0"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
-
 #define ZC_SPITTER 4
-
 #define ELITE_SUBTYPE_SPITTER_SNEAKY 32
 
-#define SNEAKY_SHOTS_PER_CYCLE 2
+#define SNEAKY_MAX_SPITS 3
 
 native bool EliteSI_IsElite(int client);
 native int EliteSI_GetSubtype(int client);
 
 ConVar g_cvEnable;
-ConVar g_cvRetreatRange;
-ConVar g_cvRetreatSpeedMultiplier;
 ConVar g_cvCloakFadeAlpha;
 ConVar g_cvCloakActiveDuration;
 ConVar g_cvCloakCooldown;
-ConVar g_cvShotInterval;
-ConVar g_cvShotSpreadDistance;
-ConVar g_cvShotRange;
-ConVar g_cvRetreatCooldown;
-ConVar g_cvRetreatJitter;
+ConVar g_cvSpitCooldown;
 
 bool g_bHasEliteApi;
 bool g_bTrackedSneaky[MAXPLAYERS + 1];
 bool g_bCloaked[MAXPLAYERS + 1];
-bool g_bRetreating[MAXPLAYERS + 1];
 float g_fCloakUntil[MAXPLAYERS + 1];
 float g_fNextCloakAt[MAXPLAYERS + 1];
-float g_fNextShotAt[MAXPLAYERS + 1];
-float g_fNextRetreatAt[MAXPLAYERS + 1];
-int g_iShotsRemaining[MAXPLAYERS + 1];
+float g_fNextSpitAt[MAXPLAYERS + 1];
+int g_iSpitsRemaining[MAXPLAYERS + 1];
 
 public Plugin myinfo =
 {
@@ -67,33 +57,25 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int errMax)
 
 public void OnPluginStart()
 {
-	g_cvEnable = CreateConVar("l4d2_elite_si_spitter_sneaky_enable", "1", "0=Off, 1=On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvRetreatRange = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_range", "300.0", "Range where Sneaky Spitter tries to retreat from nearby survivors.", FCVAR_NOTIFY, true, 50.0, true, 2000.0);
-	g_cvRetreatSpeedMultiplier = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_speed_multiplier", "1.15", "Movement speed multiplier while Sneaky Spitter repositions away from survivors.", FCVAR_NOTIFY, true, 1.0, true, 3.0);
-	g_cvCloakFadeAlpha = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_alpha", "102", "Render alpha while Sneaky Spitter is cloaked. 102 ~= 60 percent fade.", FCVAR_NOTIFY, true, 0.0, true, 255.0);
-	g_cvCloakActiveDuration = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_duration", "5.0", "Duration in seconds of the Sneaky Spitter cloak cycle.", FCVAR_NOTIFY, true, 0.5, true, 30.0);
-	g_cvCloakCooldown = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_cooldown", "7.0", "Cooldown in seconds after cloak ends before Sneaky Spitter starts the next two-shot burst.", FCVAR_NOTIFY, true, 0.5, true, 60.0);
-	g_cvShotInterval = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_interval", "0.45", "Delay between the two Sneaky Spitter acid shots.", FCVAR_NOTIFY, true, 0.1, true, 5.0);
-	g_cvShotSpreadDistance = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_spread_distance", "140.0", "Offset used to spread the second acid shot away from the first target point.", FCVAR_NOTIFY, true, 10.0, true, 1000.0);
-	g_cvShotRange = CreateConVar("l4d2_elite_si_spitter_sneaky_shot_range", "1400.0", "Max range to pick survivor targets for Sneaky Spitter acid bursts.", FCVAR_NOTIFY, true, 100.0, true, 5000.0);
-	g_cvRetreatCooldown = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_cooldown", "0.35", "Minimum seconds between each retreat speed update tick.", FCVAR_NOTIFY, true, 0.05, true, 2.0);
-	g_cvRetreatJitter = CreateConVar("l4d2_elite_si_spitter_sneaky_retreat_jitter", "20.0", "Max random angle offset (degrees) applied to retreat direction for natural movement.", FCVAR_NOTIFY, true, 0.0, true, 60.0);
+	g_cvEnable               = CreateConVar("l4d2_elite_si_spitter_sneaky_enable",          "1",    "0=Off, 1=On.",                                                                    FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvCloakFadeAlpha       = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_alpha",      "102",  "Render alpha while cloaked (102 ~= 60% fade).",                                   FCVAR_NOTIFY, true, 0.0, true, 255.0);
+	g_cvCloakActiveDuration  = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_duration",   "5.0",  "Duration in seconds of each cloak window.",                                       FCVAR_NOTIFY, true, 0.5, true, 30.0);
+	g_cvCloakCooldown        = CreateConVar("l4d2_elite_si_spitter_sneaky_cloak_cooldown",   "8.0",  "Cooldown in seconds after cloak ends before next cloak can start.",               FCVAR_NOTIFY, true, 1.0, true, 60.0);
+	g_cvSpitCooldown         = CreateConVar("l4d2_elite_si_spitter_sneaky_spit_cooldown",    "3.0",  "Cooldown in seconds between each of the 3 manual acid spits.",                   FCVAR_NOTIFY, true, 0.5, true, 30.0);
 
 	CreateConVar("l4d2_elite_si_spitter_sneaky_version", PLUGIN_VERSION, "Plugin version.", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_elite_si_spitter_sneaky");
 
-	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
-	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
-	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
+	HookEvent("player_hurt",   Event_PlayerHurt,   EventHookMode_Post);
+	HookEvent("round_start",   Event_RoundReset,   EventHookMode_PostNoCopy);
+	HookEvent("round_end",     Event_RoundReset,   EventHookMode_PostNoCopy);
 
 	RefreshEliteState();
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (IsClientInGame(i))
-		{
 			OnClientPutInServer(i);
-		}
 	}
 }
 
@@ -115,52 +97,50 @@ public void OnLibraryAdded(const char[] name)
 public void OnLibraryRemoved(const char[] name)
 {
 	if (StrEqual(name, "elite_si_core") || StrEqual(name, "l4d2_elite_SI_reward"))
-	{
 		RefreshEliteState();
-	}
 }
 
 public void OnClientPutInServer(int client)
 {
 	ResetClientState(client);
-	SDKHook(client, SDKHook_PreThinkPost, OnSneakyThinkPost);
-	SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
+	SDKHook(client, SDKHook_PreThinkPost,  OnThink);
+	SDKHook(client, SDKHook_OnTakeDamage,  OnTakeDamage);
 	SyncTrackedSubtypeForClient(client);
 }
 
 public void OnClientDisconnect(int client)
 {
 	ResetClientState(client);
-	SDKUnhook(client, SDKHook_PreThinkPost, OnSneakyThinkPost);
+	SDKUnhook(client, SDKHook_PreThinkPost, OnThink);
 	SDKUnhook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 }
 
 public void EliteSI_OnEliteAssigned(int client, int zclass, int subtype)
 {
 	if (client <= 0 || client > MaxClients)
-	{
 		return;
-	}
 
-	g_bTrackedSneaky[client] = (zclass == ZC_SPITTER && subtype == ELITE_SUBTYPE_SPITTER_SNEAKY);
 	ResetClientState(client);
 	g_bTrackedSneaky[client] = (zclass == ZC_SPITTER && subtype == ELITE_SUBTYPE_SPITTER_SNEAKY);
-	QueueNextBurst(client, GetGameTime() + 0.6);
+
+	if (g_bTrackedSneaky[client])
+	{
+		// Bắt đầu với cloak ngay khi spawn
+		EnterCloak(client, GetGameTime());
+		g_iSpitsRemaining[client] = SNEAKY_MAX_SPITS;
+		g_fNextSpitAt[client]     = GetGameTime() + 2.0;
+	}
 }
 
 public void EliteSI_OnEliteCleared(int client)
 {
 	if (client <= 0 || client > MaxClients)
-	{
 		return;
-	}
 
 	bool wasSneaky = g_bTrackedSneaky[client];
 	ResetClientState(client);
 	if (wasSneaky)
-	{
-		RestoreCloakVisual(client);
-	}
+		RestoreVisual(client);
 }
 
 public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
@@ -168,54 +148,63 @@ public void Event_RoundReset(Event event, const char[] name, bool dontBroadcast)
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		if (g_bTrackedSneaky[i])
-		{
-			RestoreCloakVisual(i);
-		}
+			RestoreVisual(i);
 		ResetClientState(i);
 	}
 }
 
-public void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
+// Khi bị survivor hit → break cloak nếu đang cloaked
+public void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!g_cvEnable.BoolValue)
-	{
 		return;
-	}
 
-	int victim = GetClientOfUserId(event.GetInt("userid"));
-	if (!IsSneakySpitter(victim, true) || !g_bCloaked[victim])
-	{
+	int victim   = GetClientOfUserId(event.GetInt("userid"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+
+	if (!IsSneakySpitter(victim) || !IsValidAliveSurvivor(attacker))
 		return;
-	}
-
-	BreakCloak(victim, true);
-}
-
-public void OnSneakyThinkPost(int client)
-{
-	if (!IsSneakySpitter(client, true))
-	{
-		return;
-	}
-
-	float now = GetGameTime();
-	UpdateCloakState(client, now);
-	LockSpitCooldown(client, now);
-	TryRetreatFromNearbySurvivor(client);
-	TryFireBurstShot(client, now);
-}
-
-public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
-{
-	if (!IsSneakySpitter(victim, true) || damage <= 0.0)
-	{
-		return Plugin_Continue;
-	}
 
 	if (!g_bCloaked[victim])
+		return;
+
+	BreakCloak(victim);
+}
+
+public void OnThink(int client)
+{
+	if (!IsSneakySpitter(client))
+		return;
+
+	float now = GetGameTime();
+
+	// Cloak cycle
+	if (g_bCloaked[client])
 	{
-		return Plugin_Continue;
+		if (now >= g_fCloakUntil[client])
+			BreakCloak(client);
 	}
+	else if (now >= g_fNextCloakAt[client] && g_fNextCloakAt[client] > 0.0)
+	{
+		EnterCloak(client, now);
+	}
+
+	// Spit cycle: 3 lần, mỗi lần cách nhau spit_cooldown giây
+	// Chỉ spit khi không đang cloaked
+	if (!g_bCloaked[client] && g_iSpitsRemaining[client] > 0 && now >= g_fNextSpitAt[client])
+	{
+		TryFireSpit(client, now);
+	}
+
+	// Lock native spit ability để AI không tự spit thêm
+	LockNativeSpit(client, now);
+}
+
+// Chặn bullet damage khi đang cloaked
+public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damageType)
+{
+	if (!IsSneakySpitter(victim) || damage <= 0.0 || !g_bCloaked[victim])
+		return Plugin_Continue;
 
 	if ((damageType & DMG_BULLET) != 0)
 	{
@@ -226,228 +215,75 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 	return Plugin_Continue;
 }
 
-void UpdateCloakState(int client, float now)
-{
-	if (g_bCloaked[client])
-	{
-		if (now >= g_fCloakUntil[client])
-		{
-			BreakCloak(client, false);
-		}
-		return;
-	}
-
-	if (g_iShotsRemaining[client] <= 0 && now >= g_fNextCloakAt[client])
-	{
-		EnterCloak(client, now);
-	}
-}
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 void EnterCloak(int client, float now)
 {
-	g_bCloaked[client] = true;
+	g_bCloaked[client]    = true;
 	g_fCloakUntil[client] = now + g_cvCloakActiveDuration.FloatValue;
 	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
 	SetEntityRenderColor(client, 120, 255, 180, g_cvCloakFadeAlpha.IntValue);
 }
 
-void BreakCloak(int client, bool shoved)
+void BreakCloak(int client)
 {
-	g_bCloaked[client] = false;
+	g_bCloaked[client]    = false;
 	g_fCloakUntil[client] = 0.0;
-	RestoreCloakVisual(client);
-	QueueNextBurst(client, GetGameTime() + g_cvCloakCooldown.FloatValue);
-
-	if (shoved)
-	{
-		g_fNextShotAt[client] = GetGameTime() + g_cvCloakCooldown.FloatValue;
-	}
+	// Cooldown phải > cloak duration để tránh tàng hình liên tục
+	g_fNextCloakAt[client] = GetGameTime() + g_cvCloakCooldown.FloatValue;
+	RestoreVisual(client);
 }
 
-void RestoreCloakVisual(int client)
+void RestoreVisual(int client)
 {
-	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
-	{
+	if (!IsClientInGame(client) || GetClientTeam(client) != TEAM_INFECTED)
 		return;
-	}
-
-	if (GetClientTeam(client) != TEAM_INFECTED || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER)
-	{
+	if (GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER)
 		return;
-	}
 
 	SetEntityRenderMode(client, RENDER_TRANSCOLOR);
 	SetEntityRenderColor(client, 120, 255, 180, 255);
 }
 
-void LockSpitCooldown(int client, float now)
+void LockNativeSpit(int client, float now)
 {
 	int ability = GetEntPropEnt(client, Prop_Send, "m_customAbility");
 	if (IsValidEntity(ability))
-	{
 		SetEntPropFloat(ability, Prop_Send, "m_timestamp", now + 9999.0);
-	}
 }
 
-void TryRetreatFromNearbySurvivor(int client)
+void TryFireSpit(int client, float now)
 {
-	float retreatRange = g_cvRetreatRange.FloatValue;
-	float stopRange = retreatRange * 1.3;
-
-	int threat = FindClosestSurvivor(client, stopRange);
-
-	if (threat <= 0)
-	{
-		if (g_bRetreating[client])
-		{
-			g_bRetreating[client] = false;
-			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
-		}
-		return;
-	}
-
-	float selfOrigin[3];
-	float threatOrigin[3];
-	GetClientAbsOrigin(client, selfOrigin);
-	GetClientAbsOrigin(threat, threatOrigin);
-	float distance = GetVectorDistance(selfOrigin, threatOrigin);
-
-	if (!g_bRetreating[client])
-	{
-		if (distance > retreatRange)
-		{
-			return;
-		}
-		g_bRetreating[client] = true;
-	}
-	else
-	{
-		if (distance > stopRange)
-		{
-			g_bRetreating[client] = false;
-			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
-			return;
-		}
-	}
-
-	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_cvRetreatSpeedMultiplier.FloatValue);
-	SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", 210.0 * g_cvRetreatSpeedMultiplier.FloatValue);
-
-	float now = GetGameTime();
-	if (now < g_fNextRetreatAt[client])
-	{
-		return;
-	}
-	g_fNextRetreatAt[client] = now + g_cvRetreatCooldown.FloatValue;
-
-	// Tính hướng ra xa survivor
-	float direction[3];
-	MakeVectorFromPoints(threatOrigin, selfOrigin, direction);
-	direction[2] = 0.0;
-	if (NormalizeVector(direction, direction) == 0.0)
-	{
-		return;
-	}
-
-	// Jitter ngẫu nhiên để không đi thẳng cứng nhắc
-	float jitter = g_cvRetreatJitter.FloatValue;
-	if (jitter > 0.0)
-	{
-		float angle = GetRandomFloat(-jitter, jitter);
-		float rad = DegToRad(angle);
-		float cosA = Cosine(rad);
-		float sinA = Sine(rad);
-		float newX = direction[0] * cosA - direction[1] * sinA;
-		float newY = direction[0] * sinA + direction[1] * cosA;
-		direction[0] = newX;
-		direction[1] = newY;
-	}
-
-	// Push velocity theo hướng retreat — blend với velocity hiện tại
-	// để AI vẫn có ảnh hưởng lên hướng di chuyển (tránh vật cản, v.v.)
-	float speed = 210.0 * g_cvRetreatSpeedMultiplier.FloatValue;
-	float currentVel[3];
-	GetEntPropVector(client, Prop_Data, "m_vecVelocity", currentVel);
-	float currentZ = currentVel[2];
-	currentVel[2] = 0.0;
-
-	// Blend: 70% retreat direction + 30% AI velocity hiện tại
-	float retreatVel[3];
-	retreatVel[0] = direction[0] * speed;
-	retreatVel[1] = direction[1] * speed;
-
-	float velocity[3];
-	velocity[0] = retreatVel[0] * 0.7 + currentVel[0] * 0.3;
-	velocity[1] = retreatVel[1] * 0.7 + currentVel[1] * 0.3;
-	velocity[2] = (GetEntityFlags(client) & FL_ONGROUND) != 0 ? 0.0 : currentZ;
-
-	TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, velocity);
-}
-
-void TryFireBurstShot(int client, float now)
-{
-	if (g_bCloaked[client] || g_iShotsRemaining[client] <= 0 || now < g_fNextShotAt[client])
-	{
-		return;
-	}
-
-	int target = FindClosestSurvivor(client, g_cvShotRange.FloatValue);
+	int target = FindClosestSurvivor(client, 2000.0);
 	if (target <= 0)
 	{
-		g_fNextShotAt[client] = now + 0.3;
+		g_fNextSpitAt[client] = now + 0.5;
 		return;
 	}
 
-	float targetPos[3];
-	GetClientAbsOrigin(target, targetPos);
-
-	if (g_iShotsRemaining[client] == 1)
-	{
-		float selfOrigin[3];
-		GetClientAbsOrigin(client, selfOrigin);
-		float direction[3];
-		MakeVectorFromPoints(selfOrigin, targetPos, direction);
-		NormalizeVector(direction, direction);
-
-		float right[3];
-		right[0] = -direction[1];
-		right[1] = direction[0];
-		right[2] = 0.0;
-		NormalizeVector(right, right);
-		ScaleVector(right, g_cvShotSpreadDistance.FloatValue);
-		AddVectors(targetPos, right, targetPos);
-	}
-
-	FireSpitAtPoint(client, targetPos);
-	g_iShotsRemaining[client]--;
-
-	if (g_iShotsRemaining[client] > 0)
-	{
-		g_fNextShotAt[client] = now + g_cvShotInterval.FloatValue;
-		return;
-	}
-
-	g_fNextCloakAt[client] = now + 0.2;
-	g_fNextShotAt[client] = 0.0;
-}
-
-void FireSpitAtPoint(int client, const float targetPos[3])
-{
 	float selfOrigin[3];
+	float targetPos[3];
 	GetClientAbsOrigin(client, selfOrigin);
+	GetClientAbsOrigin(target, targetPos);
 	selfOrigin[2] += 40.0;
 
-	float direction[3];
-	MakeVectorFromPoints(selfOrigin, targetPos, direction);
-	NormalizeVector(direction, direction);
-	ScaleVector(direction, 650.0);
+	float dir[3];
+	MakeVectorFromPoints(selfOrigin, targetPos, dir);
+	NormalizeVector(dir, dir);
+	ScaleVector(dir, 650.0);
 
 	float ang[3];
-	GetVectorAngles(direction, ang);
-	int projectile = L4D2_SpitterPrj(client, selfOrigin, ang, direction);
-	if (projectile <= MaxClients || !IsValidEntity(projectile))
+	GetVectorAngles(dir, ang);
+	L4D2_SpitterPrj(client, selfOrigin, ang, dir);
+
+	g_iSpitsRemaining[client]--;
+	g_fNextSpitAt[client] = now + g_cvSpitCooldown.FloatValue;
+
+	// Hết 3 lần → reset lại chu kỳ sau cloak tiếp theo
+	if (g_iSpitsRemaining[client] <= 0)
 	{
-		return;
+		g_iSpitsRemaining[client] = 0;
+		// Sẽ reset lại khi cloak tiếp theo kết thúc
 	}
 }
 
@@ -457,22 +293,20 @@ int FindClosestSurvivor(int client, float maxDistance)
 	GetClientAbsOrigin(client, origin);
 
 	int closest = 0;
-	float closestDistance = maxDistance;
+	float closestDist = maxDistance;
 
-	for (int survivor = 1; survivor <= MaxClients; survivor++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (!IsValidAliveSurvivor(survivor))
-		{
+		if (!IsValidAliveSurvivor(i))
 			continue;
-		}
 
-		float targetOrigin[3];
-		GetClientAbsOrigin(survivor, targetOrigin);
-		float distance = GetVectorDistance(origin, targetOrigin);
-		if (distance < closestDistance)
+		float pos[3];
+		GetClientAbsOrigin(i, pos);
+		float dist = GetVectorDistance(origin, pos);
+		if (dist < closestDist)
 		{
-			closestDistance = distance;
-			closest = survivor;
+			closestDist = dist;
+			closest = i;
 		}
 	}
 
@@ -482,49 +316,26 @@ int FindClosestSurvivor(int client, float maxDistance)
 void ResetClientState(int client)
 {
 	if (client <= 0 || client > MaxClients)
-	{
 		return;
-	}
 
-	g_bTrackedSneaky[client] = false;
-	g_bCloaked[client] = false;
-	g_bRetreating[client] = false;
-	g_fCloakUntil[client] = 0.0;
-	g_fNextCloakAt[client] = 0.0;
-	g_fNextShotAt[client] = 0.0;
-	g_fNextRetreatAt[client] = 0.0;
-	g_iShotsRemaining[client] = 0;
+	g_bTrackedSneaky[client]   = false;
+	g_bCloaked[client]         = false;
+	g_fCloakUntil[client]      = 0.0;
+	g_fNextCloakAt[client]     = 0.0;
+	g_fNextSpitAt[client]      = 0.0;
+	g_iSpitsRemaining[client]  = 0;
 }
 
-void QueueNextBurst(int client, float startAt)
-{
-	g_iShotsRemaining[client] = SNEAKY_SHOTS_PER_CYCLE;
-	g_fNextShotAt[client] = startAt;
-	g_fNextCloakAt[client] = 0.0;
-}
-
-bool IsSneakySpitter(int client, bool requireAlive)
+bool IsSneakySpitter(int client)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
-	{
 		return false;
-	}
-
+	if (!IsPlayerAlive(client))
+		return false;
 	if (GetClientTeam(client) != TEAM_INFECTED || !IsFakeClient(client))
-	{
 		return false;
-	}
-
-	if (requireAlive && !IsPlayerAlive(client))
-	{
-		return false;
-	}
-
 	if (GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER)
-	{
 		return false;
-	}
-
 	return g_bTrackedSneaky[client];
 }
 
@@ -546,32 +357,20 @@ void RefreshEliteState()
 void SyncTrackedSubtypeState()
 {
 	for (int i = 1; i <= MaxClients; i++)
-	{
 		SyncTrackedSubtypeForClient(i);
-	}
 }
 
 void SyncTrackedSubtypeForClient(int client)
 {
 	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
-	{
 		return;
-	}
-
 	if (GetClientTeam(client) != TEAM_INFECTED || GetEntProp(client, Prop_Send, "m_zombieClass") != ZC_SPITTER)
 	{
 		g_bTrackedSneaky[client] = false;
 		return;
 	}
-
 	if (!g_bHasEliteApi)
-	{
 		return;
-	}
 
 	g_bTrackedSneaky[client] = EliteSI_IsElite(client) && EliteSI_GetSubtype(client) == ELITE_SUBTYPE_SPITTER_SNEAKY;
-	if (g_bTrackedSneaky[client] && g_iShotsRemaining[client] <= 0 && g_fNextShotAt[client] <= 0.0)
-	{
-		QueueNextBurst(client, GetGameTime() + 0.6);
-	}
 }

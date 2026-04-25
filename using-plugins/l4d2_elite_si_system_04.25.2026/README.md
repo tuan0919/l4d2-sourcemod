@@ -214,8 +214,12 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 ### 25/04/2026 (update 2)
 
-- Revamp di chuyển `Sneaky Spitter`: bỏ `TeleportEntity` force velocity mỗi tick, thay bằng boost `m_flLaggedMovementValue` + `m_flMaxspeed` để AI tự pathfind ra xa. Thêm hysteresis (bắt đầu retreat khi survivor vào trong `retreat_range`, dừng khi ra ngoài `retreat_range * 1.3`) tránh on/off liên tục. Thêm cooldown giữa các lần update retreat (`retreat_cooldown`, default 0.35s). Thêm random jitter góc hướng retreat (`retreat_jitter`, default ±20°) để trông tự nhiên hơn. Thêm cvar `l4d2_elite_si_spitter_sneaky_retreat_cooldown` và `l4d2_elite_si_spitter_sneaky_retreat_jitter`.
-- Fix di chuyển `Acid Pool Spitter`: thêm flag `g_bIsJumping` để `TryPressureClosestSurvivor` không zero out `velocity[2]` trong khi spitter đang mid-air sau jump. Detect land bằng `FL_ONGROUND`. Kết quả: spitter giờ nhảy lên thật sự thay vì bị cancel vertical velocity ngay tick tiếp theo.
+- Rewrite `Sneaky Spitter` v2: bo hoan toan retreat logic, velocity hack, jitter. Spitter hoat dong voi AI behavior binh thuong cua game. Chi giu 2 trait dac biet:
+  - Tang hinh (cloak) theo chu ky, bi hit tu survivor se mat cloak, mien bullet damage khi dang cloak. Cloak cooldown > cloak duration de tranh tang hinh lien tuc.
+  - 3 lan spit thu cong (khac acid vao survivor gan nhat), moi lan cach nhau 3s cooldown. Native spit ability bi lock de AI khong tu spit them.
+- Rewrite `Acid Pool Spitter` v2: bo hoan toan velocity hack, jump logic, trail logic, melee trigger. Spitter hoat dong voi AI behavior binh thuong. Chi giu 1 trait dac biet:
+  - Disable kha nang khac tu xa (lock native spit ability). Thay vao do rai acid puddle duoi chan theo cooldown (default 2.5s).
+- Bo cvar cu: `retreat_range`, `retreat_speed_multiplier`, `retreat_cooldown`, `retreat_jitter`, `shot_interval`, `shot_spread_distance`, `shot_range`, `speed_multiplier`, `trail_cooldown`, `jump_cooldown`, `melee_cooldown`, `approach_range`, `jump_range`, `trail_min_distance`.
 
 ### 25/04/2026
 

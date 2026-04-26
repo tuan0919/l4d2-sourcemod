@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION	"3.4"
+#define PLUGIN_VERSION	"3.5"
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -111,6 +111,22 @@ void reset_player(int client, bool first_time)
 	Heal_id[client] = -1;
 }
 
+void queue_heal(int client)
+{
+	if(client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
+		return;
+	}
+
+	G_heal_id++;
+	if(G_heal_id == LITTLE_FROY_INTEGER_MAX)
+	{
+		G_heal_id = 0;
+	}
+	Heal_id[client] = G_heal_id;
+	RequestFrame(next_frame, G_heal_id);
+}
+
 public void OnClientDisconnect_Post(int client)
 {
 	reset_player(client, true);
@@ -137,13 +153,7 @@ void event_player_spawn(Event event, const char[] name, bool dontBroadcast)
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if(client > 0 && IsClientInGame(client))
 	{
-		G_heal_id++;
-		if(G_heal_id == LITTLE_FROY_INTEGER_MAX)
-		{
-			G_heal_id = 0;
-		}
-		Heal_id[client] = G_heal_id;
-		RequestFrame(next_frame, G_heal_id);
+		queue_heal(client);
 	}
 }
 
@@ -184,6 +194,7 @@ void event_round_start(Event event, const char[] name, bool dontBroadcast)
 	for(int client = 1; client <= MAXPLAYERS; client++)
 	{
 		First_time[client] = true;
+		queue_heal(client);
 	}
 }
 

@@ -1,8 +1,8 @@
-# Level Start Heal (v3.4)
+# Level Start Heal (v3.5)
 
 - Author: little_froy
 - URL: https://forums.alliedmods.net/showthread.php?t=340158
-- Ngày thêm: 25/04/2026
+- Ngày cập nhật: 27/04/2026
 
 ## Chức năng
 
@@ -38,13 +38,28 @@ Plugin `tuan_notify_member_bw_source.sp` cần hook `LevelStartHeal_OnHealed` đ
 | CVAR | Default | Mô tả |
 |------|---------|-------|
 | `level_start_heal_health` | 100 | HP target khi heal đầu map |
-| `level_start_heal_version` | 3.4 | Version (read-only) |
+| `level_start_heal_version` | 3.5 | Version (read-only) |
 
 ## Files
 
 - `level_start_heal.sp` → source plugin
 - `level_start_heal.inc` → include file cho forward
-- `level_start_heal.smx` → compiled plugin (đặt tại `addons/sourcemod/plugins/`)
+- `level_start_heal.smx` → compiled plugin (đặt tại `addons/sourcemod/plugins/qol/`)
+- `cfg/sourcemod/level_start_heal.cfg` → control HP target
+- `cfg/sourcemod/l4d2_ty_saveweapons.cfg` → tắt restore health của `l4d2_ty_saveweapons` để tránh ghi đè heal đầu chapter
+
+## Changelog 27/04/2026
+
+- Compile lại `level_start_heal.smx` từ source v3.5 và deploy vào `addons/sourcemod/plugins/qol/level_start_heal.smx`.
+- Fix luồng `round_start`: ngoài việc reset `First_time`, plugin giờ queue heal ở frame kế tiếp cho các survivor đang có sẵn trong game. Trường hợp chapter transition không fire `player_spawn` đúng lúc vẫn được heal.
+- Thêm `cfg/sourcemod/level_start_heal.cfg` để khóa `level_start_heal_health "100"`.
+- Thêm `cfg/sourcemod/l4d2_ty_saveweapons.cfg` với `l4d2_ty_saveweapons_save_health "0"`. Plugin `l4d2_ty_saveweapons` vẫn restore weapon/item, nhưng không restore HP/BW state và không ghi đè kết quả heal của plugin này.
+
+## Conflict đã xử lý
+
+- `l4d2_ty_saveweapons` có default `l4d2_ty_saveweapons_save_health "1"`, sẽ restore HP đã save từ chapter trước sau khi survivor spawn map mới.
+- Nếu `level_start_heal` heal trước rồi `l4d2_ty_saveweapons` restore sau, HP sẽ bị kéo về giá trị cũ, nhìn như `level_start_heal` không hoạt động.
+- Cấu hình hiện tại đặt `l4d2_ty_saveweapons_save_health "0"` để `level_start_heal` là plugin duy nhất quản lý HP/BW reset đầu chapter.
 
 ## Lưu ý
 

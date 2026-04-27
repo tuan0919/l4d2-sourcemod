@@ -17,6 +17,8 @@
 #define ITEM_ADREN 1
 
 #define AIM_DOT_MIN 0.985
+#define GLOW_SYNC_INTERVAL 0.5
+#define GLOW_COLOR_GREEN 65280
 
 ConVar g_hEnable;
 ConVar g_hRange;
@@ -44,10 +46,12 @@ int g_iLastActiveRef[MAXPLAYERS + 1];
 int g_iSaveHealerUserId[MAXPLAYERS + 1];
 int g_iSaveItemType[MAXPLAYERS + 1];
 int g_iHealerTargetUserId[MAXPLAYERS + 1];
+int g_iRangeGlowRef[MAXPLAYERS + 1];
 bool g_bSavingTarget[MAXPLAYERS + 1];
 float g_fNextChatHint[MAXPLAYERS + 1];
 float g_fNextUseHint[MAXPLAYERS + 1];
 Handle g_hSaveTimer[MAXPLAYERS + 1];
+Handle g_hGlowSyncTimer;
 GlobalForward g_hForwardRemoteItemSaved;
 
 public Plugin myinfo =
@@ -100,16 +104,25 @@ public void OnPluginStart()
     HookEvent("map_transition", Event_Reset, EventHookMode_PostNoCopy);
     HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
     HookEvent("player_team", Event_PlayerTeam, EventHookMode_Post);
+    HookEvent("revive_success", Event_PlayerRevived, EventHookMode_Post);
 
     g_hReviveTemp = FindConVar("survivor_revive_health");
 
     AutoExecConfig(true, "Tuan_l4d2_pill_adrenaline_save");
     RefreshCvars();
+
+    g_hGlowSyncTimer = CreateTimer(GLOW_SYNC_INTERVAL, Timer_SyncRemoteSaveGlows, 0, TIMER_REPEAT);
 }
 
 public void OnMapEnd()
 {
     ResetAllClients();
+}
+
+public void OnPluginEnd()
+{
+    delete g_hGlowSyncTimer;
+    RemoveAllRemoteSaveGlows();
 }
 
 public void OnClientPutInServer(int client)
@@ -132,6 +145,11 @@ public void OnClientDisconnect(int client)
 void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
     RefreshCvars();
+
+    if (!g_bEnabled)
+    {
+        RemoveAllRemoteSaveGlows();
+    }
 }
 
 void RefreshCvars()
@@ -172,6 +190,15 @@ void Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
     }
 }
 
+void Event_PlayerRevived(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("subject"));
+    if (client > 0)
+    {
+        RemoveRemoteSaveGlow(client);
+    }
+}
+
 void ResetAllClients()
 {
     for (int client = 1; client <= MaxClients; client++)
@@ -188,15 +215,189 @@ void ResetClient(int client)
         return;
     }
 
+    RemoveRemoteSaveGlow(client);
+
     delete g_hSaveTimer[client];
     g_iLastButtons[client] = 0;
     g_iLastActiveRef[client] = INVALID_ENT_REFERENCE;
     g_iSaveHealerUserId[client] = 0;
     g_iSaveItemType[client] = ITEM_NONE;
     g_iHealerTargetUserId[client] = 0;
+    g_iRangeGlowRef[client] = INVALID_ENT_REFERENCE;
     g_bSavingTarget[client] = false;
     g_fNextChatHint[client] = 0.0;
     g_fNextUseHint[client] = 0.0;
+}
+
+Action Timer_SyncRemoteSaveGlows(Handle timer, any data)
+{
+    SyncRemoteSaveGlows();
+    return Plugin_Continue;
+}
+
+void SyncRemoteSaveGlows()
+{
+    if (!g_bEnabled)
+    {
+        RemoveAllRemoteSaveGlows();
+        return;
+    }
+
+    bool hasViewer = AnyRemoteSaveGlowViewer();
+    for (int target = 1; target <= MaxClients; target++)
+    {
+        if (hasViewer && IsValidIncappedTarget(target))
+        {
+            EnsureRemoteSaveGlow(target);
+        }
+        else
+        {
+            RemoveRemoteSaveGlow(target);
+        }
+    }
+}
+
+bool AnyRemoteSaveGlowViewer()
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidHealer(client))
+        {
+            continue;
+        }
+
+        int weapon;
+        if (GetHeldMedicalItem(client, weapon) != ITEM_NONE)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void EnsureRemoteSaveGlow(int target)
+{
+    if (IsValidRemoteSaveGlowRef(g_iRangeGlowRef[target]))
+    {
+        return;
+    }
+
+    RemoveRemoteSaveGlow(target);
+
+    char model[PLATFORM_MAX_PATH];
+    GetEntPropString(target, Prop_Data, "m_ModelName", model, sizeof(model));
+    if (model[0] == '\0')
+    {
+        return;
+    }
+
+    int entity = CreateEntityByName("prop_dynamic_ornament");
+    if (entity <= MaxClients || !IsValidEntity(entity))
+    {
+        return;
+    }
+
+    DispatchKeyValue(entity, "targetname", "tuan_remote_save_range_glow");
+    DispatchKeyValue(entity, "model", model);
+    if (!DispatchSpawn(entity))
+    {
+        RemoveEntity(entity);
+        return;
+    }
+
+    float origin[3];
+    GetClientAbsOrigin(target, origin);
+    TeleportEntity(entity, origin, NULL_VECTOR, NULL_VECTOR);
+
+    SetEntProp(entity, Prop_Send, "m_CollisionGroup", 0);
+    SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
+    SetEntProp(entity, Prop_Send, "m_nGlowRange", -1);
+    SetEntProp(entity, Prop_Send, "m_iGlowType", 3);
+    SetEntProp(entity, Prop_Send, "m_glowColorOverride", GLOW_COLOR_GREEN);
+    AcceptEntityInput(entity, "StartGlowing");
+
+    SetEntityRenderMode(entity, RENDER_TRANSCOLOR);
+    SetEntityRenderColor(entity, 0, 0, 0, 0);
+
+    SetVariantString("!activator");
+    AcceptEntityInput(entity, "SetParent", target);
+    SetVariantString("!activator");
+    AcceptEntityInput(entity, "SetAttached", target);
+
+    SDKHook(entity, SDKHook_SetTransmit, Hook_RemoteSaveGlowTransmit);
+    g_iRangeGlowRef[target] = EntIndexToEntRef(entity);
+}
+
+void RemoveRemoteSaveGlow(int target)
+{
+    if (target < 1 || target > MaxClients)
+    {
+        return;
+    }
+
+    int entity = EntRefToEntIndex(g_iRangeGlowRef[target]);
+    g_iRangeGlowRef[target] = INVALID_ENT_REFERENCE;
+
+    if (entity > MaxClients && IsValidEntity(entity))
+    {
+        RemoveEntity(entity);
+    }
+}
+
+void RemoveAllRemoteSaveGlows()
+{
+    for (int target = 1; target <= MaxClients; target++)
+    {
+        RemoveRemoteSaveGlow(target);
+    }
+}
+
+bool IsValidRemoteSaveGlowRef(int ref)
+{
+    int entity = EntRefToEntIndex(ref);
+    return entity > MaxClients && IsValidEntity(entity);
+}
+
+int GetRemoteSaveGlowTarget(int entity)
+{
+    int ref = EntIndexToEntRef(entity);
+    for (int target = 1; target <= MaxClients; target++)
+    {
+        if (g_iRangeGlowRef[target] == ref)
+        {
+            return target;
+        }
+    }
+
+    return 0;
+}
+
+public Action Hook_RemoteSaveGlowTransmit(int entity, int client)
+{
+    int target = GetRemoteSaveGlowTarget(entity);
+    if (target <= 0 || !ShouldClientSeeRemoteSaveGlow(client, target))
+    {
+        return Plugin_Handled;
+    }
+
+    return Plugin_Continue;
+}
+
+bool ShouldClientSeeRemoteSaveGlow(int client, int target)
+{
+    if (!g_bEnabled || client == target || !IsValidHealer(client) || !IsValidIncappedTarget(target))
+    {
+        return false;
+    }
+
+    int weapon;
+    if (GetHeldMedicalItem(client, weapon) == ITEM_NONE)
+    {
+        return false;
+    }
+
+    return IsTargetInRange(client, target);
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
@@ -237,6 +438,7 @@ void TrackActiveWeaponSwitch(int client, int weapon, int item)
     }
 
     g_iLastActiveRef[client] = activeRef;
+    SyncRemoteSaveGlows();
 
     if (!g_bEnabled || !g_bChatHint || item == ITEM_NONE || !AnyIncappedSurvivor(client))
     {
@@ -286,6 +488,7 @@ void TryStartRemoteSave(int healer, int item, int weapon)
 
     RemovePlayerItem(healer, weapon);
     RemoveEntity(weapon);
+    SyncRemoteSaveGlows();
 
     StartTargetGetupAnimation(healer, target, item);
 }
@@ -340,6 +543,7 @@ Action Timer_RemoteSaveComplete(Handle timer, int userid)
     SetEntPropEnt(target, Prop_Send, "m_reviveOwner", -1);
     L4D_ReviveSurvivor(target);
     ApplyReviveHealth(target);
+    RemoveRemoteSaveGlow(target);
 
     FinishTargetSave(target, healer, item);
     return Plugin_Stop;

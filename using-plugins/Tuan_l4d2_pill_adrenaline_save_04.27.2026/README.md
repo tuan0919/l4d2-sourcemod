@@ -80,6 +80,14 @@ Khi co survivor dang incap va healer switch sang cam pills/adrenaline, plugin pr
 
 Hint co cooldown de tranh spam.
 
+## Remote save glow
+
+Khi co survivor dang incap trong tam remote save va mot survivor dang cam `pain pills` hoac `adrenaline`, target se hien glow xanh la.
+
+Glow duoc tao bang proxy entity vo hinh attach vao target va filter bang `SDKHook_SetTransmit`, nen chi client hien dang cam pills/adrenaline moi thay. Plugin khong bat glow truc tiep tren player that de tranh glow bi hien global cho tat ca moi nguoi.
+
+Glow duoc cleanup khi khong con holder hop le, target revive/death/doi team, round reset, map end hoac plugin unload.
+
 ## CVAR
 
 Config runtime:
@@ -127,3 +135,5 @@ spcomp.exe tuan_notify_member_bw.sp -o..\plugins\qol\tuan_notify_member_bw.smx
 - Consume item cua healer khi start save.
 - Them forward `Tuan_OnClient_RemoteItemSaved`.
 - Update notify events/BnW de hien Script HUD va sync BnW an toan.
+- Them glow xanh la cho survivor incap trong tam remote save, chi hien voi client dang cam pills/adrenaline.
+- Glow dung proxy invisible + `SetTransmit` de tranh hien global va cleanup an toan theo lifecycle cua target/plugin.

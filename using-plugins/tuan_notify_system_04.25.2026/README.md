@@ -1,4 +1,4 @@
-# tuan_notify_system (rewrite 13/04/2026, update 25/04/2026)
+# tuan_notify_system (rewrite 13/04/2026, update 27/04/2026)
 
 ## Muc tieu rewrite
 
@@ -36,6 +36,9 @@ He thong notify moi gom cac plugin sau:
 - Phien ban nay (04.25.2026) la standalone hoan toan: cac file `_source.sp` da duoc merge truc tiep vao wrapper tuong ung va xoa bo. Khong con phu thuoc file trung gian.
 
 ## Changelog
+
+### 27/04/2026
+- `tuan_notify_member_bw`: Hook forward `Tuan_OnClient_SelfRevived` từ `Tuan_l4d_incapped_weapons` để sync lại trạng thái BnW nội bộ sau self-revive. Nếu self-revive làm survivor vào last life, plugin sẽ cập nhật `g_bPlayerBW` và phát `Tuan_OnClient_GoBnW`; nếu không còn BnW thì reset state để tránh heal notification sai.
 
 ### 25/04/2026
 - `tuan_notify_member_bw_source`: Hook forward `LevelStartHeal_OnHealed` từ plugin `level_start_heal` để reset trạng thái BW tracking (`g_bPlayerBW`) khi survivor được heal đầu map. Tránh thông báo nhầm "is at last life" sau khi plugin đã clear BW state.

@@ -1,10 +1,11 @@
 /***************************************************************************************** 
 * Black and White Notifier (L4D/L4D2)
 * Author(s): DarkNoghri, madcap (recoded by: retsam), Merudo, Tuan
-* Date: 25/04/2026
+* Date: 27/04/2026
 * File: tuan_notify_member_bw.sp
 * Description: Notify people when player is black and white or dead
 ******************************************************************************************
+* 2.2 - Sync BW state khi player self-revive bằng Tuan_l4d_incapped_weapons
 * 2.1 - Hook LevelStartHeal_OnHealed để reset BW state khi plugin heal đầu map
 * 2.0 - Rewrite this plugin by Tuan
 * 1.7r2 - Cancel B/W glow if healed from non-medkit source.
@@ -18,7 +19,7 @@
 #pragma semicolon 1;
 #pragma newdecls required;
 
-#define PLUGIN_VERSION "2.1"
+#define PLUGIN_VERSION "2.2"
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
 
@@ -34,6 +35,7 @@ bool g_bBWEnable;
 bool g_bBWNotifyHealedOther;
 bool g_bBWNotifyGoBnW;
 bool g_bBWNotifyRevivedOther;
+bool g_bLeft4Dead2;
 
 public Plugin myinfo = 
 {
@@ -46,6 +48,8 @@ public Plugin myinfo =
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+	EngineVersion engine = GetEngineVersion();
+	g_bLeft4Dead2 = (engine == Engine_Left4Dead2);
 	MarkNativeAsOptional("LevelStartHeal_OnHealed");
 	return APLRes_Success;
 }
@@ -105,6 +109,20 @@ void BW_ResetAllStates() {
 	}
 }
 
+bool BW_IsClientCurrentlyBnW(int client) {
+	if (client < 1 || client > MaxClients || !IsClientInGame(client) || GetClientTeam(client) != TEAM_SURVIVOR || !IsPlayerAlive(client)) {
+		return false;
+	}
+
+	if (g_bLeft4Dead2 && GetEntProp(client, Prop_Send, "m_bIsOnThirdStrike") != 0) {
+		return true;
+	}
+
+	ConVar maxIncapCvar = FindConVar("survivor_max_incapacitated_count");
+	int maxIncap = maxIncapCvar != null ? maxIncapCvar.IntValue : 2;
+	return GetEntProp(client, Prop_Send, "m_currentReviveCount") >= maxIncap;
+}
+
 void BW_GetCvars() {
 	g_bBWEnable = g_hBWEnable.BoolValue;
 	g_bBWNotifyHealedOther = g_hBWNotifyHealedOther.BoolValue;
@@ -123,6 +141,22 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	BW_ResetClientState(client);
+}
+
+public void Tuan_OnClient_SelfRevived(int client) {
+	if (client < 1 || client > MaxClients) {
+		return;
+	}
+
+	bool isBnW = BW_IsClientCurrentlyBnW(client);
+
+	if (isBnW && !g_bPlayerBW[client]) {
+		g_bPlayerBW[client] = true;
+		FireClientGoBnW(client);
+		return;
+	}
+
+	g_bPlayerBW[client] = isBnW;
 }
 
 void FireClientHealedOtherEvent(int client, int victim) {

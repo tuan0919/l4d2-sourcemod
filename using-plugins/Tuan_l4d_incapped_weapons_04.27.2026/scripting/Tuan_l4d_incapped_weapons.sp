@@ -1,4 +1,4 @@
-/*
+﻿/*
 *	Incapped Weapons Patch
 *	Copyright (C) 2026 Silvers
 *
@@ -18,19 +18,23 @@
 
 
 
-#define PLUGIN_VERSION 		"1.42"
+#define PLUGIN_VERSION 		"04.27.2026"
 
 /*=======================================================================================
 	Plugin Info:
 
-*	Name	:	[L4D & L4D2] Incapped Weapons Patch
-*	Author	:	SilverShot
-*	Descrp	:	Patches the game to allow using Weapons while Incapped, instead of changing weapons scripts.
+*	Name	:	[L4D & L4D2] Tuan Incapped Weapons Patch
+*	Author	:	SilverShot, custom by Tuan
+*	Descrp	:	Custom snapshot that allows using weapons while incapped and syncs self-revive state with Tuan notify.
 *	Link	:	https://forums.alliedmods.net/showthread.php?t=322859
 *	Plugins	:	https://sourcemod.net/plugins.php?exact=exact&sortby=title&search=1&author=Silvers
 
 ========================================================================================
 	Change Log:
+
+04.27.2026 (27-Apr-2026)
+	- Custom snapshot with Tuan_ cvars, cfg, gamedata and translation file names.
+	- Fires self-revive forward after revive/BnW props are fully applied so notify BnW tracking can sync correctly.
 
 1.42 (17-Feb-2026)
 	- Fixed reserve ammo setting to 0 when someone is being revived just after attempting to self-revive.
@@ -66,12 +70,12 @@
 	- Changed the plugins on/off/mode cvars to use the "Left 4 DHooks" method instead of creating an entity.
 
 1.33 (25-Oct-2023)
-	- Now "l4d_incapped_weapons_revive" value "2" will interrupt reviving if the player tries to move left/right/forwards/backwards (forward cannot be not detected with Incapped Crawling).
+	- Now "Tuan_l4d_incapped_weapons_revive" value "2" will interrupt reviving if the player tries to move left/right/forwards/backwards (forward cannot be not detected with Incapped Crawling).
 	- Fixed command "sm_incap" not incapacitating someone if they had over 100 health.
 	- Fixed being able to shoot while the revive animation was playing.
 
 1.32 (25-Oct-2023)
-	- Added cvar "l4d_incapped_weapons_revive" to put the player in 3rd person (L4D2 only) and play the revive animation. Thanks to "MasterMind420" for parts of the code and ideas.
+	- Added cvar "Tuan_l4d_incapped_weapons_revive" to put the player in 3rd person (L4D2 only) and play the revive animation. Thanks to "MasterMind420" for parts of the code and ideas.
 	- Added command "sm_incap" to incapacitated yourself or targeted players.
 
 1.31 (02-Oct-2023)
@@ -79,7 +83,7 @@
 	- Now the plugin will throw an error and prevent itself from loading if any of the addresses are already patched.
 
 1.30 (18-Aug-2023)
-	- Added cvar "l4d_incapped_weapons_health" to set a players main health when they revive themselves. Requested by "Shao".
+	- Added cvar "Tuan_l4d_incapped_weapons_health" to set a players main health when they revive themselves. Requested by "Shao".
 	- Now sets the players temporary health on revive to "survivor_revive_health" games cvar value.
 
 1.29 (19-Jun-2023)
@@ -94,7 +98,7 @@
 
 1.26 (19-Feb-2023)
 	- Various small fixes with late loading and unloading the plugin.
-	- Fixed cvar "l4d_incapped_weapons_friendly" not correctly calculating damage applied to Survivors from weapons.
+	- Fixed cvar "Tuan_l4d_incapped_weapons_friendly" not correctly calculating damage applied to Survivors from weapons.
 	- L4D2: Fixed Survivors not taking damage from incapped players. Thanks to "BystanderZK" for reporting and "Marttt" for testing on Linux.
 	- L4D2: GameData file updated.
 
@@ -102,7 +106,7 @@
 	- Fixed error when "CanDeploy" is already patched, for whatever reason. Thanks to "knifeeeee" for reporting.
 
 1.24 (24-Jan-2023)
-	- Added cvar "l4d_incapped_weapons_friendly" to scale friendly fire damage from incapped Survivors. Requested by "choppledpickusfungus".
+	- Added cvar "Tuan_l4d_incapped_weapons_friendly" to scale friendly fire damage from incapped Survivors. Requested by "choppledpickusfungus".
 
 1.23 (08-Jan-2023)
 	- Plugin now requires SourceMod 1.11 version of DHooks.
@@ -120,14 +124,14 @@
 	- Fixed displaying the wrong hint for Adrenaline when revive option was set.
 
 1.21 (21-Dec-2022)
-	- Added cvars "l4d_incapped_weapons_delay_pills" and "l4d_incapped_weapons_delay_adren" to set a delay before reviving. Requested by "BystanderZK".
-	- Added cvar "l4d_incapped_weapons_delay_text" to optionally display a hint when using a delayed revive.
-	- Added cvar "l4d_incapped_weapons_heal_text" to display a hint about using pills or adrenaline when incapacitated.
+	- Added cvars "Tuan_l4d_incapped_weapons_delay_pills" and "Tuan_l4d_incapped_weapons_delay_adren" to set a delay before reviving. Requested by "BystanderZK".
+	- Added cvar "Tuan_l4d_incapped_weapons_delay_text" to optionally display a hint when using a delayed revive.
+	- Added cvar "Tuan_l4d_incapped_weapons_heal_text" to display a hint about using pills or adrenaline when incapacitated.
 	- Added optional translations support for delayed revive.
 
 1.20 (12-Dec-2022)
-	- Added cvar "l4d_incapped_weapons_heal_revive" to control if players should revive into black and white status. Requested by "BystanderZK".
-	- Fixed cvar "l4d_incapped_weapons_throw" having inverted logic. Thanks to "BystanderZK" for reporting.
+	- Added cvar "Tuan_l4d_incapped_weapons_heal_revive" to control if players should revive into black and white status. Requested by "BystanderZK".
+	- Fixed cvar "Tuan_l4d_incapped_weapons_throw" having inverted logic. Thanks to "BystanderZK" for reporting.
 	- Fixed the PipeBomb effects not displaying. Thanks to "BystanderZK" for reporting.
 	- Fixed taking pills in L4D1 not healing or reviving.
 	- These changes are compatible with the "Heartbeat" plugin.
@@ -141,17 +145,17 @@
 
 1.17 (05-Dec-2022)
 	- Fixed unhooking the wrong Think function, breaking the "pain_pills_health_threshold" cvar.
-	- Changed cvars "l4d_incapped_weapons_heal_adren" and "l4d_incapped_weapons_heal_pills" to accept "-1" which will revive a player.
+	- Changed cvars "Tuan_l4d_incapped_weapons_heal_adren" and "Tuan_l4d_incapped_weapons_heal_pills" to accept "-1" which will revive a player.
 
 1.16 (05-Dec-2022)
 	- Added feature to allow Pills and Adrenaline to be used while incapped. Requires the "Left 4 DHooks" plugin.
-	- Added cvars "l4d_incapped_weapons_heal_adren" and "l4d_incapped_weapons_heal_pills" to control healing amount while incapped.
+	- Added cvars "Tuan_l4d_incapped_weapons_heal_adren" and "Tuan_l4d_incapped_weapons_heal_pills" to control healing amount while incapped.
 
 1.15 (22-Nov-2022)
-	- Fixed cvar "l4d_incapped_weapons_throw" not preventing standing up animation when plugin is late loaded. Thanks to "TBK Duy" for reporting.
+	- Fixed cvar "Tuan_l4d_incapped_weapons_throw" not preventing standing up animation when plugin is late loaded. Thanks to "TBK Duy" for reporting.
 
 1.14 (12-Nov-2022)
-	- Added cvar "l4d_incapped_weapons_throw" to optionally prevent the standing up animation when throwing grenades.
+	- Added cvar "Tuan_l4d_incapped_weapons_throw" to optionally prevent the standing up animation when throwing grenades.
 	- Now optionally uses "Left 4 DHooks" plugin to prevent standing up animation when throwing grenades.
 
 1.13a (09-Jul-2021)
@@ -163,7 +167,7 @@
 	- GameData .txt file updated.
 
 1.12 (08-Mar-2021)
-	- Added cvar "l4d_incapped_weapons_melee" to control Melee weapon damage to Survivors. Thanks to "Mystik Spiral" for reporting.
+	- Added cvar "Tuan_l4d_incapped_weapons_melee" to control Melee weapon damage to Survivors. Thanks to "Mystik Spiral" for reporting.
 
 1.11 (15-Jan-2021)
 	- Fixed weapons being blocked when incapped and changing team. Thanks to "HarryPotter" for reporting.
@@ -221,7 +225,7 @@
 #include <left4dhooks>
 
 #define CVAR_FLAGS			FCVAR_NOTIFY
-#define GAMEDATA			"l4d_incapped_weapons"
+#define GAMEDATA			"Tuan_l4d_incapped_weapons"
 
 #define PARTICLE_FUSE		"weapon_pipebomb_fuse"
 #define PARTICLE_LIGHT		"weapon_pipebomb_blinking_light"
@@ -267,9 +271,9 @@ native void Heartbeat_SetRevives(int client, int reviveCount, bool reviveLogic =
 // ====================================================================================================
 public Plugin myinfo =
 {
-	name = "[L4D & L4D2] Incapped Weapons Patch",
-	author = "SilverShot",
-	description = "Patches the game to allow using Weapons while Incapped, instead of changing weapons scripts.",
+	name = "[L4D & L4D2] Tuan Incapped Weapons Patch",
+	author = "SilverShot, custom by Tuan",
+	description = "Custom incapped weapons patch with Tuan_ cvars and notify BnW self-revive sync.",
 	version = PLUGIN_VERSION,
 	url = "https://forums.alliedmods.net/showthread.php?t=322859"
 }
@@ -289,7 +293,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	MarkNativeAsOptional("Heartbeat_GetRevives");
 	MarkNativeAsOptional("Heartbeat_SetRevives");
 
-	RegPluginLibrary("l4d_incapped_weapons");
+	RegPluginLibrary("Tuan_l4d_incapped_weapons");
 
 	g_bLateLoad = late;
 
@@ -452,39 +456,39 @@ public void OnPluginStart()
 	// ====================================================================================================
 	// CVARS
 	// ====================================================================================================
-	g_hCvarAllow =			CreateConVar(	"l4d_incapped_weapons_allow",			"1",					"0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
-	g_hCvarModes =			CreateConVar(	"l4d_incapped_weapons_modes",			"",						"Turn on the plugin in these game modes, separate by commas (no spaces). (Empty = all).", CVAR_FLAGS );
-	g_hCvarModesOff =		CreateConVar(	"l4d_incapped_weapons_modes_off",		"",						"Turn off the plugin in these game modes, separate by commas (no spaces). (Empty = none).", CVAR_FLAGS );
-	g_hCvarModesTog =		CreateConVar(	"l4d_incapped_weapons_modes_tog",		"0",					"Turn on the plugin in these game modes. 0=All, 1=Coop, 2=Survival, 4=Versus, 8=Scavenge. Add numbers together.", CVAR_FLAGS );
+	g_hCvarAllow =			CreateConVar(	"Tuan_l4d_incapped_weapons_allow",			"1",					"0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
+	g_hCvarModes =			CreateConVar(	"Tuan_l4d_incapped_weapons_modes",			"",						"Turn on the plugin in these game modes, separate by commas (no spaces). (Empty = all).", CVAR_FLAGS );
+	g_hCvarModesOff =		CreateConVar(	"Tuan_l4d_incapped_weapons_modes_off",		"",						"Turn off the plugin in these game modes, separate by commas (no spaces). (Empty = none).", CVAR_FLAGS );
+	g_hCvarModesTog =		CreateConVar(	"Tuan_l4d_incapped_weapons_modes_tog",		"0",					"Turn on the plugin in these game modes. 0=All, 1=Coop, 2=Survival, 4=Versus, 8=Scavenge. Add numbers together.", CVAR_FLAGS );
 
 	if( g_bLeft4Dead2 )
-		g_hCvarDelayAdren =	CreateConVar(	"l4d_incapped_weapons_delay_adren",		"5.0",					"0.0=Off. How many seconds a player must wait after using Adrenaline to be revived.", CVAR_FLAGS);
-	g_hCvarDelayPills =		CreateConVar(	"l4d_incapped_weapons_delay_pills",		"5.0",					"0.0=Off. How many seconds a player must wait after using Pills to be revived.", CVAR_FLAGS);
-	g_hCvarDelayText =		CreateConVar(	"l4d_incapped_weapons_delay_text",		"2",					"0=Off. 1=Print to chat. 2=Print to hint box. Display to player how long until they are revived, when using a _delay cvar.", CVAR_FLAGS);
+		g_hCvarDelayAdren =	CreateConVar(	"Tuan_l4d_incapped_weapons_delay_adren",		"5.0",					"0.0=Off. How many seconds a player must wait after using Adrenaline to be revived.", CVAR_FLAGS);
+	g_hCvarDelayPills =		CreateConVar(	"Tuan_l4d_incapped_weapons_delay_pills",		"5.0",					"0.0=Off. How many seconds a player must wait after using Pills to be revived.", CVAR_FLAGS);
+	g_hCvarDelayText =		CreateConVar(	"Tuan_l4d_incapped_weapons_delay_text",		"2",					"0=Off. 1=Print to chat. 2=Print to hint box. Display to player how long until they are revived, when using a _delay cvar.", CVAR_FLAGS);
 
-	g_hCvarFriendly =		CreateConVar(	"l4d_incapped_weapons_friendly",		"1.0",					"0.0=None. 1.0=Default damage. Scales an incapped Survivors friendly fire damage to other Survivors.", CVAR_FLAGS);
-	g_hCvarReviveHealth =	CreateConVar(	"l4d_incapped_weapons_health",			"30",					"How much main health to set on a player when they revive themselves. For temp health use the games survivor_revive_health cvar.", CVAR_FLAGS);
+	g_hCvarFriendly =		CreateConVar(	"Tuan_l4d_incapped_weapons_friendly",		"1.0",					"0.0=None. 1.0=Default damage. Scales an incapped Survivors friendly fire damage to other Survivors.", CVAR_FLAGS);
+	g_hCvarReviveHealth =	CreateConVar(	"Tuan_l4d_incapped_weapons_health",			"30",					"How much main health to set on a player when they revive themselves. For temp health use the games survivor_revive_health cvar.", CVAR_FLAGS);
 
 	if( g_bLeft4Dead2 )
-		g_hCvarHealAdren =	CreateConVar(	"l4d_incapped_weapons_heal_adren",		"50",					"-1=Revive player. 0=Off. How much to heal a player when they use Adrenaline whilst incapped.", CVAR_FLAGS);
-	g_hCvarHealPills =		CreateConVar(	"l4d_incapped_weapons_heal_pills",		"50",					"-1=Revive player. 0=Off. How much to heal a player when they use Pain Pills whilst incapped.", CVAR_FLAGS);
-	g_hCvarHealRevive =		CreateConVar(	"l4d_incapped_weapons_heal_revive",		"0",					"0=Off. Should player enter black and white status when reviving using: 1=Pills. 2=Adrenaline. 3=Both.", CVAR_FLAGS);
-	g_hCvarHealText =		CreateConVar(	"l4d_incapped_weapons_heal_text",		"1",					"0=Off. 1=Print to chat. 2=Print to hint box. Print a message when incapacitated that Pills/Adrenaline can be used to heal/revive.", CVAR_FLAGS);
+		g_hCvarHealAdren =	CreateConVar(	"Tuan_l4d_incapped_weapons_heal_adren",		"50",					"-1=Revive player. 0=Off. How much to heal a player when they use Adrenaline whilst incapped.", CVAR_FLAGS);
+	g_hCvarHealPills =		CreateConVar(	"Tuan_l4d_incapped_weapons_heal_pills",		"50",					"-1=Revive player. 0=Off. How much to heal a player when they use Pain Pills whilst incapped.", CVAR_FLAGS);
+	g_hCvarHealRevive =		CreateConVar(	"Tuan_l4d_incapped_weapons_heal_revive",		"0",					"0=Off. Should player enter black and white status when reviving using: 1=Pills. 2=Adrenaline. 3=Both.", CVAR_FLAGS);
+	g_hCvarHealText =		CreateConVar(	"Tuan_l4d_incapped_weapons_heal_text",		"1",					"0=Off. 1=Print to chat. 2=Print to hint box. Print a message when incapacitated that Pills/Adrenaline can be used to heal/revive.", CVAR_FLAGS);
 
 	if( g_bLeft4Dead2 )
 	{
-		g_hCvarMelee =		CreateConVar(	"l4d_incapped_weapons_melee",			"0",					"0=No friendly fire. 1=Allow friendly fire. When using Melee weapons should they hurt other Survivors.", CVAR_FLAGS);
-		g_hCvarPist =		CreateConVar(	"l4d_incapped_weapons_pistol",			"0",					"0=Don't give pistol (allows Melee weapons to be used). 1=Give pistol (game default).", CVAR_FLAGS);
-		g_hCvarRest =		CreateConVar(	"l4d_incapped_weapons_restrict",		"12,24,30,31",			"Empty string to allow all. Prevent these weapon/item IDs from being used while incapped. See plugin post for details.", CVAR_FLAGS);
+		g_hCvarMelee =		CreateConVar(	"Tuan_l4d_incapped_weapons_melee",			"0",					"0=No friendly fire. 1=Allow friendly fire. When using Melee weapons should they hurt other Survivors.", CVAR_FLAGS);
+		g_hCvarPist =		CreateConVar(	"Tuan_l4d_incapped_weapons_pistol",			"0",					"0=Don't give pistol (allows Melee weapons to be used). 1=Give pistol (game default).", CVAR_FLAGS);
+		g_hCvarRest =		CreateConVar(	"Tuan_l4d_incapped_weapons_restrict",		"12,24,30,31",			"Empty string to allow all. Prevent these weapon/item IDs from being used while incapped. See plugin post for details.", CVAR_FLAGS);
 	} else {
-		g_hCvarRest =		CreateConVar(	"l4d_incapped_weapons_restrict",		"8",					"Empty string to allow all. Prevent these weapon/item IDs from being used while incapped. See plugin post for details.", CVAR_FLAGS);
+		g_hCvarRest =		CreateConVar(	"Tuan_l4d_incapped_weapons_restrict",		"8",					"Empty string to allow all. Prevent these weapon/item IDs from being used while incapped. See plugin post for details.", CVAR_FLAGS);
 	}
 
-	g_hCvarRevive =			CreateConVar(	"l4d_incapped_weapons_revive",			"3",					"Play revive animation: 0=Off. 1=On and damage can stop reviving. 2=Damage will interrupt animation and restart reviving. 3=Damage does not interrupt reviving. 4=Give god mode when reviving.", CVAR_FLAGS);
-	g_hCvarThrow =			CreateConVar(	"l4d_incapped_weapons_throw",			"0",					"0=Block grenade throwing animation to prevent standing up during throw (requires Left4DHooks plugin). 1=Allow throwing animation.", CVAR_FLAGS);
+	g_hCvarRevive =			CreateConVar(	"Tuan_l4d_incapped_weapons_revive",			"3",					"Play revive animation: 0=Off. 1=On and damage can stop reviving. 2=Damage will interrupt animation and restart reviving. 3=Damage does not interrupt reviving. 4=Give god mode when reviving.", CVAR_FLAGS);
+	g_hCvarThrow =			CreateConVar(	"Tuan_l4d_incapped_weapons_throw",			"0",					"0=Block grenade throwing animation to prevent standing up during throw (requires Left4DHooks plugin). 1=Allow throwing animation.", CVAR_FLAGS);
 
-	CreateConVar(							"l4d_incapped_weapons_version",			PLUGIN_VERSION,			"Incapped Weapons plugin version.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	AutoExecConfig(true,					"l4d_incapped_weapons");
+	CreateConVar(							"Tuan_l4d_incapped_weapons_version",			PLUGIN_VERSION,			"Incapped Weapons plugin version.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	AutoExecConfig(true,					"Tuan_l4d_incapped_weapons");
 
 	g_hCvarMaxIncap = FindConVar("survivor_max_incapacitated_count");
 	g_hCvarReviveTemp = FindConVar("survivor_revive_health");
@@ -523,11 +527,11 @@ public void OnPluginStart()
 	// ====================================================================================================
 	// TRANSLATIONS
 	// ====================================================================================================
-	BuildPath(Path_SM, sPath, sizeof(sPath), "translations/incapped_weapons.phrases.txt");
+	BuildPath(Path_SM, sPath, sizeof(sPath), "translations/Tuan_l4d_incapped_weapons.phrases.txt");
 	if( FileExists(sPath) )
 	{
 		g_bTranslations = true;
-		LoadTranslations("incapped_weapons.phrases");
+		LoadTranslations("Tuan_l4d_incapped_weapons.phrases");
 	}
 
 
@@ -1877,13 +1881,6 @@ void RevivePlayer(int client, bool pills)
 {
 	L4D_ReviveSurvivor(client);
 
-	if( g_hForwardSelfRevived != null )
-	{
-		Call_StartForward(g_hForwardSelfRevived);
-		Call_PushCell(client);
-		Call_Finish();
-	}
-
 	// Revive black and white
 	int test = pills ? 0 : 1;
 
@@ -1916,6 +1913,13 @@ void RevivePlayer(int client, bool pills)
 	{
 		SetEntPropFloat(client, Prop_Send, "m_healthBuffer", float(g_iCvarReviveTemp));
 		SetEntPropFloat(client, Prop_Send, "m_healthBufferTime", GetGameTime());
+	}
+
+	if( g_hForwardSelfRevived != null )
+	{
+		Call_StartForward(g_hForwardSelfRevived);
+		Call_PushCell(client);
+		Call_Finish();
 	}
 }
 
@@ -2223,3 +2227,4 @@ void CPrintHintText(int client, char[] message, any ...)
 	ReplaceString(buffer, sizeof(buffer), "{olive}",		"");
 	PrintHintText(client, buffer);
 }
+

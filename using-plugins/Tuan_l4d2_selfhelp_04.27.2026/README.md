@@ -123,3 +123,9 @@ spcomp.exe Tuan_l4d2_selfhelp.sp -o..\plugins\qol\Tuan_l4d2_selfhelp.smx
 - Fix runtime error `Property "m_iProgressBarDuration" not found` khi client disconnect hoac server khong expose progress-bar sendprop tren player.
 - `ShowProgress` va `ClearProgress` gio check `HasEntProp` truoc khi set `m_flProgressBarStartTime` / `m_iProgressBarDuration`.
 - Neu prop khong ton tai, plugin bo qua progress bar nhung self-help van tiep tuc hoat dong.
+
+### 27/04/2026 - Progress fallback
+
+- `ShowProgress` gio thu `m_iProgressBarDuration` truoc, sau do thu bien the `m_flProgressBarDuration`.
+- Neu netprop progress bar khong co, plugin thu gui usermessage `BarTime` neu engine ho tro.
+- Them center-text countdown moi 0.5s trong luc self-help de nguoi choi van thay tien trinh neu HUD progress bar cua engine khong kha dung.

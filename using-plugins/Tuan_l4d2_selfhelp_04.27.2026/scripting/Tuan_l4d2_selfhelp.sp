@@ -68,6 +68,7 @@ int g_iItemPinned[ITEM_COUNT];
 int g_iLastButtons[MAXPLAYERS + 1];
 float g_fDistressStarted[MAXPLAYERS + 1];
 float g_fNextHint[MAXPLAYERS + 1];
+float g_fNextActionHint[MAXPLAYERS + 1];
 
 int g_iAction[MAXPLAYERS + 1];
 int g_iActionItem[MAXPLAYERS + 1];
@@ -259,6 +260,7 @@ void ResetClient(int client)
     g_iLastButtons[client] = 0;
     g_fDistressStarted[client] = 0.0;
     g_fNextHint[client] = 0.0;
+    g_fNextActionHint[client] = 0.0;
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
@@ -463,6 +465,8 @@ Action Timer_Action(Handle timer, int userid)
         return Plugin_Stop;
     }
 
+    ShowActionCountdown(client);
+
     return Plugin_Continue;
 }
 
@@ -612,33 +616,123 @@ void StopAction(int client, bool clearProgress, bool killTimer)
 
 void ShowProgress(int client, float duration)
 {
-    if (!HasProgressBarProps(client))
+    if (TryShowNetpropProgress(client, duration))
     {
         return;
     }
 
-    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", GetGameTime());
-    SetEntProp(client, Prop_Send, "m_iProgressBarDuration", RoundToCeil(duration));
+    TrySendBarTime(client, RoundToCeil(duration));
 }
 
 void ClearProgress(int client)
 {
-    if (!HasProgressBarProps(client))
+    TryClearNetpropProgress(client);
+    TrySendBarTime(client, 0);
+}
+
+bool TryShowNetpropProgress(int client, float duration)
+{
+    if (!CanWriteProgressStart(client))
+    {
+        return false;
+    }
+
+    SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", 0.0);
+
+    if (HasEntProp(client, Prop_Send, "m_iProgressBarDuration"))
+    {
+        SetEntProp(client, Prop_Send, "m_iProgressBarDuration", RoundToCeil(duration));
+        SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", GetGameTime());
+        return true;
+    }
+
+    if (HasEntProp(client, Prop_Send, "m_flProgressBarDuration"))
+    {
+        SetEntPropFloat(client, Prop_Send, "m_flProgressBarDuration", duration);
+        SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", GetGameTime());
+        return true;
+    }
+
+    return false;
+}
+
+void TryClearNetpropProgress(int client)
+{
+    if (!CanWriteProgressStart(client))
     {
         return;
     }
 
     SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", 0.0);
-    SetEntProp(client, Prop_Send, "m_iProgressBarDuration", 0);
+
+    if (HasEntProp(client, Prop_Send, "m_iProgressBarDuration"))
+    {
+        SetEntProp(client, Prop_Send, "m_iProgressBarDuration", 0);
+    }
+    else if (HasEntProp(client, Prop_Send, "m_flProgressBarDuration"))
+    {
+        SetEntPropFloat(client, Prop_Send, "m_flProgressBarDuration", 0.0);
+    }
 }
 
-bool HasProgressBarProps(int client)
+bool CanWriteProgressStart(int client)
 {
     return client >= 1
         && client <= MaxClients
         && IsClientInGame(client)
-        && HasEntProp(client, Prop_Send, "m_flProgressBarStartTime")
-        && HasEntProp(client, Prop_Send, "m_iProgressBarDuration");
+        && HasEntProp(client, Prop_Send, "m_flProgressBarStartTime");
+}
+
+bool TrySendBarTime(int client, int seconds)
+{
+    if (client < 1 || client > MaxClients || !IsClientInGame(client))
+    {
+        return false;
+    }
+
+    if (GetUserMessageType() != UM_BitBuf || GetUserMessageId("BarTime") == INVALID_MESSAGE_ID)
+    {
+        return false;
+    }
+
+    Handle msg = StartMessageOne("BarTime", client, USERMSG_RELIABLE | USERMSG_BLOCKHOOKS);
+    if (msg == null)
+    {
+        return false;
+    }
+
+    BfWriteShort(msg, seconds);
+    EndMessage();
+    return true;
+}
+
+void ShowActionCountdown(int client)
+{
+    float now = GetGameTime();
+    if (now < g_fNextActionHint[client])
+    {
+        return;
+    }
+
+    float remaining = g_fActionEnd[client] - now;
+    if (remaining <= 0.0)
+    {
+        return;
+    }
+
+    g_fNextActionHint[client] = now + 0.5;
+
+    char label[32];
+    if (g_iAction[client] == ACTION_OTHER)
+    {
+        strcopy(label, sizeof(label), "Helping");
+    }
+    else
+    {
+        strcopy(label, sizeof(label), "Self-help");
+    }
+
+    PrintCenterText(client, "%s: %.1f sec", label, remaining);
 }
 
 void ApplyConfiguredHealth(int client, float health, bool permanent, bool revived)

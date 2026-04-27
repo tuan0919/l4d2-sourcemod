@@ -96,6 +96,16 @@ Toi uu runtime:
 - Dung `m_hOwnerEntity` tren glow proxy de map nguoc ve target O(1), khong can loop `MaxClients` trong `SetTransmit`.
 - Dung stock `L4D2_SetEntityGlow()` tu `left4dhooks` de set glow an toan hon thay vi set tung prop thu cong.
 
+## Guard double-save
+
+Plugin co guard de tranh 2 healer consume item cho cung 1 target trong khoang thoi gian rat ngan:
+
+- Reserve target bang `g_bSavingTarget[target]` truoc khi remove pills/adrenaline cua healer.
+- Neu `RemovePlayerItem()` fail thi rollback reservation va khong start save.
+- Sau khi remote save thanh cong, target bi block save lai trong `0.5s` bang `g_fTargetSaveBlockedUntil`.
+- Timer complete check dung timer handle va `g_bSavingTarget[target]` de bo qua stale timer.
+- `TryStartRemoteSave()` check ca target dang saving va short block sau save, tranh case target vua duoc revive nhung incap prop chua settle kip trong frame tiep theo.
+
 ## CVAR
 
 Config runtime:
@@ -146,3 +156,4 @@ spcomp.exe tuan_notify_member_bw.sp -o..\plugins\qol\tuan_notify_member_bw.smx
 - Them glow xanh la cho survivor incap trong tam remote save, chi hien voi client dang cam pills/adrenaline.
 - Glow dung proxy invisible + `SetTransmit` de tranh hien global va cleanup an toan theo lifecycle cua target/plugin.
 - Toi uu glow bang holder cache, `Attachments_OnWeaponSwitch`, owner lookup O(1), va `L4D2_SetEntityGlow()` tu `left4dhooks`.
+- Guard double-save: reserve target truoc khi consume item, rollback neu remove item fail, va block save lai `0.5s` sau khi target duoc revive thanh cong.

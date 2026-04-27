@@ -19,6 +19,7 @@
 
 #define AIM_DOT_MIN 0.985
 #define GLOW_SYNC_INTERVAL 0.5
+#define SAVE_COMPLETE_BLOCK_TIME 0.5
 
 ConVar g_hEnable;
 ConVar g_hRange;
@@ -51,6 +52,7 @@ int g_iHeldRemoteSaveItem[MAXPLAYERS + 1];
 bool g_bSavingTarget[MAXPLAYERS + 1];
 float g_fNextChatHint[MAXPLAYERS + 1];
 float g_fNextUseHint[MAXPLAYERS + 1];
+float g_fTargetSaveBlockedUntil[MAXPLAYERS + 1];
 Handle g_hSaveTimer[MAXPLAYERS + 1];
 Handle g_hGlowSyncTimer;
 GlobalForward g_hForwardRemoteItemSaved;
@@ -229,6 +231,7 @@ void ResetClient(int client)
     g_bSavingTarget[client] = false;
     g_fNextChatHint[client] = 0.0;
     g_fNextUseHint[client] = 0.0;
+    g_fTargetSaveBlockedUntil[client] = 0.0;
 }
 
 Action Timer_SyncRemoteSaveGlows(Handle timer, any data)
@@ -476,7 +479,7 @@ void TrackActiveWeaponSwitch(int client, int weapon, int item)
 void TryStartRemoteSave(int healer, int item, int weapon)
 {
     int currentTarget = GetClientOfUserId(g_iHealerTargetUserId[healer]);
-    if (currentTarget > 0 && g_bSavingTarget[currentTarget])
+    if (currentTarget > 0 && IsTargetSaveBusy(currentTarget))
     {
         ThrottledHint(healer, "You are already saving a teammate.");
         return;
@@ -489,7 +492,7 @@ void TryStartRemoteSave(int healer, int item, int weapon)
         return;
     }
 
-    if (g_bSavingTarget[target])
+    if (IsTargetSaveBusy(target))
     {
         ThrottledHint(healer, "That teammate is already being saved.");
         return;
@@ -501,12 +504,69 @@ void TryStartRemoteSave(int healer, int item, int weapon)
         return;
     }
 
-    RemovePlayerItem(healer, weapon);
-    RemoveEntity(weapon);
+    if (!ReserveTargetSave(healer, target, item))
+    {
+        ThrottledHint(healer, "That teammate is already being saved.");
+        return;
+    }
+
+    if (!RemovePlayerItem(healer, weapon))
+    {
+        ClearTargetSaveReservation(target, healer);
+        ThrottledHint(healer, "Could not use the held item.");
+        return;
+    }
+
+    if (IsValidEntity(weapon))
+    {
+        RemoveEntity(weapon);
+    }
+
     g_iLastActiveRef[healer] = INVALID_ENT_REFERENCE;
     SetRemoteSaveHolderState(healer, ITEM_NONE);
 
     StartTargetGetupAnimation(healer, target, item);
+}
+
+bool IsTargetSaveBusy(int target)
+{
+    if (target < 1 || target > MaxClients)
+    {
+        return false;
+    }
+
+    return g_bSavingTarget[target] || GetGameTime() < g_fTargetSaveBlockedUntil[target];
+}
+
+bool ReserveTargetSave(int healer, int target, int item)
+{
+    if (!IsValidIncappedTarget(target) || IsTargetSaveBusy(target))
+    {
+        return false;
+    }
+
+    g_bSavingTarget[target] = true;
+    g_iSaveHealerUserId[target] = GetClientUserId(healer);
+    g_iSaveItemType[target] = item;
+    g_iHealerTargetUserId[healer] = GetClientUserId(target);
+    return true;
+}
+
+void ClearTargetSaveReservation(int target, int healer)
+{
+    if (target < 1 || target > MaxClients)
+    {
+        return;
+    }
+
+    if (healer >= 1 && healer <= MaxClients && GetClientOfUserId(g_iSaveHealerUserId[target]) == healer)
+    {
+        g_iHealerTargetUserId[healer] = 0;
+    }
+
+    g_bSavingTarget[target] = false;
+    g_iSaveHealerUserId[target] = 0;
+    g_iSaveItemType[target] = ITEM_NONE;
 }
 
 void SetRemoteSaveHolderState(int client, int item)
@@ -561,6 +621,11 @@ Action Timer_RemoteSaveComplete(Handle timer, int userid)
         return Plugin_Stop;
     }
 
+    if (g_hSaveTimer[target] != timer || !g_bSavingTarget[target])
+    {
+        return Plugin_Stop;
+    }
+
     g_hSaveTimer[target] = null;
 
     int healer = GetClientOfUserId(g_iSaveHealerUserId[target]);
@@ -594,6 +659,8 @@ Action OnTakeSaveDamage(int victim, int &attacker, int &inflictor, float &damage
 void FinishTargetSave(int target, int healer, int item)
 {
     int healerUserId = g_iSaveHealerUserId[target];
+
+    g_fTargetSaveBlockedUntil[target] = GetGameTime() + SAVE_COMPLETE_BLOCK_TIME;
 
     CleanupTargetSave(target, false);
 

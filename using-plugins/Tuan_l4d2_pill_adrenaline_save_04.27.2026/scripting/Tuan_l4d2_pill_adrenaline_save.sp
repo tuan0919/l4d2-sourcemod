@@ -5,6 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <left4dhooks>
+#include <attachments_api>
 
 #define PLUGIN_VERSION "04.27.2026"
 #define CVAR_FLAGS FCVAR_NOTIFY
@@ -18,7 +19,6 @@
 
 #define AIM_DOT_MIN 0.985
 #define GLOW_SYNC_INTERVAL 0.5
-#define GLOW_COLOR_GREEN 65280
 
 ConVar g_hEnable;
 ConVar g_hRange;
@@ -47,6 +47,7 @@ int g_iSaveHealerUserId[MAXPLAYERS + 1];
 int g_iSaveItemType[MAXPLAYERS + 1];
 int g_iHealerTargetUserId[MAXPLAYERS + 1];
 int g_iRangeGlowRef[MAXPLAYERS + 1];
+int g_iHeldRemoteSaveItem[MAXPLAYERS + 1];
 bool g_bSavingTarget[MAXPLAYERS + 1];
 float g_fNextChatHint[MAXPLAYERS + 1];
 float g_fNextUseHint[MAXPLAYERS + 1];
@@ -224,6 +225,7 @@ void ResetClient(int client)
     g_iSaveItemType[client] = ITEM_NONE;
     g_iHealerTargetUserId[client] = 0;
     g_iRangeGlowRef[client] = INVALID_ENT_REFERENCE;
+    g_iHeldRemoteSaveItem[client] = ITEM_NONE;
     g_bSavingTarget[client] = false;
     g_fNextChatHint[client] = 0.0;
     g_fNextUseHint[client] = 0.0;
@@ -261,13 +263,7 @@ bool AnyRemoteSaveGlowViewer()
 {
     for (int client = 1; client <= MaxClients; client++)
     {
-        if (!IsValidHealer(client))
-        {
-            continue;
-        }
-
-        int weapon;
-        if (GetHeldMedicalItem(client, weapon) != ITEM_NONE)
+        if (g_iHeldRemoteSaveItem[client] != ITEM_NONE && IsValidHealer(client))
         {
             return true;
         }
@@ -312,9 +308,15 @@ void EnsureRemoteSaveGlow(int target)
 
     SetEntProp(entity, Prop_Send, "m_CollisionGroup", 0);
     SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
-    SetEntProp(entity, Prop_Send, "m_nGlowRange", -1);
-    SetEntProp(entity, Prop_Send, "m_iGlowType", 3);
-    SetEntProp(entity, Prop_Send, "m_glowColorOverride", GLOW_COLOR_GREEN);
+    SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", target);
+
+    int glowColor[3] = {0, 255, 0};
+    if (!L4D2_SetEntityGlow(entity, L4D2Glow_Constant, 0, 0, glowColor, false))
+    {
+        RemoveEntity(entity);
+        return;
+    }
+
     AcceptEntityInput(entity, "StartGlowing");
 
     SetEntityRenderMode(entity, RENDER_TRANSCOLOR);
@@ -359,24 +361,10 @@ bool IsValidRemoteSaveGlowRef(int ref)
     return entity > MaxClients && IsValidEntity(entity);
 }
 
-int GetRemoteSaveGlowTarget(int entity)
-{
-    int ref = EntIndexToEntRef(entity);
-    for (int target = 1; target <= MaxClients; target++)
-    {
-        if (g_iRangeGlowRef[target] == ref)
-        {
-            return target;
-        }
-    }
-
-    return 0;
-}
-
 public Action Hook_RemoteSaveGlowTransmit(int entity, int client)
 {
-    int target = GetRemoteSaveGlowTarget(entity);
-    if (target <= 0 || !ShouldClientSeeRemoteSaveGlow(client, target))
+    int target = GetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity");
+    if (target < 1 || target > MaxClients || g_iRangeGlowRef[target] != EntIndexToEntRef(entity) || !ShouldClientSeeRemoteSaveGlow(client, target))
     {
         return Plugin_Handled;
     }
@@ -391,8 +379,7 @@ bool ShouldClientSeeRemoteSaveGlow(int client, int target)
         return false;
     }
 
-    int weapon;
-    if (GetHeldMedicalItem(client, weapon) == ITEM_NONE)
+    if (g_iHeldRemoteSaveItem[client] == ITEM_NONE)
     {
         return false;
     }
@@ -406,6 +393,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     {
         if (client >= 1 && client <= MaxClients)
         {
+            SetRemoteSaveHolderState(client, ITEM_NONE);
+            g_iLastActiveRef[client] = INVALID_ENT_REFERENCE;
             g_iLastButtons[client] = buttons;
         }
         return Plugin_Continue;
@@ -424,6 +413,31 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     return Plugin_Continue;
 }
 
+public void Attachments_OnWeaponSwitch(int client, int weapon, int ent_views, int ent_world)
+{
+    if (client < 1 || client > MaxClients)
+    {
+        return;
+    }
+
+    int item = ITEM_NONE;
+
+    if (IsValidHealer(client) && weapon > MaxClients && IsValidEntity(weapon) && weapon == GetPlayerWeaponSlot(client, SLOT_PILLS))
+    {
+        item = GetMedicalItemFromWeapon(weapon);
+    }
+
+    SetRemoteSaveHolderState(client, item);
+}
+
+public void Attachments_OnPluginEnd()
+{
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        SetRemoteSaveHolderState(client, ITEM_NONE);
+    }
+}
+
 void TrackActiveWeaponSwitch(int client, int weapon, int item)
 {
     int activeRef = INVALID_ENT_REFERENCE;
@@ -432,13 +446,14 @@ void TrackActiveWeaponSwitch(int client, int weapon, int item)
         activeRef = EntIndexToEntRef(weapon);
     }
 
-    if (activeRef == g_iLastActiveRef[client])
+    bool switched = activeRef != g_iLastActiveRef[client];
+    g_iLastActiveRef[client] = activeRef;
+    SetRemoteSaveHolderState(client, item);
+
+    if (!switched)
     {
         return;
     }
-
-    g_iLastActiveRef[client] = activeRef;
-    SyncRemoteSaveGlows();
 
     if (!g_bEnabled || !g_bChatHint || item == ITEM_NONE || !AnyIncappedSurvivor(client))
     {
@@ -488,9 +503,26 @@ void TryStartRemoteSave(int healer, int item, int weapon)
 
     RemovePlayerItem(healer, weapon);
     RemoveEntity(weapon);
-    SyncRemoteSaveGlows();
+    g_iLastActiveRef[healer] = INVALID_ENT_REFERENCE;
+    SetRemoteSaveHolderState(healer, ITEM_NONE);
 
     StartTargetGetupAnimation(healer, target, item);
+}
+
+void SetRemoteSaveHolderState(int client, int item)
+{
+    if (client < 1 || client > MaxClients)
+    {
+        return;
+    }
+
+    bool changed = g_iHeldRemoteSaveItem[client] != item;
+    g_iHeldRemoteSaveItem[client] = item;
+
+    if (changed)
+    {
+        SyncRemoteSaveGlows();
+    }
 }
 
 void StartTargetGetupAnimation(int healer, int target, int item)
@@ -795,6 +827,16 @@ int GetHeldMedicalItem(int client, int &weapon)
 {
     weapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
     if (weapon <= MaxClients || !IsValidEntity(weapon) || weapon != GetPlayerWeaponSlot(client, SLOT_PILLS))
+    {
+        return ITEM_NONE;
+    }
+
+    return GetMedicalItemFromWeapon(weapon);
+}
+
+int GetMedicalItemFromWeapon(int weapon)
+{
+    if (weapon <= MaxClients || !IsValidEntity(weapon))
     {
         return ITEM_NONE;
     }

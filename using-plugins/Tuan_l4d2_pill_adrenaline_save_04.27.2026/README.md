@@ -88,6 +88,14 @@ Glow duoc tao bang proxy entity vo hinh attach vao target va filter bang `SDKHoo
 
 Glow duoc cleanup khi khong con holder hop le, target revive/death/doi team, round reset, map end hoac plugin unload.
 
+Toi uu runtime:
+
+- Cache holder state `dang cam pills/adrenaline` thay vi check classname trong moi lan `SetTransmit`.
+- Dung forward `Attachments_OnWeaponSwitch` cua Silver `attachments_api` de update cache ngay khi doi weapon, neu plugin API dang load.
+- Van giu fallback `OnPlayerRunCmd` de plugin hoat dong an toan khi `attachments_api` khong co hoac forward bi miss.
+- Dung `m_hOwnerEntity` tren glow proxy de map nguoc ve target O(1), khong can loop `MaxClients` trong `SetTransmit`.
+- Dung stock `L4D2_SetEntityGlow()` tu `left4dhooks` de set glow an toan hon thay vi set tung prop thu cong.
+
 ## CVAR
 
 Config runtime:
@@ -137,3 +145,4 @@ spcomp.exe tuan_notify_member_bw.sp -o..\plugins\qol\tuan_notify_member_bw.smx
 - Update notify events/BnW de hien Script HUD va sync BnW an toan.
 - Them glow xanh la cho survivor incap trong tam remote save, chi hien voi client dang cam pills/adrenaline.
 - Glow dung proxy invisible + `SetTransmit` de tranh hien global va cleanup an toan theo lifecycle cua target/plugin.
+- Toi uu glow bang holder cache, `Attachments_OnWeaponSwitch`, owner lookup O(1), va `L4D2_SetEntityGlow()` tu `left4dhooks`.

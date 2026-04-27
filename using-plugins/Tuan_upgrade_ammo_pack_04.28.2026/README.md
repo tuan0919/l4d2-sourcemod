@@ -4,12 +4,11 @@
 
 Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Khi dùng pack, primary weapon hiện tại được đánh dấu có upgrade ammo vĩnh viễn.
-- Mỗi phát bắn gây thêm damage type tương ứng: `DMG_BURN` cho incendiary, `DMG_BLAST` cho explosive.
+- Hiệu ứng đạn lửa/nổ dùng upgrade ammo props gốc của game, không inject damage type riêng.
 - Sau reload, số đạn upgrade trong clip được sync theo `m_iClip1`.
 - Có thể đổi tự do giữa đạn lửa và đạn nổ bằng cách dùng pack loại khác.
-- Chặn nhặt ammo pile khi súng primary đang ở trạng thái upgraded.
-- Giữ trạng thái upgrade qua map transition nếu weapon classname khớp.
-- Tự nhận lại state permanent upgrade khi nhặt/equip một primary weapon đã có upgrade bit vanilla.
+- Cho phép nhặt ammo pile bình thường.
+- Tự nhận lại state permanent upgrade khi weapon được restore/equip lại và vẫn còn upgrade bit.
 
 ## Cơ chế hoạt động
 
@@ -35,22 +34,22 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Với shotgun nạp từng viên, watcher không restore ở viên đầu tiên; nó chờ reload kết thúc hoặc bị interrupt rồi mới restore upgrade visual theo clip hiện tại.
 - Nếu reload bị interrupt do stagger, bị SI bắt, đổi weapon hoặc reload prop báo kết thúc, plugin restore lại upgrade visual theo clip hiện tại rồi dừng watcher.
 
-### Block ammo pile
+### Ammo pickup
 
-- Hook event `ammo_pickup` pre.
-- Nếu primary weapon đang upgraded thì return `Plugin_Handled`.
+- Hook event `ammo_pickup` post để refresh lại visual/state sau khi game xử lý nhặt đạn.
+- Không block ammo pickup; player vẫn nhặt đạn thường bình thường.
 
 ### Import state khi nhặt/equip súng
 
 - Hook `SDKHook_WeaponEquipPost` trên survivor và delay 1 frame để đọc props sau khi game/plugin khác set xong.
 - Nếu primary weapon có `m_upgradeBitVec` fire/explosive, plugin chuyển nó thành permanent upgraded weapon theo logic hiện tại.
-- Có fallback ở `FireBulletsPost`, `weapon_reload`, `ammo_pickup` và `OnTakeDamage` để tránh miss timing.
+- Có fallback ở `FireBulletsPost`, `weapon_reload`, `ammo_pickup` và `player_spawn` để tránh miss timing.
 - Có callback `L4D2_OnSaveWeaponHxGiveC(client)` để import state sau khi `l4d2_ty_saveweapons` restore súng qua map.
 
-### Save / restore
+### Restore qua map
 
-- Khi `map_transition`, `mission_lost` hoặc client disconnect, lưu loại upgrade và weapon classname.
-- Khi player spawn lại, restore upgrade nếu primary weapon classname khớp.
+- Plugin không tự lưu state theo client nữa.
+- Nếu plugin khác restore lại weapon props, plugin đọc `m_upgradeBitVec` trên weapon đang cầm để import lại state.
 
 ## CVar
 
@@ -65,6 +64,19 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Compiled: `addons/sourcemod/plugins/qol/Tuan_upgrade_ammo_pack.smx`
 
 ## Changelog
+
+### v3.3.4 (28/04/2026)
+
+- Remove logic block `ammo_pickup`; player được nhặt ammo pile bình thường.
+- Remove save/restore state riêng theo client trên `map_transition` / `mission_lost` / disconnect.
+- Giữ callback `L4D2_OnSaveWeaponHxGiveC(client)` và import từ weapon props để tương thích `l4d2_ty_saveweapons` mà không cần tracking riêng.
+- Sau ammo pickup, plugin chỉ refresh lại visual/state nếu weapon đã là permanent upgraded.
+
+### v3.3.3 (28/04/2026)
+
+- Remove toàn bộ `OnTakeDamage` hook và logic inject `DMG_BURN` / `DMG_BLAST`.
+- Đạn lửa/nổ giờ dựa hoàn toàn vào `m_upgradeBitVec` và `m_nUpgradedPrimaryAmmoLoaded` của game.
+- Giảm hook thừa trên survivor/infected/witch và giữ behavior gần vanilla hơn.
 
 ### v3.3.2 (28/04/2026)
 

@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "3.3.2"
+#define PLUGIN_VERSION  "3.3.4"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -15,8 +15,6 @@
 #define UPGBIT_INCENDIARY   (1 << 0)
 #define UPGBIT_EXPLOSIVE    (1 << 1)
 
-#define ZC_TANK             8
-
 #define RELOAD_PROP_GRACE_TIME       0.15
 #define RELOAD_FALLBACK_TIME         3.0
 #define RELOAD_SHOTGUN_FALLBACK_TIME 8.0
@@ -25,7 +23,7 @@ public Plugin myinfo =
 {
     name        = "[L4D2] Tuan Upgrade Ammo Pack",
     author      = "Tuan",
-    description = "Revamped upgrade ammo: permanent fire/explosive bullets, persists across rounds and maps.",
+    description = "Revamped upgrade ammo: permanent fire/explosive bullets for upgraded weapons.",
     version     = PLUGIN_VERSION,
     url         = ""
 };
@@ -37,10 +35,6 @@ bool g_bWeaponReloading[MAXENTITIES + 1];
 int  g_iReloadStartClip[MAXENTITIES + 1];
 float g_fReloadStartTime[MAXENTITIES + 1];
 
-// --- Save state per client (for map transition) ---
-bool g_bClientHasSave[MAXPLAYERS + 1];
-int  g_iClientSaveType[MAXPLAYERS + 1];
-char g_sClientSaveWeapon[MAXPLAYERS + 1][64];
 bool g_bClientReloadWatch[MAXPLAYERS + 1];
 
 ConVar g_hEnable;
@@ -66,10 +60,8 @@ public void OnPluginStart()
     g_hEnable = CreateConVar("tuan_upgrade_ammo_enable", "1", "Enable Tuan Upgrade Ammo Pack plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     AutoExecConfig(true, "Tuan_upgrade_ammo_pack");
 
-    HookEvent("ammo_pickup",       Event_AmmoPickup,    EventHookMode_Pre);
+    HookEvent("ammo_pickup",       Event_AmmoPickup,    EventHookMode_PostNoCopy);
     HookEvent("weapon_reload",     Event_WeaponReload,  EventHookMode_Pre);
-    HookEvent("map_transition",    Event_SaveAll,       EventHookMode_PostNoCopy);
-    HookEvent("mission_lost",      Event_SaveAll,       EventHookMode_PostNoCopy);
     HookEvent("player_spawn",      Event_PlayerSpawn,   EventHookMode_Post);
 
     if (g_bLateLoad)
@@ -78,22 +70,9 @@ public void OnPluginStart()
         {
             if (IsClientInGame(client))
             {
-                SDKHook(client, SDKHook_OnTakeDamage,    OnTakeDamage_Client);
                 SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
                 SDKHook(client, SDKHook_WeaponEquipPost, OnWeaponEquipPost);
             }
-        }
-        int entity = -1;
-        while ((entity = FindEntityByClassname(entity, "infected")) != -1)
-        {
-            if (entity > 0)
-                SDKHook(entity, SDKHook_OnTakeDamage, OnTakeDamage_Infected);
-        }
-        entity = -1;
-        while ((entity = FindEntityByClassname(entity, "witch")) != -1)
-        {
-            if (entity > 0)
-                SDKHook(entity, SDKHook_OnTakeDamage, OnTakeDamage_Infected);
         }
     }
 }
@@ -104,34 +83,24 @@ public void OnPluginStart()
 
 public void OnClientPutInServer(int client)
 {
-    SDKHook(client, SDKHook_OnTakeDamage,    OnTakeDamage_Client);
     SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
     SDKHook(client, SDKHook_WeaponEquipPost, OnWeaponEquipPost);
 }
 
 public void OnClientDisconnect(int client)
 {
-    // Save before disconnect so bot replacement can inherit
-    SaveClientUpgradeState(client);
     StopReloadWatch(client);
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
-    if (entity < 1)
+    if (entity <= MaxClients || entity > MAXENTITIES)
         return;
 
-    if (strcmp(classname, "infected", false) == 0 || strcmp(classname, "witch", false) == 0)
+    if (strcmp(classname, "upgrade_ammo_incendiary", false) == 0
+     || strcmp(classname, "upgrade_ammo_explosive",  false) == 0)
     {
-        SDKHook(entity, SDKHook_OnTakeDamage, OnTakeDamage_Infected);
-    }
-    else if (entity > MaxClients && entity <= MAXENTITIES)
-    {
-        if (strcmp(classname, "upgrade_ammo_incendiary", false) == 0
-         || strcmp(classname, "upgrade_ammo_explosive",  false) == 0)
-        {
-            RequestFrame(Frame_HookUpgradeEnt, EntIndexToEntRef(entity));
-        }
+        RequestFrame(Frame_HookUpgradeEnt, EntIndexToEntRef(entity));
     }
 }
 
@@ -170,41 +139,7 @@ void Frame_ImportWeaponState(int weaponRef)
     if (weapon == INVALID_ENT_REFERENCE)
         return;
 
-    TryImportUpgradeFromWeaponProps(weapon);
-}
-
-// ============================================================
-//  Save / Restore for map transition
-// ============================================================
-
-Action Event_SaveAll(Event event, const char[] name, bool dontBroadcast)
-{
-    for (int client = 1; client <= MaxClients; client++)
-        SaveClientUpgradeState(client);
-
-    return Plugin_Continue;
-}
-
-void SaveClientUpgradeState(int client)
-{
-    g_bClientHasSave[client] = false;
-
-    if (!IsValidClient(client) || GetClientTeam(client) != 2)
-        return;
-
-    int weapon = GetPlayerWeaponSlot(client, 0);
-    if (!IsValidEntity(weapon) || weapon <= MaxClients)
-        return;
-
-    if (!g_bWeaponUpgraded[weapon] && !TryImportUpgradeFromWeaponProps(weapon))
-        return;
-
-    char classname[64];
-    GetEdictClassname(weapon, classname, sizeof(classname));
-
-    g_bClientHasSave[client]  = true;
-    g_iClientSaveType[client] = g_iWeaponUpgradeType[weapon];
-    strcopy(g_sClientSaveWeapon[client], sizeof(g_sClientSaveWeapon[]), classname);
+    RefreshWeaponUpgrade(weapon);
 }
 
 Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
@@ -215,53 +150,7 @@ Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 
     CreateTimer(0.5, Timer_ImportCurrentPrimary, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 
-    if (IsFakeClient(client))
-        return Plugin_Continue;
-
-    if (!g_bClientHasSave[client])
-        return Plugin_Continue;
-
-    // Delay restore because weapon may not be ready yet at spawn
-    CreateTimer(0.5, Timer_RestoreUpgrade, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-
     return Plugin_Continue;
-}
-
-Action Timer_RestoreUpgrade(Handle timer, int userid)
-{
-    int client = GetClientOfUserId(userid);
-    if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
-        return Plugin_Stop;
-
-    if (!g_bClientHasSave[client])
-        return Plugin_Stop;
-
-    int weapon = GetPlayerWeaponSlot(client, 0);
-    if (!IsValidEntity(weapon) || weapon <= MaxClients)
-        return Plugin_Stop;
-
-    char classname[64];
-    GetEdictClassname(weapon, classname, sizeof(classname));
-
-    // Only restore if weapon classname matches saved
-    if (!StrEqual(classname, g_sClientSaveWeapon[client], false))
-        return Plugin_Stop;
-
-    // Restore upgrade state
-    g_bWeaponUpgraded[weapon]    = true;
-    g_iWeaponUpgradeType[weapon] = g_iClientSaveType[client];
-    g_bWeaponReloading[weapon]   = false;
-
-    // Apply visual
-    RequestFrame(Frame_ApplyVisual, EntIndexToEntRef(weapon));
-
-    char typeName[32];
-    GetUpgradeName(g_iClientSaveType[client], typeName, sizeof(typeName));
-    PrintToChat(client, "\x04[Upgrade Ammo]\x01 \x05%s\x01 ammo restored.", typeName);
-
-    g_bClientHasSave[client] = false;
-
-    return Plugin_Stop;
 }
 
 public void L4D2_OnSaveWeaponHxGiveC(int client)
@@ -292,7 +181,7 @@ void ImportClientPrimaryUpgrade(int client)
     if (!IsValidEntity(weapon) || weapon <= MaxClients)
         return;
 
-    TryImportUpgradeFromWeaponProps(weapon);
+    RefreshWeaponUpgrade(weapon);
 }
 
 // ============================================================
@@ -405,71 +294,6 @@ public void OnPostThink_ReloadWatch(int client)
 }
 
 // ============================================================
-//  OnTakeDamage: inject DMG_BURN / DMG_BLAST
-// ============================================================
-
-Action OnTakeDamage_Client(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
-{
-    if (!g_hEnable.BoolValue)
-        return Plugin_Continue;
-
-    if (weapon == -1 || attacker < 1 || attacker > MaxClients)
-        return Plugin_Continue;
-
-    if (!IsClientInGame(attacker) || GetClientTeam(attacker) != 2 || !IsPlayerAlive(attacker))
-        return Plugin_Continue;
-
-    if (!IsClientInGame(victim) || GetClientTeam(victim) != 3)
-        return Plugin_Continue;
-
-    return ApplyUpgradeDamage(victim, weapon, damagetype);
-}
-
-Action OnTakeDamage_Infected(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
-{
-    if (!g_hEnable.BoolValue)
-        return Plugin_Continue;
-
-    if (weapon == -1 || attacker < 1 || attacker > MaxClients)
-        return Plugin_Continue;
-
-    if (!IsClientInGame(attacker) || GetClientTeam(attacker) != 2 || !IsPlayerAlive(attacker))
-        return Plugin_Continue;
-
-    return ApplyUpgradeDamage(victim, weapon, damagetype);
-}
-
-Action ApplyUpgradeDamage(int victim, int weapon, int &damagetype)
-{
-    if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
-        return Plugin_Continue;
-
-    if (!g_bWeaponUpgraded[weapon] && !TryImportUpgradeFromWeaponProps(weapon))
-        return Plugin_Continue;
-
-    int upgradeType = g_iWeaponUpgradeType[weapon];
-
-    if (upgradeType == UPGRADE_EXPLOSIVE)
-    {
-        // Skip DMG_BLAST on Tank to prevent stagger
-        if (victim >= 1 && victim <= MaxClients && IsClientInGame(victim))
-        {
-            if (GetEntProp(victim, Prop_Send, "m_zombieClass") == ZC_TANK)
-                return Plugin_Continue;
-        }
-        damagetype |= DMG_BLAST;
-        return Plugin_Changed;
-    }
-    else if (upgradeType == UPGRADE_INCENDIARY)
-    {
-        damagetype |= DMG_BURN;
-        return Plugin_Changed;
-    }
-
-    return Plugin_Continue;
-}
-
-// ============================================================
 //  Core: upgrade pack used
 // ============================================================
 
@@ -479,6 +303,9 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
         return Plugin_Continue;
 
     int client = caller;
+    if (!IsValidClient(client))
+        client = activator;
+
     if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
         return Plugin_Continue;
 
@@ -523,26 +350,19 @@ void Frame_ApplyVisual(int weaponRef)
 }
 
 // ============================================================
-//  Block ammo pile pickup
+//  Ammo pickup
 // ============================================================
 
-Action Event_AmmoPickup(Event event, const char[] name, bool dontBroadcast)
+void Event_AmmoPickup(Event event, const char[] name, bool dontBroadcast)
 {
     if (!g_hEnable.BoolValue)
-        return Plugin_Continue;
+        return;
 
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (!IsValidClient(client) || GetClientTeam(client) != 2)
-        return Plugin_Continue;
+        return;
 
-    int weapon = GetPlayerWeaponSlot(client, 0);
-    if (!IsValidEntity(weapon) || weapon <= MaxClients)
-        return Plugin_Continue;
-
-    if (g_bWeaponUpgraded[weapon] || TryImportUpgradeFromWeaponProps(weapon))
-        return Plugin_Handled;
-
-    return Plugin_Continue;
+    CreateTimer(0.1, Timer_ImportCurrentPrimary, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 }
 
 // ============================================================
@@ -556,6 +376,20 @@ void ClearWeaponState(int weapon)
     g_bWeaponReloading[weapon]   = false;
     g_iReloadStartClip[weapon]   = 0;
     g_fReloadStartTime[weapon]   = 0.0;
+}
+
+void RefreshWeaponUpgrade(int weapon)
+{
+    if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
+        return;
+
+    if (g_bWeaponUpgraded[weapon])
+    {
+        ApplyUpgradeVisualNow(weapon);
+        return;
+    }
+
+    TryImportUpgradeFromWeaponProps(weapon);
 }
 
 bool TryImportUpgradeFromWeaponProps(int weapon)

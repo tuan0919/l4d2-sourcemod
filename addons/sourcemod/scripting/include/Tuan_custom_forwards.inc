@@ -1,4 +1,5 @@
 forward void Tuan_OnClient_SelfRevived(int client);
+forward void Tuan_OnClient_RemoteItemSaved(int healer, int target, int itemType);
 forward void Tuan_OnClient_KillOther(char[] attacker_name, char[] victim_name, char[] weapon_name);
 forward void Tuan_OnClient_KilledByUnknown(char[] victim_name, char[] weapon_name);
 forward void Tuan_OnClient_IncapOther(char[] attacker_name, char[] victim_name, char[] weapon_name);

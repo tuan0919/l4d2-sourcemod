@@ -39,6 +39,8 @@ He thong notify moi gom cac plugin sau:
 
 ### 27/04/2026
 - `tuan_notify_member_bw`: Hook forward `Tuan_OnClient_SelfRevived` từ `Tuan_l4d_incapped_weapons` để sync lại trạng thái BnW nội bộ sau self-revive. Nếu self-revive làm survivor vào last life, plugin sẽ cập nhật `g_bPlayerBW` và phát `Tuan_OnClient_GoBnW`; nếu không còn BnW thì reset state để tránh heal notification sai.
+- `tuan_notify_member_bw`: Hook thêm forward `Tuan_OnClient_RemoteItemSaved` từ `Tuan_l4d2_pill_adrenaline_save` để sync BnW sau remote save bằng pills/adrenaline.
+- `tuan_notify_member_events`: Thêm cvar `tuan_notify_member_evt_notify_remote_item_save` và handler `Tuan_OnClient_RemoteItemSaved` để publish Script HUD khi healer đã cứu target thành công sau animation.
 
 ### 25/04/2026
 - `tuan_notify_member_bw_source`: Hook forward `LevelStartHeal_OnHealed` từ plugin `level_start_heal` để reset trạng thái BW tracking (`g_bPlayerBW`) khi survivor được heal đầu map. Tránh thông báo nhầm "is at last life" sau khi plugin đã clear BW state.
@@ -59,6 +61,7 @@ He thong notify moi gom cac plugin sau:
 ### Collector events
 
 - Prefix: `tuan_notify_member_evt_*`
+- Remote item save: `tuan_notify_member_evt_notify_remote_item_save`
 
 ## Compile
 

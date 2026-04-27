@@ -5,6 +5,7 @@
 * File: tuan_notify_member_bw.sp
 * Description: Notify people when player is black and white or dead
 ******************************************************************************************
+* 2.3 - Sync BW state khi player được remote save bằng Tuan_l4d2_pill_adrenaline_save
 * 2.2 - Sync BW state khi player self-revive bằng Tuan_l4d_incapped_weapons
 * 2.1 - Hook LevelStartHeal_OnHealed để reset BW state khi plugin heal đầu map
 * 2.0 - Rewrite this plugin by Tuan
@@ -19,7 +20,7 @@
 #pragma semicolon 1;
 #pragma newdecls required;
 
-#define PLUGIN_VERSION "2.2"
+#define PLUGIN_VERSION "2.3"
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
 
@@ -144,6 +145,14 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 }
 
 public void Tuan_OnClient_SelfRevived(int client) {
+	BW_SyncClientAfterExternalRevive(client);
+}
+
+public void Tuan_OnClient_RemoteItemSaved(int healer, int target, int itemType) {
+	BW_SyncClientAfterExternalRevive(target);
+}
+
+void BW_SyncClientAfterExternalRevive(int client) {
 	if (client < 1 || client > MaxClients) {
 		return;
 	}

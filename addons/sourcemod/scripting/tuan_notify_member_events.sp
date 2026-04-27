@@ -6,7 +6,7 @@
 #include <Tuan_custom_forwards>
 #include "tuan_notify_core.inc"
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.1.0"
 #define CVAR_PREFIX "tuan_notify_member_evt_"
 #define HUD_NAME_VISIBLE 14
 
@@ -26,6 +26,7 @@ ConVar g_hNotifyHealedOther;
 ConVar g_hNotifyGoBnW;
 ConVar g_hNotifyRevivedOther;
 ConVar g_hNotifySelfRevived;
+ConVar g_hNotifyRemoteItemSave;
 ConVar g_hNotifyThrowMolotov;
 ConVar g_hNotifyThrowPipebomb;
 ConVar g_hNotifyThrowVomitjar;
@@ -46,6 +47,7 @@ bool g_bNotifyHealedOther;
 bool g_bNotifyGoBnW;
 bool g_bNotifyRevivedOther;
 bool g_bNotifySelfRevived;
+bool g_bNotifyRemoteItemSave;
 bool g_bNotifyThrowMolotov;
 bool g_bNotifyThrowPipebomb;
 bool g_bNotifyThrowVomitjar;
@@ -110,6 +112,7 @@ public void OnPluginStart()
     g_hNotifyGoBnW = CreateConVar(CVAR_PREFIX ... "notify_go_bnw", "1", "Publish go-black-and-white notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     g_hNotifyRevivedOther = CreateConVar(CVAR_PREFIX ... "notify_revived_other", "1", "Publish revived-other notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     g_hNotifySelfRevived = CreateConVar(CVAR_PREFIX ... "notify_self_revived", "1", "Publish self-revived notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    g_hNotifyRemoteItemSave = CreateConVar(CVAR_PREFIX ... "notify_remote_item_save", "1", "Publish remote pills/adrenaline save notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
     g_hNotifyThrowMolotov = CreateConVar(CVAR_PREFIX ... "notify_throw_molotov", "1", "Publish molotov throw notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     g_hNotifyThrowPipebomb = CreateConVar(CVAR_PREFIX ... "notify_throw_pipebomb", "1", "Publish pipebomb throw notifications.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -133,6 +136,7 @@ public void OnPluginStart()
     HookConVarChange(g_hNotifyGoBnW, OnConVarChanged);
     HookConVarChange(g_hNotifyRevivedOther, OnConVarChanged);
     HookConVarChange(g_hNotifySelfRevived, OnConVarChanged);
+    HookConVarChange(g_hNotifyRemoteItemSave, OnConVarChanged);
     HookConVarChange(g_hNotifyThrowMolotov, OnConVarChanged);
     HookConVarChange(g_hNotifyThrowPipebomb, OnConVarChanged);
     HookConVarChange(g_hNotifyThrowVomitjar, OnConVarChanged);
@@ -192,6 +196,7 @@ void RefreshConVars()
     g_bNotifyGoBnW = g_hNotifyGoBnW.BoolValue;
     g_bNotifyRevivedOther = g_hNotifyRevivedOther.BoolValue;
     g_bNotifySelfRevived = g_hNotifySelfRevived.BoolValue;
+    g_bNotifyRemoteItemSave = g_hNotifyRemoteItemSave.BoolValue;
     g_bNotifyThrowMolotov = g_hNotifyThrowMolotov.BoolValue;
     g_bNotifyThrowPipebomb = g_hNotifyThrowPipebomb.BoolValue;
     g_bNotifyThrowVomitjar = g_hNotifyThrowVomitjar.BoolValue;
@@ -299,6 +304,16 @@ void GetGearTransferWeaponNameById(int weaponid, char[] buffer, int maxlen)
     }
 }
 
+void GetRemoteSaveItemName(int itemType, char[] buffer, int maxlen)
+{
+    switch (itemType)
+    {
+        case 0: strcopy(buffer, maxlen, "pain pills");
+        case 1: strcopy(buffer, maxlen, "adrenaline");
+        default: strcopy(buffer, maxlen, "medical item");
+    }
+}
+
 public void Tuan_OnClient_HealedOther(int client, int victim)
 {
     if (!g_bNotifyHealedOther || !IsClient(client) || !IsClient(victim))
@@ -365,6 +380,24 @@ public void Tuan_OnClient_SelfRevived(int client)
     char line[128];
     FormatChatNameFromClient(client, clientFmt, sizeof(clientFmt));
     BuildChatLineActionOnly(clientFmt, "self revived", line, sizeof(line));
+    PublishInfo(line);
+}
+
+public void Tuan_OnClient_RemoteItemSaved(int healer, int target, int itemType)
+{
+    if (!g_bNotifyRemoteItemSave || !IsClient(healer) || !IsClient(target))
+    {
+        return;
+    }
+
+    char healerFmt[32];
+    char targetFmt[32];
+    char itemName[32];
+    char line[128];
+    FormatChatNameFromClient(healer, healerFmt, sizeof(healerFmt));
+    FormatChatNameFromClient(target, targetFmt, sizeof(targetFmt));
+    GetRemoteSaveItemName(itemType, itemName, sizeof(itemName));
+    FormatEx(line, sizeof(line), "{olive}%s {blue}saved {olive}%s {blue}with %s{default}.", healerFmt, targetFmt, itemName);
     PublishInfo(line);
 }
 

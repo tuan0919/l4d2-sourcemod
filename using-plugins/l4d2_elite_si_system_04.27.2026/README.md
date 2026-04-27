@@ -214,6 +214,9 @@ He thong moi da tach thanh bo module nho, load doc lap:
 
 ### 27/04/2026
 
+- Fix `Jockey Heroic`: callback pre-detonate timer gio clear handle theo chinh handle callback truoc khi check userid/client, tranh stale timer handle khi client/Jockey bien mat truoc luc fuse het.
+- `StopPreDetonateTimer` va `StopStateTimer` dat slot timer ve `null` truoc khi `KillTimer`; state timer cung clear theo handle khi timer stop de round reset khong kill lai handle da het han.
+- Bump `l4d2_elite_si_jockey_heroic` len `1.0.10`, compile va deploy lai `addons/sourcemod/plugins/qol/l4d2_elite_si_jockey_heroic.smx`.
 - Tach HP scale cua Elite Tank ra cvar rieng `l4d2_elite_si_core_tank_hp_multiplier`.
 - Elite Tank khong con dung chung `l4d2_elite_si_core_hp_multiplier`; mac dinh Tank HP multiplier la `1.2`.
 - Cac Elite SI khac tiep tuc dung `l4d2_elite_si_core_hp_multiplier`.

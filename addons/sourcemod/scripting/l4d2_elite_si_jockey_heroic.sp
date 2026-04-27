@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.9"
+#define PLUGIN_VERSION "1.0.10"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -423,8 +423,9 @@ void StopStateTimer(int client)
 
 	if (g_hStateTimer[client] != null)
 	{
-		KillTimer(g_hStateTimer[client]);
+		Handle timer = g_hStateTimer[client];
 		g_hStateTimer[client] = null;
+		KillTimer(timer);
 	}
 }
 
@@ -450,20 +451,33 @@ void StopPreDetonateTimer(int client)
 
 	if (g_hPreDetonateTimer[client] != null)
 	{
-		KillTimer(g_hPreDetonateTimer[client]);
+		Handle timer = g_hPreDetonateTimer[client];
 		g_hPreDetonateTimer[client] = null;
+		KillTimer(timer);
+	}
+}
+
+void ClearPreDetonateTimerHandle(Handle timer)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (g_hPreDetonateTimer[i] == timer)
+		{
+			g_hPreDetonateTimer[i] = null;
+			return;
+		}
 	}
 }
 
 Action Timer_PreDetonatePipebomb(Handle timer, int userId)
 {
+	ClearPreDetonateTimerHandle(timer);
+
 	int client = GetClientOfUserId(userId);
 	if (client <= 0 || client > MaxClients)
 	{
 		return Plugin_Stop;
 	}
-
-	g_hPreDetonateTimer[client] = null;
 
 	if (g_bPipeArmed[client] && g_bPipeAttached[client] && GetPipeEntity(client) > 0)
 	{
@@ -527,23 +541,36 @@ int CreateActivePipebomb(int client)
 	return entity;
 }
 
+void ClearStateTimerHandle(Handle timer)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (g_hStateTimer[i] == timer)
+		{
+			g_hStateTimer[i] = null;
+			return;
+		}
+	}
+}
+
 Action Timer_CheckHeroicState(Handle timer, int userId)
 {
 	int client = GetClientOfUserId(userId);
 	if (client <= 0 || client > MaxClients)
 	{
+		ClearStateTimerHandle(timer);
 		return Plugin_Stop;
 	}
 
 	if (!HasTrackedPipe(client))
 	{
-		g_hStateTimer[client] = null;
+		ClearStateTimerHandle(timer);
 		return Plugin_Stop;
 	}
 
 	if (!IsClientInGame(client))
 	{
-		g_hStateTimer[client] = null;
+		ClearStateTimerHandle(timer);
 		return Plugin_Stop;
 	}
 

@@ -95,7 +95,7 @@ Toi uu runtime:
 - Van giu fallback `OnPlayerRunCmd` de plugin hoat dong an toan khi `attachments_api` khong co hoac forward bi miss.
 - Dung `m_hOwnerEntity` tren glow proxy de map nguoc ve target O(1), khong can loop `MaxClients` trong `SetTransmit`.
 - Dung stock `L4D2_SetEntityGlow()` tu `left4dhooks` de set glow an toan hon thay vi set tung prop thu cong.
-- Glow proxy duoc attach bang bonemerge + `EF_PARENT_ANIMATES` de dong bo animation cua player, tranh hien outline T-pose.
+- Glow proxy van dung `SetAttached` de giu render on dinh, kem bonemerge + `EF_PARENT_ANIMATES` de dong bo animation cua player va giam outline T-pose.
 - `m_nGlowRange` duoc set theo `Tuan_l4d2_pill_adrenaline_save_range` thay vi unlimited, de glow tat dung hon khi viewer ra khoi tam.
 
 ## Guard double-save
@@ -159,4 +159,4 @@ spcomp.exe tuan_notify_member_bw.sp -o..\plugins\qol\tuan_notify_member_bw.smx
 - Glow dung proxy invisible + `SetTransmit` de tranh hien global va cleanup an toan theo lifecycle cua target/plugin.
 - Toi uu glow bang holder cache, `Attachments_OnWeaponSwitch`, owner lookup O(1), va `L4D2_SetEntityGlow()` tu `left4dhooks`.
 - Guard double-save: reserve target truoc khi consume item, rollback neu remove item fail, va block save lai `0.5s` sau khi target duoc revive thanh cong.
-- Fix glow proxy: dung bonemerge/parent-animates thay `SetAttached` input de tranh T-pose, va gioi han engine glow range theo CVAR range de glow mat khi viewer ra khoi tam.
+- Fix glow proxy: giu `SetAttached` input de proxy tiep tuc render, them bonemerge/parent-animates de giam T-pose, va gioi han engine glow range theo CVAR range de glow mat khi viewer ra khoi tam.

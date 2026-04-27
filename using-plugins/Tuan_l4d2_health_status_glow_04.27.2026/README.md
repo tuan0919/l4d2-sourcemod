@@ -54,7 +54,7 @@ BnW duoc doc tu:
 - Proxy luu target bang `m_hOwnerEntity`, nen `SetTransmit` map nguoc ve target O(1), khong loop `MaxClients`.
 - Mau health duoc sync theo timer, default `0.5s`, va chi set lai glow khi state mau doi.
 - Cleanup proxy khi target disconnect/death/team change, round reset, map end hoac plugin unload.
-- Glow proxy duoc attach bang bonemerge + `EF_PARENT_ANIMATES` de dong bo animation cua player, tranh hien outline T-pose.
+- Glow proxy van dung `SetAttached` de giu render on dinh, kem bonemerge + `EF_PARENT_ANIMATES` de dong bo animation cua player va giam outline T-pose.
 - `m_nGlowRange` duoc set theo `Tuan_l4d2_health_status_glow_range` thay vi unlimited, de glow tat dung hon khi viewer ra khoi tam.
 
 ## CVAR
@@ -91,4 +91,4 @@ spcomp.exe Tuan_l4d2_health_status_glow.sp -o..\plugins\qol\Tuan_l4d2_health_sta
 - Chi target survivor dang dung moi hien glow; incap/hanging khong tinh.
 - Dung proxy invisible + `SetTransmit` de glow chi hien voi viewer hop le.
 - Toi uu bang holder cache, `Attachments_OnWeaponSwitch`, owner lookup O(1), va `L4D2_SetEntityGlow()` tu `left4dhooks`.
-- Fix glow proxy: dung bonemerge/parent-animates thay `SetAttached` input de tranh T-pose, va gioi han engine glow range theo CVAR range de glow mat khi viewer ra khoi tam.
+- Fix glow proxy: giu `SetAttached` input de proxy tiep tuc render, them bonemerge/parent-animates de giam T-pose, va gioi han engine glow range theo CVAR range de glow mat khi viewer ra khoi tam.

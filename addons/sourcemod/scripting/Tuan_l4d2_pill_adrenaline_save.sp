@@ -23,6 +23,7 @@
 
 #define EF_BONEMERGE (1 << 0)
 #define EF_NOSHADOW (1 << 4)
+#define EF_BONEMERGE_FASTCULL (1 << 7)
 #define EF_PARENT_ANIMATES (1 << 9)
 #define FSOLID_NOT_SOLID 0x0004
 
@@ -309,7 +310,7 @@ void EnsureRemoteSaveGlow(int target)
     }
 
     DispatchKeyValue(entity, "targetname", "tuan_remote_save_range_glow");
-    DispatchKeyValue(entity, "model", model);
+    SetEntityModel(entity, model);
     if (!DispatchSpawn(entity))
     {
         RemoveEntity(entity);
@@ -352,8 +353,11 @@ void AttachGlowProxyToTarget(int entity, int target)
     SetVariantString("!activator");
     AcceptEntityInput(entity, "SetParent", target);
 
+    SetVariantString("!activator");
+    AcceptEntityInput(entity, "SetAttached", target);
+
     SetEntityMoveType(entity, MOVETYPE_NONE);
-    SetEntProp(entity, Prop_Send, "m_fEffects", EF_BONEMERGE | EF_NOSHADOW | EF_PARENT_ANIMATES);
+    SetEntProp(entity, Prop_Send, "m_fEffects", EF_BONEMERGE | EF_NOSHADOW | EF_BONEMERGE_FASTCULL | EF_PARENT_ANIMATES);
 
     int solidFlags = GetEntProp(entity, Prop_Data, "m_usSolidFlags", 2);
     solidFlags |= FSOLID_NOT_SOLID;

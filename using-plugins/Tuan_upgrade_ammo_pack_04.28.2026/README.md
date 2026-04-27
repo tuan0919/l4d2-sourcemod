@@ -9,6 +9,7 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Có thể đổi tự do giữa đạn lửa và đạn nổ bằng cách dùng pack loại khác.
 - Chặn nhặt ammo pile khi súng primary đang ở trạng thái upgraded.
 - Giữ trạng thái upgrade qua map transition nếu weapon classname khớp.
+- Tự nhận lại state permanent upgrade khi nhặt/equip một primary weapon đã có upgrade bit vanilla.
 
 ## Cơ chế hoạt động
 
@@ -39,6 +40,13 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Hook event `ammo_pickup` pre.
 - Nếu primary weapon đang upgraded thì return `Plugin_Handled`.
 
+### Import state khi nhặt/equip súng
+
+- Hook `SDKHook_WeaponEquipPost` trên survivor và delay 1 frame để đọc props sau khi game/plugin khác set xong.
+- Nếu primary weapon có `m_upgradeBitVec` fire/explosive, plugin chuyển nó thành permanent upgraded weapon theo logic hiện tại.
+- Có fallback ở `FireBulletsPost`, `weapon_reload`, `ammo_pickup` và `OnTakeDamage` để tránh miss timing.
+- Có callback `L4D2_OnSaveWeaponHxGiveC(client)` để import state sau khi `l4d2_ty_saveweapons` restore súng qua map.
+
 ### Save / restore
 
 - Khi `map_transition`, `mission_lost` hoặc client disconnect, lưu loại upgrade và weapon classname.
@@ -53,10 +61,17 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 ## Files
 
 - Source: `addons/sourcemod/scripting/Tuan_upgrade_ammo_pack.sp`
-- Snapshot: `using-plugins/Tuan_upgrade_ammo_pack_04.25.2026/Tuan_upgrade_ammo_pack.sp`
+- Snapshot: `using-plugins/Tuan_upgrade_ammo_pack_04.28.2026/Tuan_upgrade_ammo_pack.sp`
 - Compiled: `addons/sourcemod/plugins/qol/Tuan_upgrade_ammo_pack.smx`
 
 ## Changelog
+
+### v3.3.2 (28/04/2026)
+
+- Fix súng upgrade bị restore/nhặt lại chỉ còn behavior vanilla 1 băng đạn sau map transition.
+- Thêm import state từ `m_upgradeBitVec` khi survivor equip primary weapon đã có upgrade bit.
+- Tích hợp callback `L4D2_OnSaveWeaponHxGiveC(client)` để nhận lại state ngay sau khi `l4d2_ty_saveweapons` give lại súng.
+- Thêm fallback import trước fire/reload/ammo pickup/damage để súng nâng cấp luôn đi qua logic permanent upgrade của plugin.
 
 ### v3.3.1 (25/04/2026)
 

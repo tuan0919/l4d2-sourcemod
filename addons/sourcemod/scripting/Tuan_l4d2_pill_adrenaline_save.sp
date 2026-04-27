@@ -21,6 +21,11 @@
 #define GLOW_SYNC_INTERVAL 0.5
 #define SAVE_COMPLETE_BLOCK_TIME 0.5
 
+#define EF_BONEMERGE (1 << 0)
+#define EF_NOSHADOW (1 << 4)
+#define EF_PARENT_ANIMATES (1 << 9)
+#define FSOLID_NOT_SOLID 0x0004
+
 ConVar g_hEnable;
 ConVar g_hRange;
 ConVar g_hAnimTime;
@@ -277,8 +282,14 @@ bool AnyRemoteSaveGlowViewer()
 
 void EnsureRemoteSaveGlow(int target)
 {
-    if (IsValidRemoteSaveGlowRef(g_iRangeGlowRef[target]))
+    int entity = EntRefToEntIndex(g_iRangeGlowRef[target]);
+    if (entity > MaxClients && IsValidEntity(entity))
     {
+        if (!SetRemoteSaveGlow(entity))
+        {
+            RemoveRemoteSaveGlow(target);
+        }
+
         return;
     }
 
@@ -291,7 +302,7 @@ void EnsureRemoteSaveGlow(int target)
         return;
     }
 
-    int entity = CreateEntityByName("prop_dynamic_ornament");
+    entity = CreateEntityByName("prop_dynamic_ornament");
     if (entity <= MaxClients || !IsValidEntity(entity))
     {
         return;
@@ -313,8 +324,7 @@ void EnsureRemoteSaveGlow(int target)
     SetEntProp(entity, Prop_Send, "m_nSolidType", 0);
     SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", target);
 
-    int glowColor[3] = {0, 255, 0};
-    if (!L4D2_SetEntityGlow(entity, L4D2Glow_Constant, 0, 0, glowColor, false))
+    if (!SetRemoteSaveGlow(entity))
     {
         RemoveEntity(entity);
         return;
@@ -325,13 +335,33 @@ void EnsureRemoteSaveGlow(int target)
     SetEntityRenderMode(entity, RENDER_TRANSCOLOR);
     SetEntityRenderColor(entity, 0, 0, 0, 0);
 
-    SetVariantString("!activator");
-    AcceptEntityInput(entity, "SetParent", target);
-    SetVariantString("!activator");
-    AcceptEntityInput(entity, "SetAttached", target);
+    AttachGlowProxyToTarget(entity, target);
 
     SDKHook(entity, SDKHook_SetTransmit, Hook_RemoteSaveGlowTransmit);
     g_iRangeGlowRef[target] = EntIndexToEntRef(entity);
+}
+
+bool SetRemoteSaveGlow(int entity)
+{
+    int glowColor[3] = {0, 255, 0};
+    return L4D2_SetEntityGlow(entity, L4D2Glow_Constant, RoundToCeil(g_fRange), 0, glowColor, false);
+}
+
+void AttachGlowProxyToTarget(int entity, int target)
+{
+    SetVariantString("!activator");
+    AcceptEntityInput(entity, "SetParent", target);
+
+    SetEntityMoveType(entity, MOVETYPE_NONE);
+    SetEntProp(entity, Prop_Send, "m_fEffects", EF_BONEMERGE | EF_NOSHADOW | EF_PARENT_ANIMATES);
+
+    int solidFlags = GetEntProp(entity, Prop_Data, "m_usSolidFlags", 2);
+    solidFlags |= FSOLID_NOT_SOLID;
+    SetEntProp(entity, Prop_Data, "m_usSolidFlags", solidFlags, 2);
+
+    float origin[3] = {0.0, 0.0, 0.0};
+    float angles[3] = {0.0, 0.0, 0.0};
+    TeleportEntity(entity, origin, angles, NULL_VECTOR);
 }
 
 void RemoveRemoteSaveGlow(int target)
@@ -356,12 +386,6 @@ void RemoveAllRemoteSaveGlows()
     {
         RemoveRemoteSaveGlow(target);
     }
-}
-
-bool IsValidRemoteSaveGlowRef(int ref)
-{
-    int entity = EntRefToEntIndex(ref);
-    return entity > MaxClients && IsValidEntity(entity);
 }
 
 public Action Hook_RemoteSaveGlowTransmit(int entity, int client)

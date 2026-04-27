@@ -28,6 +28,11 @@
 #define DEFAULT_SYNC_INTERVAL 0.5
 #define MIN_SYNC_INTERVAL 0.1
 
+#define EF_BONEMERGE (1 << 0)
+#define EF_NOSHADOW (1 << 4)
+#define EF_PARENT_ANIMATES (1 << 9)
+#define FSOLID_NOT_SOLID 0x0004
+
 ConVar g_hEnable;
 ConVar g_hRange;
 ConVar g_hLowHealth;
@@ -246,17 +251,13 @@ void EnsureHealthGlow(int target, int state)
     int entity = EntRefToEntIndex(g_iHealthGlowRef[target]);
     if (entity > MaxClients && IsValidEntity(entity))
     {
-        if (g_iHealthGlowState[target] != state)
+        if (!SetHealthGlowColor(entity, state))
         {
-            if (!SetHealthGlowColor(entity, state))
-            {
-                RemoveHealthGlow(target);
-                return;
-            }
-
-            g_iHealthGlowState[target] = state;
+            RemoveHealthGlow(target);
+            return;
         }
 
+        g_iHealthGlowState[target] = state;
         return;
     }
 
@@ -302,10 +303,7 @@ void EnsureHealthGlow(int target, int state)
     SetEntityRenderMode(entity, RENDER_TRANSCOLOR);
     SetEntityRenderColor(entity, 0, 0, 0, 0);
 
-    SetVariantString("!activator");
-    AcceptEntityInput(entity, "SetParent", target);
-    SetVariantString("!activator");
-    AcceptEntityInput(entity, "SetAttached", target);
+    AttachGlowProxyToTarget(entity, target);
 
     SDKHook(entity, SDKHook_SetTransmit, Hook_HealthGlowTransmit);
     g_iHealthGlowRef[target] = EntIndexToEntRef(entity);
@@ -316,7 +314,24 @@ bool SetHealthGlowColor(int entity, int state)
 {
     int glowColor[3];
     GetGlowColor(state, glowColor);
-    return L4D2_SetEntityGlow(entity, L4D2Glow_Constant, 0, 0, glowColor, false);
+    return L4D2_SetEntityGlow(entity, L4D2Glow_Constant, RoundToCeil(g_fRange), 0, glowColor, false);
+}
+
+void AttachGlowProxyToTarget(int entity, int target)
+{
+    SetVariantString("!activator");
+    AcceptEntityInput(entity, "SetParent", target);
+
+    SetEntityMoveType(entity, MOVETYPE_NONE);
+    SetEntProp(entity, Prop_Send, "m_fEffects", EF_BONEMERGE | EF_NOSHADOW | EF_PARENT_ANIMATES);
+
+    int solidFlags = GetEntProp(entity, Prop_Data, "m_usSolidFlags", 2);
+    solidFlags |= FSOLID_NOT_SOLID;
+    SetEntProp(entity, Prop_Data, "m_usSolidFlags", solidFlags, 2);
+
+    float origin[3] = {0.0, 0.0, 0.0};
+    float angles[3] = {0.0, 0.0, 0.0};
+    TeleportEntity(entity, origin, angles, NULL_VECTOR);
 }
 
 void GetGlowColor(int state, int color[3])

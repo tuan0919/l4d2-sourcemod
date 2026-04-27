@@ -612,19 +612,33 @@ void StopAction(int client, bool clearProgress, bool killTimer)
 
 void ShowProgress(int client, float duration)
 {
+    if (!HasProgressBarProps(client))
+    {
+        return;
+    }
+
     SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", GetGameTime());
     SetEntProp(client, Prop_Send, "m_iProgressBarDuration", RoundToCeil(duration));
 }
 
 void ClearProgress(int client)
 {
-    if (client < 1 || client > MaxClients || !IsClientInGame(client))
+    if (!HasProgressBarProps(client))
     {
         return;
     }
 
     SetEntPropFloat(client, Prop_Send, "m_flProgressBarStartTime", 0.0);
     SetEntProp(client, Prop_Send, "m_iProgressBarDuration", 0);
+}
+
+bool HasProgressBarProps(int client)
+{
+    return client >= 1
+        && client <= MaxClients
+        && IsClientInGame(client)
+        && HasEntProp(client, Prop_Send, "m_flProgressBarStartTime")
+        && HasEntProp(client, Prop_Send, "m_iProgressBarDuration");
 }
 
 void ApplyConfiguredHealth(int client, float health, bool permanent, bool revived)

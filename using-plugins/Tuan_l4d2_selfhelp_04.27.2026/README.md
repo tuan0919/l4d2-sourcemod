@@ -117,3 +117,9 @@ spcomp.exe Tuan_l4d2_selfhelp.sp -o..\plugins\qol\Tuan_l4d2_selfhelp.smx
 - Them progress bar, item priority, pickup item bang `E`, va incap-help-other.
 - Them cfg runtime `cfg/sourcemod/Tuan_l4d2_selfhelp.cfg`.
 - Compile va deploy vao `addons/sourcemod/plugins/qol/Tuan_l4d2_selfhelp.smx`.
+
+### 27/04/2026 - Fix progress bar prop
+
+- Fix runtime error `Property "m_iProgressBarDuration" not found` khi client disconnect hoac server khong expose progress-bar sendprop tren player.
+- `ShowProgress` va `ClearProgress` gio check `HasEntProp` truoc khi set `m_flProgressBarStartTime` / `m_iProgressBarDuration`.
+- Neu prop khong ton tai, plugin bo qua progress bar nhung self-help van tiep tuc hoat dong.

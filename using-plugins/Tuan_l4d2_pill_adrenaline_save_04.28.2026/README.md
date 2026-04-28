@@ -1,4 +1,4 @@
-# Tuan_l4d2_pill_adrenaline_save (04.27.2026)
+# Tuan_l4d2_pill_adrenaline_save (04.28.2026)
 
 ## Muc tieu
 
@@ -32,7 +32,7 @@ Plugin nay reuse dung pattern can thiet:
 - Source: `addons/sourcemod/scripting/Tuan_l4d2_pill_adrenaline_save.sp`
 - Plugin: `addons/sourcemod/plugins/qol/Tuan_l4d2_pill_adrenaline_save.smx`
 - Config: `cfg/sourcemod/Tuan_l4d2_pill_adrenaline_save.cfg`
-- Snapshot: `using-plugins/Tuan_l4d2_pill_adrenaline_save_04.27.2026/`
+- Snapshot: `using-plugins/Tuan_l4d2_pill_adrenaline_save_04.28.2026/`
 
 ## Cach hoat dong
 
@@ -103,6 +103,7 @@ Toi uu runtime:
 Plugin co guard de tranh 2 healer consume item cho cung 1 target trong khoang thoi gian rat ngan:
 
 - Reserve target bang `g_bSavingTarget[target]` truoc khi remove pills/adrenaline cua healer.
+- Neu target co `m_reviveOwner > 0` thi coi nhu dang duoc revive/self-revive, remote save bi chan truoc khi consume item.
 - Neu `RemovePlayerItem()` fail thi rollback reservation va khong start save.
 - Sau khi remote save thanh cong, target bi block save lai trong `0.5s` bang `g_fTargetSaveBlockedUntil`.
 - Timer complete check dung timer handle va `g_bSavingTarget[target]` de bo qua stale timer.
@@ -146,6 +147,11 @@ spcomp.exe tuan_notify_member_bw.sp -o..\plugins\qol\tuan_notify_member_bw.smx
 ```
 
 ## Changelog
+
+### 28/04/2026
+
+- Fix case target dang duoc revive thu cong boi survivor khac van cho remote save.
+- `IsTargetSaveBusy()` gio check them `m_reviveOwner > 0`, nen remote save bi chan truoc khi consume pills/adrenaline.
 
 ### 27/04/2026
 

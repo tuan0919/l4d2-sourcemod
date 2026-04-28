@@ -7,7 +7,7 @@
 #include <left4dhooks>
 #include <attachments_api>
 
-#define PLUGIN_VERSION "04.27.2026"
+#define PLUGIN_VERSION "04.28.2026"
 #define CVAR_FLAGS FCVAR_NOTIFY
 
 #define TEAM_SURVIVOR 2
@@ -563,7 +563,14 @@ bool IsTargetSaveBusy(int target)
         return false;
     }
 
-    return g_bSavingTarget[target] || GetGameTime() < g_fTargetSaveBlockedUntil[target];
+    return g_bSavingTarget[target]
+        || GetGameTime() < g_fTargetSaveBlockedUntil[target]
+        || IsTargetBeingRevived(target);
+}
+
+bool IsTargetBeingRevived(int target)
+{
+    return IsClientInGame(target) && GetEntPropEnt(target, Prop_Send, "m_reviveOwner") > 0;
 }
 
 bool ReserveTargetSave(int healer, int target, int item)

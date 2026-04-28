@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "3.3.4"
+#define PLUGIN_VERSION  "3.3.5"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -60,7 +60,7 @@ public void OnPluginStart()
     g_hEnable = CreateConVar("tuan_upgrade_ammo_enable", "1", "Enable Tuan Upgrade Ammo Pack plugin.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
     AutoExecConfig(true, "Tuan_upgrade_ammo_pack");
 
-    HookEvent("ammo_pickup",       Event_AmmoPickup,    EventHookMode_PostNoCopy);
+    HookEvent("ammo_pickup",       Event_AmmoPickup,    EventHookMode_Post);
     HookEvent("weapon_reload",     Event_WeaponReload,  EventHookMode_Pre);
     HookEvent("player_spawn",      Event_PlayerSpawn,   EventHookMode_Post);
 

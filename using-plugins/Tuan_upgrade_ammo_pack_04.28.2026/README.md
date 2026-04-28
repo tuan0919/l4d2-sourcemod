@@ -65,6 +65,11 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 
 ## Changelog
 
+### v3.3.5 (28/04/2026)
+
+- Fix lỗi `Invalid game event handle 0` khi nhặt ammo pile.
+- Đổi hook `ammo_pickup` từ `EventHookMode_PostNoCopy` sang `EventHookMode_Post` vì callback cần đọc `userid` từ event payload.
+
 ### v3.3.4 (28/04/2026)
 
 - Remove logic block `ammo_pickup`; player được nhặt ammo pile bình thường.

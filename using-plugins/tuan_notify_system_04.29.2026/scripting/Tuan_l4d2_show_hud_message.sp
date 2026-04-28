@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION		"2.0.0-tuan-notify-core"
+#define PLUGIN_VERSION		"2.0.1-tuan-notify-core-2026-04-29"
 #define PLUGIN_PREFIX		"tuan_notify_core_"
 #define PLUGIN_NAME			"show_hud_messages"
 #define PLUGIN_NAME_FULL		"[L4D2] Show Message On HUD [GearPatch]"
@@ -139,6 +139,7 @@ static char output[256];
 static float g_fMapStartTime;
 ConVar g_hCvarMaxSpecials;
 ConVar g_hCvarTankHealth;
+ConVar g_hCvarZCommonLimit;
 ConVar g_hCvarInfBotsCurrentAliveSurvivor;
 ConVar g_hCvarInfBotsCurrentSILimit;
 ConVar g_hCvarInfBotsCurrentTankHP;
@@ -203,6 +204,7 @@ public void OnPluginStart() {
 	g_hCvarSvMaxPlayers = FindConVar("sv_maxplayers");
 	g_hCvarMaxSpecials = FindConVar("z_max_player_zombies");
 	g_hCvarTankHealth = FindConVar("z_tank_health");
+	g_hCvarZCommonLimit = FindConVar("z_common_limit");
 	mapWeaponName = new StringMap();
 	for (int i = 0; i < sizeof(WEAPON_NAMES_KEYs); i++)
 		mapWeaponName.SetString(WEAPON_NAMES_KEYs[i], WEAPON_NAMES_VALUEs[i]);
@@ -916,8 +918,13 @@ void UpdatePlayerCountHUD()
 		tankHealth = g_hCvarTankHealth.IntValue;
 	}
 
+	int commonLimit = 0;
+	if (g_hCvarZCommonLimit != null) {
+		commonLimit = g_hCvarZCommonLimit.IntValue;
+	}
+
 	// Left HUD: dynamic info
-	FormatEx(output, sizeof(output), "Alive Survivor: %d | SI limit: %d | Tank HP: %d", aliveSurvivorCount, maxSpecials, tankHealth);
+	FormatEx(output, sizeof(output), "Alive Survivor: %d | SI: %d | Tank HP: %d | CI: %d", aliveSurvivorCount, maxSpecials, tankHealth, commonLimit);
 	HUDSetLayout(PLAYERCOUNT_SLOT, g_iHUDFlags_PlayerCount, output);
 	HUDPlace(PLAYERCOUNT_SLOT, PLAYERCOUNT_X, PLAYERCOUNT_Y, PLAYERCOUNT_W, PLAYERCOUNT_H);
 

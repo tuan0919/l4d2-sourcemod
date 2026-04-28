@@ -1,6 +1,6 @@
 /*
 *	Infected Populations Editor
-*	Copyright (C) 2024 Silvers
+*	Copyright (C) 2026 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,12 +18,12 @@
 
 
 
-#define PLUGIN_VERSION		"1.5"
+#define PLUGIN_VERSION		"1.8"
 
 /*======================================================================================
 	Plugin Info:
 
-*	Name	:	[L4D2] Infected Populations Editor
+*	Name	:	[L4D & L4D2] Infected Populations Editor
 *	Author	:	SilverShot
 *	Descrp	:	Modify population.txt values by config instead of conflicting VPK files.
 *	Link	:	https://forums.alliedmods.net/showthread.php?t=344298
@@ -31,6 +31,16 @@
 
 ========================================================================================
 	Change Log:
+
+1.8 (29-Apr-2026)
+	- Local server package: updated from upstream 1.5 to 1.7 base.
+	- Added server-wide all-common population setup through custom config/script.
+
+1.7 (25-Jan-2026)
+	- L4D2: Fixed breaking some spawn nav areas. Thanks to "Marttt" for reporting.
+
+1.6 (04-Jan-2026)
+	- Added checks for the Witch. Thanks to "Uncle Jessie" for reporting.
 
 1.5 (22-Sep-2024)
 	- Added support for Left 4 Dead 1 game.
@@ -72,11 +82,12 @@
 
 ConVar g_hCvarMPGameMode;
 int g_iCurrentMode;
-bool g_bValidData, g_bLeft4Dead2;
+bool g_bValidData;
+// bool g_bLeft4Dead2;
 StringMap g_hData;
 StringMapSnapshot g_hSnap;
-Address g_aPatchConfig;
-Handle g_hSDK_ReloadPopulation;
+// Address g_aPatchConfig;
+// Handle g_hSDK_ReloadPopulation;
 
 // L4D2: Unused
 enum
@@ -97,7 +108,7 @@ enum
 // ====================================================================================================
 public Plugin myinfo =
 {
-	name = "[L4D2] Infected Populations Editor",
+	name = "[L4D & L4D2] Infected Populations Editor",
 	author = "SilverShot",
 	description = "Modify population.txt values by config instead of conflicting VPK files.",
 	version = PLUGIN_VERSION,
@@ -107,9 +118,10 @@ public Plugin myinfo =
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	EngineVersion test = GetEngineVersion();
-	if( test == Engine_Left4Dead ) g_bLeft4Dead2 = false;
-	else if( test == Engine_Left4Dead2 ) g_bLeft4Dead2 = true;
-	else
+	// if( test == Engine_Left4Dead ) g_bLeft4Dead2 = false;
+	// else if( test == Engine_Left4Dead2 ) g_bLeft4Dead2 = true;
+	// else
+	if( test != Engine_Left4Dead && test != Engine_Left4Dead2 )
 	{
 		strcopy(error, err_max, "Plugin only supports Left 4 Dead 1 & 2.");
 		return APLRes_SilentFailure;
@@ -140,6 +152,7 @@ public void OnPluginStart()
 	// =========================
 	// SDKCALL
 	// =========================
+	/*
 	if( g_bLeft4Dead2 )
 	{
 		StartPrepSDKCall(SDKCall_Raw);
@@ -148,13 +161,14 @@ public void OnPluginStart()
 		if( g_hSDK_ReloadPopulation == null )
 			SetFailState("Failed to create SDKCall: CDirector::ReloadPopulationData");
 	}
+	*/
 
 
 
 	// =========================
 	// ADDRESSES
 	// =========================
-	g_aPatchConfig = GameConfGetAddress(hGameData, "PatchPopConfig") + view_as<Address>(8);
+	// g_aPatchConfig = GameConfGetAddress(hGameData, "PatchPopConfig") + view_as<Address>(8);
 
 
 
@@ -369,7 +383,7 @@ void LoadConfig()
 						#endif
 
 						// Ignore all models that are not "common" infected or Special Infected
-						if( strncmp(sModel, "common", 6) && strcmp(sModel, "tank") && strcmp(sModel, "boomer") && strcmp(sModel, "hunter") && strcmp(sModel, "smoker") && strcmp(sModel, "charger") && strcmp(sModel, "jockey") && strcmp(sModel, "spitter") && strcmp(sModel, "boomette") )
+						if( strncmp(sModel, "common", 6) && strcmp(sModel, "tank") && strcmp(sModel, "boomer") && strcmp(sModel, "hunter") && strcmp(sModel, "smoker") && strcmp(sModel, "charger") && strcmp(sModel, "jockey") && strcmp(sModel, "spitter") && strcmp(sModel, "boomette") && strcmp(sModel, "witch") && strcmp(sModel, "witch_bride") )
 						{
 							passed = false;
 							hData.JumpToKey(sModel);
@@ -462,29 +476,31 @@ void LoadConfig()
 
 
 
-				// Rename config to force overriding
-				if( FileExists("scripts/Kopulation.txt") )
-					DeleteFile("scripts/Kopulation.txt");
-
-				RenameFile("scripts/Kopulation.txt", sPath);
-
-				// Patch config string name so it's loaded
-				StoreToAddress(g_aPatchConfig, 'K', NumberType_Int8);
-
 				// Reload population data
 				// Note: Even though we call this to overwrite the config, common still spawn using the old config, hence why we continue to detour SelectModelByPopulation
 				// Note: Although it seems to overwrite fine for InputspawnZombie, and hopefully other parts of the game using the population config
+				/*
 				if( g_bLeft4Dead2 )
 				{
+					// Rename config to force overriding
+					if( FileExists("scripts/Kopulation.txt") )
+						DeleteFile("scripts/Kopulation.txt");
+
+					RenameFile("scripts/Kopulation.txt", sPath);
+
+					// Patch config string name so it's loaded
+					StoreToAddress(g_aPatchConfig, 'K', NumberType_Int8);
+
 					Address director = L4D_GetPointer(POINTER_DIRECTOR);
 					SDKCall(g_hSDK_ReloadPopulation, director);
+
+					// Restore patched string
+					StoreToAddress(g_aPatchConfig, 'p', NumberType_Int8);
+
+					// Restore config name
+					RenameFile(sPath, "scripts/Kopulation.txt");
 				}
-
-				// Restore patched string
-				StoreToAddress(g_aPatchConfig, 'p', NumberType_Int8);
-
-				// Restore config name
-				RenameFile(sPath, "scripts/Kopulation.txt");
+				// */
 			}
 		}
 	}

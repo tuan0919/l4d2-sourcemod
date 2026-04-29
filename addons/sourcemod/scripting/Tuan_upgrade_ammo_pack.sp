@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION  "3.3.5"
+#define PLUGIN_VERSION  "3.3.6"
 #define MAXENTITIES     2048
 
 #define UPGRADE_NONE        0
@@ -18,6 +18,29 @@
 #define RELOAD_PROP_GRACE_TIME       0.15
 #define RELOAD_FALLBACK_TIME         3.0
 #define RELOAD_SHOTGUN_FALLBACK_TIME 8.0
+
+/*
+ * Version History
+ * 3.3.6 (2026-04-29)
+ * - Confirm upgrade ammo pack use one frame later so lfd_both_fixUpgradePack
+ *   can allow or deny the use before this plugin makes the upgrade permanent.
+ * - Keep only the active upgrade bit when switching between incendiary and explosive ammo.
+ * - Prevent reload watchers from leaving stale weapon reload state after weapon changes.
+ * - Respect tuan_upgrade_ammo_enable in delayed import and reload watcher paths.
+ * - Hook upgrade ammo entities that already exist when this plugin is loaded or late-loaded.
+ * 3.3.5 (2026-04-28)
+ * - Fix ammo_pickup event handling by using EventHookMode_Post when reading userid.
+ * 3.3.4 (2026-04-28)
+ * - Allow normal ammo pile pickup and rely on weapon props for restored upgrade state.
+ * 3.3.3 (2026-04-28)
+ * - Remove damage injection hooks and use the game's native upgrade ammo props only.
+ * 3.3.2 (2026-04-28)
+ * - Import upgrade state from restored/equipped weapons after map transitions.
+ * 3.3.1 (2026-04-25)
+ * - Fix shotgun reload and interrupted reload visual restoration.
+ * 3.3.0 (2026-04-22)
+ * - Revamp upgrade ammo into a permanent per-weapon upgrade state.
+ */
 
 public Plugin myinfo =
 {
@@ -34,11 +57,12 @@ int  g_iWeaponUpgradeType[MAXENTITIES + 1];
 bool g_bWeaponReloading[MAXENTITIES + 1];
 int  g_iReloadStartClip[MAXENTITIES + 1];
 float g_fReloadStartTime[MAXENTITIES + 1];
+bool g_bUpgradeEntHooked[MAXENTITIES + 1];
 
 bool g_bClientReloadWatch[MAXPLAYERS + 1];
+int  g_iClientReloadWeapon[MAXPLAYERS + 1];
 
 ConVar g_hEnable;
-bool g_bLateLoad;
 
 // ============================================================
 //  Load
@@ -51,7 +75,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
         strcopy(error, err_max, "Plugin only supports Left 4 Dead 2.");
         return APLRes_SilentFailure;
     }
-    g_bLateLoad = late;
     return APLRes_Success;
 }
 
@@ -64,17 +87,16 @@ public void OnPluginStart()
     HookEvent("weapon_reload",     Event_WeaponReload,  EventHookMode_Pre);
     HookEvent("player_spawn",      Event_PlayerSpawn,   EventHookMode_Post);
 
-    if (g_bLateLoad)
+    for (int client = 1; client <= MaxClients; client++)
     {
-        for (int client = 1; client <= MaxClients; client++)
+        if (IsClientInGame(client))
         {
-            if (IsClientInGame(client))
-            {
-                SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
-                SDKHook(client, SDKHook_WeaponEquipPost, OnWeaponEquipPost);
-            }
+            SDKHook(client, SDKHook_FireBulletsPost, OnFireBulletsPost);
+            SDKHook(client, SDKHook_WeaponEquipPost, OnWeaponEquipPost);
         }
     }
+
+    HookExistingUpgradeEntities();
 }
 
 // ============================================================
@@ -97,8 +119,7 @@ public void OnEntityCreated(int entity, const char[] classname)
     if (entity <= MaxClients || entity > MAXENTITIES)
         return;
 
-    if (strcmp(classname, "upgrade_ammo_incendiary", false) == 0
-     || strcmp(classname, "upgrade_ammo_explosive",  false) == 0)
+    if (IsUpgradeAmmoClass(classname))
     {
         RequestFrame(Frame_HookUpgradeEnt, EntIndexToEntRef(entity));
     }
@@ -107,7 +128,10 @@ public void OnEntityCreated(int entity, const char[] classname)
 public void OnEntityDestroyed(int entity)
 {
     if (entity > MaxClients && entity <= MAXENTITIES)
+    {
+        g_bUpgradeEntHooked[entity] = false;
         ClearWeaponState(entity);
+    }
 }
 
 void Frame_HookUpgradeEnt(int entRef)
@@ -116,7 +140,45 @@ void Frame_HookUpgradeEnt(int entRef)
     if (entity == INVALID_ENT_REFERENCE)
         return;
 
+    HookUpgradeEntity(entity);
+}
+
+void HookExistingUpgradeEntities()
+{
+    int maxEntities = GetMaxEntities();
+    if (maxEntities > MAXENTITIES)
+        maxEntities = MAXENTITIES;
+
+    char classname[64];
+    for (int entity = MaxClients + 1; entity <= maxEntities; entity++)
+    {
+        if (!IsValidEntity(entity))
+            continue;
+
+        GetEdictClassname(entity, classname, sizeof(classname));
+        if (IsUpgradeAmmoClass(classname))
+            HookUpgradeEntity(entity);
+    }
+}
+
+void HookUpgradeEntity(int entity)
+{
+    if (entity <= MaxClients || entity > MAXENTITIES || !IsValidEntity(entity) || g_bUpgradeEntHooked[entity])
+        return;
+
+    char classname[64];
+    GetEdictClassname(entity, classname, sizeof(classname));
+    if (!IsUpgradeAmmoClass(classname))
+        return;
+
     SDKHook(entity, SDKHook_Use, OnUpgradeUse);
+    g_bUpgradeEntHooked[entity] = true;
+}
+
+bool IsUpgradeAmmoClass(const char[] classname)
+{
+    return strcmp(classname, "upgrade_ammo_incendiary", false) == 0
+        || strcmp(classname, "upgrade_ammo_explosive",  false) == 0;
 }
 
 public void OnWeaponEquipPost(int client, int weapon)
@@ -135,6 +197,9 @@ public void OnWeaponEquipPost(int client, int weapon)
 
 void Frame_ImportWeaponState(int weaponRef)
 {
+    if (!g_hEnable.BoolValue)
+        return;
+
     int weapon = EntRefToEntIndex(weaponRef);
     if (weapon == INVALID_ENT_REFERENCE)
         return;
@@ -144,6 +209,9 @@ void Frame_ImportWeaponState(int weaponRef)
 
 Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
+    if (!g_hEnable.BoolValue)
+        return Plugin_Continue;
+
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (!IsValidClient(client) || GetClientTeam(client) != 2)
         return Plugin_Continue;
@@ -174,6 +242,9 @@ Action Timer_ImportCurrentPrimary(Handle timer, int userid)
 
 void ImportClientPrimaryUpgrade(int client)
 {
+    if (!g_hEnable.BoolValue)
+        return;
+
     if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
         return;
 
@@ -212,16 +283,18 @@ public void OnFireBulletsPost(int client, int shots, const char[] weaponname)
     if (active != weapon)
         return;
 
-    int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
-    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
+    SyncUpgradeAmmoLoaded(weapon);
 
     // Re-apply upgradeBitVec in case game cleared it
-    int upgBit = (g_iWeaponUpgradeType[weapon] == UPGRADE_INCENDIARY) ? UPGBIT_INCENDIARY : UPGBIT_EXPLOSIVE;
+    int upgBit = GetUpgradeBit(g_iWeaponUpgradeType[weapon]);
+    if (upgBit == 0)
+        return;
+
     int bits   = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
-    if (!(bits & upgBit))
+    int newBits = (bits & ~(UPGBIT_INCENDIARY | UPGBIT_EXPLOSIVE)) | upgBit;
+    if (bits != newBits)
     {
-        bits |= upgBit;
-        SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
+        SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", newBits);
     }
 }
 
@@ -256,7 +329,7 @@ Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
     ClearUpgradeVisualNow(weapon);
 
     // Watch for reload completion via PostThink
-    StartReloadWatch(client);
+    StartReloadWatch(client, weapon);
 
     return Plugin_Continue;
 }
@@ -267,16 +340,28 @@ Action Event_WeaponReload(Event event, const char[] name, bool dontBroadcast)
 
 public void OnPostThink_ReloadWatch(int client)
 {
+    if (!g_hEnable.BoolValue)
+    {
+        StopReloadWatch(client);
+        return;
+    }
+
     if (!IsValidClient(client) || !IsPlayerAlive(client))
     {
         StopReloadWatch(client);
         return;
     }
 
-    int weapon = GetPlayerWeaponSlot(client, 0);
-    if (!IsValidEntity(weapon) || weapon <= MaxClients || !g_bWeaponUpgraded[weapon])
+    int weapon = GetReloadWatchWeapon(client);
+    if (weapon <= MaxClients || weapon > MAXENTITIES || !IsValidEntity(weapon) || !g_bWeaponUpgraded[weapon])
     {
         StopReloadWatch(client);
+        return;
+    }
+
+    if (GetPlayerWeaponSlot(client, 0) != weapon)
+    {
+        FinishReloadWatch(client, weapon);
         return;
     }
 
@@ -320,15 +405,52 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
                     ? UPGRADE_EXPLOSIVE
                     : UPGRADE_INCENDIARY;
 
-    // Apply / switch upgrade type freely
+    DataPack pack = new DataPack();
+    pack.WriteCell(GetClientUserId(client));
+    pack.WriteCell(EntIndexToEntRef(weapon));
+    pack.WriteCell(packType);
+    RequestFrame(Frame_ConfirmUpgradeUse, view_as<any>(pack));
+
+    return Plugin_Continue;
+}
+
+void Frame_ConfirmUpgradeUse(any data)
+{
+    DataPack pack = view_as<DataPack>(data);
+    pack.Reset();
+    int userid = pack.ReadCell();
+    int weaponRef = pack.ReadCell();
+    int packType = pack.ReadCell();
+    delete pack;
+
+    if (!g_hEnable.BoolValue)
+        return;
+
+    int client = GetClientOfUserId(userid);
+    if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
+        return;
+
+    int weapon = EntRefToEntIndex(weaponRef);
+    if (weapon == INVALID_ENT_REFERENCE || !IsValidEntity(weapon))
+        return;
+
+    if (GetPlayerWeaponSlot(client, 0) != weapon)
+        return;
+
+    if (!WeaponHasUpgradeType(weapon, packType))
+        return;
+
+    bool alreadySame = g_bWeaponUpgraded[weapon] && g_iWeaponUpgradeType[weapon] == packType;
     bool isSwitch = g_bWeaponUpgraded[weapon] && g_iWeaponUpgradeType[weapon] != packType;
 
     g_bWeaponUpgraded[weapon]    = true;
     g_iWeaponUpgradeType[weapon] = packType;
     g_bWeaponReloading[weapon]   = false;
 
-    // Apply visual after game engine processes the pack
-    RequestFrame(Frame_ApplyVisual, EntIndexToEntRef(weapon));
+    ApplyUpgradeVisualNow(weapon);
+
+    if (alreadySame)
+        return;
 
     char typeName[32];
     GetUpgradeName(packType, typeName, sizeof(typeName));
@@ -336,17 +458,6 @@ Action OnUpgradeUse(int entity, int activator, int caller, UseType type, float v
         PrintToChat(client, "\x04[Upgrade Ammo]\x01 Switched to \x05%s\x01 ammo.", typeName);
     else
         PrintToChat(client, "\x04[Upgrade Ammo]\x01 Weapon upgraded with permanent \x05%s\x01 ammo.", typeName);
-
-    return Plugin_Continue;
-}
-
-void Frame_ApplyVisual(int weaponRef)
-{
-    int weapon = EntRefToEntIndex(weaponRef);
-    if (weapon == INVALID_ENT_REFERENCE || !IsValidEntity(weapon))
-        return;
-
-    ApplyUpgradeVisualNow(weapon);
 }
 
 // ============================================================
@@ -380,6 +491,9 @@ void ClearWeaponState(int weapon)
 
 void RefreshWeaponUpgrade(int weapon)
 {
+    if (!g_hEnable.BoolValue)
+        return;
+
     if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
         return;
 
@@ -415,6 +529,32 @@ bool TryImportUpgradeFromWeaponProps(int weapon)
     return true;
 }
 
+bool WeaponHasUpgradeType(int weapon, int upgradeType)
+{
+    if (!IsValidEntity(weapon) || weapon <= MaxClients || weapon > MAXENTITIES)
+        return false;
+
+    if (!HasEntProp(weapon, Prop_Send, "m_upgradeBitVec"))
+        return false;
+
+    int upgBit = GetUpgradeBit(upgradeType);
+    if (upgBit == 0)
+        return false;
+
+    return (GetEntProp(weapon, Prop_Send, "m_upgradeBitVec") & upgBit) != 0;
+}
+
+int GetUpgradeBit(int upgradeType)
+{
+    switch (upgradeType)
+    {
+        case UPGRADE_INCENDIARY: return UPGBIT_INCENDIARY;
+        case UPGRADE_EXPLOSIVE:  return UPGBIT_EXPLOSIVE;
+    }
+
+    return 0;
+}
+
 int GetUpgradeTypeFromBits(int bits)
 {
     if (bits & UPGBIT_EXPLOSIVE)
@@ -431,13 +571,21 @@ void ApplyUpgradeVisualNow(int weapon)
     if (!IsValidEntity(weapon) || weapon <= MaxClients || !g_bWeaponUpgraded[weapon])
         return;
 
-    int upgBit = (g_iWeaponUpgradeType[weapon] == UPGRADE_INCENDIARY) ? UPGBIT_INCENDIARY : UPGBIT_EXPLOSIVE;
+    int upgBit = GetUpgradeBit(g_iWeaponUpgradeType[weapon]);
+    if (upgBit == 0)
+        return;
+
     int bits   = GetEntProp(weapon, Prop_Send, "m_upgradeBitVec");
-    bits |= upgBit;
+    bits = (bits & ~(UPGBIT_INCENDIARY | UPGBIT_EXPLOSIVE)) | upgBit;
     SetEntProp(weapon, Prop_Send, "m_upgradeBitVec", bits);
 
+    SyncUpgradeAmmoLoaded(weapon);
+}
+
+void SyncUpgradeAmmoLoaded(int weapon)
+{
     int clip = GetEntProp(weapon, Prop_Send, "m_iClip1");
-    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 1);
+    SetEntProp(weapon, Prop_Send, "m_nUpgradedPrimaryAmmoLoaded", clip > 0 ? clip : 0);
 }
 
 void ClearUpgradeVisualNow(int weapon)
@@ -459,22 +607,50 @@ void FinishReloadWatch(int client, int weapon)
     StopReloadWatch(client);
 }
 
-void StartReloadWatch(int client)
+void StartReloadWatch(int client, int weapon)
 {
     if (g_bClientReloadWatch[client])
-        return;
+    {
+        int watchedWeapon = GetReloadWatchWeapon(client);
+        if (watchedWeapon == weapon)
+            return;
 
+        if (watchedWeapon > MaxClients && watchedWeapon <= MAXENTITIES && IsValidEntity(watchedWeapon) && g_bWeaponUpgraded[watchedWeapon])
+            FinishReloadWatch(client, watchedWeapon);
+        else
+            StopReloadWatch(client);
+    }
+
+    g_iClientReloadWeapon[client] = EntIndexToEntRef(weapon);
     g_bClientReloadWatch[client] = true;
     SDKHook(client, SDKHook_PostThink, OnPostThink_ReloadWatch);
 }
 
 void StopReloadWatch(int client)
 {
+    if (client <= 0 || client > MaxClients)
+        return;
+
+    int weapon = GetReloadWatchWeapon(client);
+    if (weapon > MaxClients && weapon <= MAXENTITIES && IsValidEntity(weapon))
+        g_bWeaponReloading[weapon] = false;
+
+    g_iClientReloadWeapon[client] = 0;
+
     if (!g_bClientReloadWatch[client])
         return;
 
     g_bClientReloadWatch[client] = false;
-    SDKUnhook(client, SDKHook_PostThink, OnPostThink_ReloadWatch);
+    if (IsClientInGame(client))
+        SDKUnhook(client, SDKHook_PostThink, OnPostThink_ReloadWatch);
+}
+
+int GetReloadWatchWeapon(int client)
+{
+    if (client <= 0 || client > MaxClients || g_iClientReloadWeapon[client] == 0)
+        return INVALID_ENT_REFERENCE;
+
+    return EntRefToEntIndex(g_iClientReloadWeapon[client]);
 }
 
 bool ShouldContinueReloadWatch(int client, int weapon)

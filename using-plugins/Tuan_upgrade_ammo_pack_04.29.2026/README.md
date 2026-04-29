@@ -15,9 +15,10 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 ### Khi dùng pack
 
 1. Hook `SDKHook_Use` trên entity `upgrade_ammo_incendiary` / `upgrade_ammo_explosive`.
-2. Đánh dấu weapon entity là upgraded và lưu loại upgrade.
-3. Sau frame kế tiếp, set `m_upgradeBitVec` bit tương ứng.
-4. Sync `m_nUpgradedPrimaryAmmoLoaded` theo clip hiện tại (`m_iClip1`).
+2. Delay sang frame kế tiếp để game và plugin khác xử lý use trước.
+3. Chỉ đánh dấu weapon là permanent upgraded nếu weapon thật sự nhận `m_upgradeBitVec` tương ứng.
+4. Set đúng một bit fire/explosive, clear bit cũ khi switch type.
+5. Sync `m_nUpgradedPrimaryAmmoLoaded` theo clip hiện tại (`m_iClip1`).
 
 ### Khi bắn
 
@@ -46,6 +47,12 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 - Có fallback ở `FireBulletsPost`, `weapon_reload`, `ammo_pickup` và `player_spawn` để tránh miss timing.
 - Có callback `L4D2_OnSaveWeaponHxGiveC(client)` để import state sau khi `l4d2_ty_saveweapons` restore súng qua map.
 
+### Tương thích plugin khác
+
+- Tương thích với `lfd_both_fixUpgradePack.smx` mà không cần sửa plugin đó.
+- Plugin không tự sửa `m_iUpgradePackCanUseCount` hoặc `m_iUsedBySurvivorsMask` của upgrade pack.
+- Nếu plugin khác deny/block use pack, weapon không nhận upgrade bit nên plugin này không grant permanent upgrade giả.
+
 ### Restore qua map
 
 - Plugin không tự lưu state theo client nữa.
@@ -60,10 +67,18 @@ Plugin thay đổi cơ chế upgrade ammo pack (lửa/nổ) trong L4D2:
 ## Files
 
 - Source: `addons/sourcemod/scripting/Tuan_upgrade_ammo_pack.sp`
-- Snapshot: `using-plugins/Tuan_upgrade_ammo_pack_04.28.2026/Tuan_upgrade_ammo_pack.sp`
+- Snapshot: `using-plugins/Tuan_upgrade_ammo_pack_04.29.2026/Tuan_upgrade_ammo_pack.sp`
 - Compiled: `addons/sourcemod/plugins/qol/Tuan_upgrade_ammo_pack.smx`
 
 ## Changelog
+
+### v3.3.6 (29/04/2026)
+
+- Tối ưu tương thích với `lfd_both_fixUpgradePack.smx`: confirm upgrade sau khi game/plugin khác xử lý use, không grant permanent upgrade nếu pack use bị deny.
+- Fix switch fire/explosive còn giữ cả 2 upgrade bit; giờ chỉ giữ đúng bit của type hiện tại.
+- Fix reload watcher có thể kẹt `g_bWeaponReloading` khi đổi/nhặt primary trong lúc reload.
+- Tôn trọng `tuan_upgrade_ammo_enable 0` ở spawn/timer/frame import/reload watcher.
+- Hook cả upgrade ammo entity đã tồn tại khi plugin load/late-load.
 
 ### v3.3.5 (28/04/2026)
 

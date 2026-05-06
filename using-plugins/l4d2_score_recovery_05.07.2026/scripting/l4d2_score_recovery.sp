@@ -4,7 +4,8 @@
 #include <sourcemod>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.0"
+#define ZOMBIE_KILL_CLASS_COUNT 9
 
 public Plugin myinfo =
 {
@@ -19,22 +20,68 @@ ConVar g_cvDebug;
 StringMap g_hSavedStats;
 
 static const char g_sSavedProps[][] = {
-    // Current chapter
-    "m_zombieKills",
-    "m_survivalKills",
-    "m_iVersusScore",
-    
-    // Checkpoints (campaign / end credit stats)
-    "m_checkpointZombieKills",
+    "m_checkpointZombieKills", "m_checkpointZombieKills", "m_checkpointZombieKills",
+    "m_checkpointZombieKills", "m_checkpointZombieKills", "m_checkpointZombieKills",
+    "m_checkpointZombieKills", "m_checkpointZombieKills", "m_checkpointZombieKills",
+
+    "m_missionZombieKills", "m_missionZombieKills", "m_missionZombieKills",
+    "m_missionZombieKills", "m_missionZombieKills", "m_missionZombieKills",
+    "m_missionZombieKills", "m_missionZombieKills", "m_missionZombieKills",
+
     "m_checkpointMeleeKills",
+    "m_missionMeleeKills",
     "m_checkpointIncaps",
+    "m_missionIncaps",
     "m_checkpointDamageTaken",
-    "m_checkpointDamageToTanks",
-    "m_checkpointRevives",
+    "m_missionDamageTaken",
+    "m_checkpointDamageToTank",
+    "m_checkpointDamageToWitch",
+    "m_checkpointReviveOtherCount",
+    "m_missionReviveOtherCount",
     "m_checkpointMedkitsUsed",
+    "m_missionMedkitsUsed",
     "m_checkpointPillsUsed",
+    "m_missionPillsUsed",
     "m_checkpointMolotovsUsed",
-    "m_checkpointPipebombsUsed"
+    "m_missionMolotovsUsed",
+    "m_checkpointPipebombsUsed",
+    "m_missionPipebombsUsed",
+    "m_checkpointBoomerBilesUsed",
+    "m_missionBoomerBilesUsed",
+    "m_checkpointAdrenalinesUsed",
+    "m_missionAdrenalinesUsed",
+    "m_checkpointDefibrillatorsUsed",
+    "m_missionDefibrillatorsUsed",
+    "m_checkpointFirstAidShared",
+    "m_missionFirstAidShared",
+    "m_checkpointSurvivorDamage",
+    "m_missionSurvivorDamage",
+    "m_checkpointHeadshots",
+    "m_checkpointHeadshotAccuracy",
+    "m_missionHeadshotAccuracy",
+    "m_checkpointDeaths",
+    "m_missionDeaths"
+};
+
+static const int g_iSavedPropElements[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8,
+    0, 1, 2, 3, 4, 5, 6, 7, 8,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1
+};
+
+static const char g_sZombieKillClassNames[ZOMBIE_KILL_CLASS_COUNT][] = {
+    "Common",
+    "Smoker",
+    "Boomer",
+    "Hunter",
+    "Spitter",
+    "Jockey",
+    "Charger",
+    "Witch",
+    "Tank"
 };
 
 public void OnPluginStart()
@@ -51,7 +98,7 @@ public void OnPluginStart()
     HookEvent("player_bot_replace", Event_PlayerBotReplace, EventHookMode_Pre);
     HookEvent("bot_player_replace", Event_BotPlayerReplace, EventHookMode_Post);
     HookEvent("player_spawn", Event_PlayerSpawn, EventHookMode_Post);
-    
+
     HookEvent("round_end", Event_RoundEnd, EventHookMode_PostNoCopy);
     HookEvent("map_transition", Event_RoundEnd, EventHookMode_PostNoCopy);
 
@@ -94,7 +141,7 @@ public Action Command_PrintStats(int client, int args)
 
 public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
-    g_hSavedStats.Clear(); 
+    g_hSavedStats.Clear();
 }
 
 public void Event_PlayerDisconnect(Event event, const char[] name, bool dontBroadcast)
@@ -137,7 +184,7 @@ void SaveClientStats(int client)
 {
     char auth[32];
     if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof(auth)) || StrEqual(auth, "BOT")) return;
-    
+
     int stats[sizeof(g_sSavedProps)];
     bool valid = CaptureClientStats(client, stats);
 
@@ -160,7 +207,7 @@ void RestoreClientStats(int client)
 {
     char auth[32];
     if (!GetClientAuthId(client, AuthId_Steam2, auth, sizeof(auth)) || StrEqual(auth, "BOT")) return;
-    
+
     int stats[sizeof(g_sSavedProps)];
     if (g_hSavedStats.GetArray(auth, stats, sizeof(stats)))
     {
@@ -168,11 +215,21 @@ void RestoreClientStats(int client)
 
         for (int i = 0; i < sizeof(g_sSavedProps); i++)
         {
-            if (stats[i] > 0 && HasEntProp(client, Prop_Send, g_sSavedProps[i]))
+            if (!HasEntProp(client, Prop_Send, g_sSavedProps[i]))
+            {
+                continue;
+            }
+
+            if (IsZombieKillProp(g_sSavedProps[i]))
+            {
+                SetEntProp(client, Prop_Send, g_sSavedProps[i], stats[i], 4, g_iSavedPropElements[i]);
+            }
+            else
             {
                 SetEntProp(client, Prop_Send, g_sSavedProps[i], stats[i]);
-                restored = true;
             }
+
+            restored = true;
         }
 
         if (g_cvDebug.BoolValue)
@@ -200,13 +257,23 @@ bool CaptureClientStats(int client, int[] stats)
     {
         stats[i] = 0;
 
-        if (HasEntProp(client, Prop_Send, g_sSavedProps[i]))
+        if (!HasEntProp(client, Prop_Send, g_sSavedProps[i]))
+        {
+            continue;
+        }
+
+        if (IsZombieKillProp(g_sSavedProps[i]))
+        {
+            stats[i] = GetEntProp(client, Prop_Send, g_sSavedProps[i], 4, g_iSavedPropElements[i]);
+        }
+        else
         {
             stats[i] = GetEntProp(client, Prop_Send, g_sSavedProps[i]);
-            if (stats[i] > 0)
-            {
-                valid = true;
-            }
+        }
+
+        if (stats[i] > 0)
+        {
+            valid = true;
         }
     }
 
@@ -246,14 +313,23 @@ void PrintCurrentStatsToCommand(int issuer, int target)
 {
     for (int i = 0; i < sizeof(g_sSavedProps); i++)
     {
-        if (HasEntProp(target, Prop_Send, g_sSavedProps[i]))
+        if (!HasEntProp(target, Prop_Send, g_sSavedProps[i]))
         {
-            ReplyToCommand(issuer, "[ScoreRecovery]   %s = %d", g_sSavedProps[i], GetEntProp(target, Prop_Send, g_sSavedProps[i]));
+            PrintStatUnavailable(issuer, i);
+            continue;
+        }
+
+        int value;
+        if (IsZombieKillProp(g_sSavedProps[i]))
+        {
+            value = GetEntProp(target, Prop_Send, g_sSavedProps[i], 4, g_iSavedPropElements[i]);
         }
         else
         {
-            ReplyToCommand(issuer, "[ScoreRecovery]   %s = unavailable", g_sSavedProps[i]);
+            value = GetEntProp(target, Prop_Send, g_sSavedProps[i]);
         }
+
+        PrintStatValue(issuer, i, value);
     }
 }
 
@@ -261,7 +337,7 @@ void PrintStatsToCommand(int issuer, int[] stats)
 {
     for (int i = 0; i < sizeof(g_sSavedProps); i++)
     {
-        ReplyToCommand(issuer, "[ScoreRecovery]   %s = %d", g_sSavedProps[i], stats[i]);
+        PrintStatValue(issuer, i, stats[i]);
     }
 }
 
@@ -270,7 +346,9 @@ void PrintStatsToServer(const char[] action, int client, const char[] auth, int[
     PrintToServer("[ScoreRecovery] %s stats for %N <%s>:", action, client, auth);
     for (int i = 0; i < sizeof(g_sSavedProps); i++)
     {
-        PrintToServer("[ScoreRecovery]   %s = %d", g_sSavedProps[i], stats[i]);
+        char label[96];
+        BuildStatLabel(i, label, sizeof(label));
+        PrintToServer("[ScoreRecovery]   %s = %d", label, stats[i]);
     }
 }
 
@@ -284,8 +362,41 @@ void PrintStatsToClientConsole(int client, const char[] title, int[] stats)
     PrintToConsole(client, "[ScoreRecovery] %s:", title);
     for (int i = 0; i < sizeof(g_sSavedProps); i++)
     {
-        PrintToConsole(client, "[ScoreRecovery]   %s = %d", g_sSavedProps[i], stats[i]);
+        char label[96];
+        BuildStatLabel(i, label, sizeof(label));
+        PrintToConsole(client, "[ScoreRecovery]   %s = %d", label, stats[i]);
     }
+}
+
+void PrintStatValue(int issuer, int index, int value)
+{
+    char label[96];
+    BuildStatLabel(index, label, sizeof(label));
+    ReplyToCommand(issuer, "[ScoreRecovery]   %s = %d", label, value);
+}
+
+void PrintStatUnavailable(int issuer, int index)
+{
+    char label[96];
+    BuildStatLabel(index, label, sizeof(label));
+    ReplyToCommand(issuer, "[ScoreRecovery]   %s = unavailable", label);
+}
+
+void BuildStatLabel(int index, char[] buffer, int maxlen)
+{
+    if (IsZombieKillProp(g_sSavedProps[index]))
+    {
+        int element = g_iSavedPropElements[index];
+        Format(buffer, maxlen, "%s[%d] %s", g_sSavedProps[index], element, g_sZombieKillClassNames[element]);
+        return;
+    }
+
+    strcopy(buffer, maxlen, g_sSavedProps[index]);
+}
+
+bool IsZombieKillProp(const char[] prop)
+{
+    return StrEqual(prop, "m_checkpointZombieKills") || StrEqual(prop, "m_missionZombieKills");
 }
 
 bool IsValidSurvivor(int client)

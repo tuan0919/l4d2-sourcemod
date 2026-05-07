@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.10"
+#define PLUGIN_VERSION "1.0.11"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -102,6 +102,7 @@ public void OnPluginStart()
 
 	HookEvent("jockey_ride", Event_JockeyRide, EventHookMode_Post);
 	HookEvent("jockey_ride_end", Event_JockeyRideEnd, EventHookMode_Post);
+	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
@@ -266,6 +267,34 @@ void Event_JockeyRideEnd(Event event, const char[] name, bool dontBroadcast)
 			RequestFrame(Frame_CheckRideStillActive, GetClientUserId(i));
 		}
 	}
+}
+
+void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_cvEnable.BoolValue)
+	{
+		return;
+	}
+
+	int jockey = GetClientOfUserId(event.GetInt("userid"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (!IsValidAliveSurvivor(attacker) || !IsHeroicJockey(jockey, true))
+	{
+		return;
+	}
+
+	if (g_bPipeConsumed[jockey] && !HasTrackedPipe(jockey))
+	{
+		return;
+	}
+
+	if (g_bPipeArmed[jockey])
+	{
+		DropPipebomb(jockey);
+		return;
+	}
+
+	ArmPipebomb(jockey, false);
 }
 
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -1154,6 +1183,14 @@ bool IsHeroicJockey(int client, bool requireAlive)
 	}
 
 	return EliteSI_GetSubtype(client) == ELITE_SUBTYPE_JOCKEY_HEROIC;
+}
+
+bool IsValidAliveSurvivor(int client)
+{
+	return client > 0 && client <= MaxClients
+		&& IsClientInGame(client)
+		&& IsPlayerAlive(client)
+		&& GetClientTeam(client) == TEAM_SURVIVOR;
 }
 
 void RefreshEliteState()

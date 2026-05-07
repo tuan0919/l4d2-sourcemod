@@ -1,4 +1,4 @@
-# l4d2_elite_si_system (rewrite 13/04/2026, update 27/04/2026)
+# l4d2_elite_si_system (rewrite 13/04/2026, update 08/05/2026)
 
 ## Muc tieu rewrite
 
@@ -211,6 +211,14 @@ He thong moi da tach thanh bo module nho, load doc lap:
 - Khong con giu force subtype, UI card, config map hoac doc tham chieu cho 2 nhanh tren.
 
 ## Changelog tom tat
+
+### 08/05/2026
+
+- Update `Hunter Heroic`: khi Heroic Hunter bi survivor shove, pipebomb se roi xuong chan Hunter va tiep tuc fuse thay vi bi pickup lai theo `pounce_end`.
+- Update `Jockey Heroic`: khi Heroic Jockey bi survivor shove, pipebomb dang cam/dang active se roi xuong chan Jockey va tiep tuc fuse.
+- Bump `l4d2_elite_si_hunter_heroic` len `1.0.1`.
+- Bump `l4d2_elite_si_jockey_heroic` len `1.0.11`.
+- Compile va deploy lai `addons/sourcemod/plugins/qol/l4d2_elite_si_hunter_heroic.smx` va `addons/sourcemod/plugins/qol/l4d2_elite_si_jockey_heroic.smx`.
 
 ### 27/04/2026
 

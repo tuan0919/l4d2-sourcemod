@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 #define TEAM_SURVIVOR 2
 #define TEAM_INFECTED 3
@@ -28,6 +28,7 @@ bool g_bHasEliteApi;
 
 int g_iHunterFakePipe[MAXPLAYERS + 1];
 int g_iHunterActivePipe[MAXPLAYERS + 1];
+bool g_bHunterPipeDroppedByShove[MAXPLAYERS + 1];
 
 // Track active heroic pipe entity refs để identify blast damage
 bool g_bIsHeroicPipe[2049];
@@ -70,6 +71,7 @@ public void OnPluginStart()
 
 	HookEvent("lunge_pounce", Event_LungePounce, EventHookMode_Post);
 	HookEvent("pounce_end", Event_PounceEnd, EventHookMode_Post);
+	HookEvent("player_shoved", Event_PlayerShoved, EventHookMode_Post);
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
 	HookEvent("round_start", Event_RoundReset, EventHookMode_PostNoCopy);
 	HookEvent("round_end", Event_RoundReset, EventHookMode_PostNoCopy);
@@ -154,6 +156,7 @@ public void OnEntityDestroyed(int entity)
 		{
 			owner = i;
 			g_iHunterActivePipe[i] = 0;
+			g_bHunterPipeDroppedByShove[i] = false;
 			break;
 		}
 	}
@@ -327,8 +330,9 @@ void Event_LungePounce(Event event, const char[] name, bool dontBroadcast)
 	if (ShouldApplySubtype(attacker, true))
 	{
 		// Hunter pinned someone, drop the pipe bomb
+		g_bHunterPipeDroppedByShove[attacker] = false;
 		RemoveFakePipebomb(attacker);
-		DropActivePipebomb(attacker);
+		DropActivePipebomb(attacker, false);
 	}
 }
 
@@ -351,12 +355,25 @@ void Event_PounceEnd(Event event, const char[] name, bool dontBroadcast)
 			// Check if they are carrying an active pipebomb but are NOT pinning anyone anymore
 			// Can check m_pounceVictim
 			int currentVictim = GetEntPropEnt(i, Prop_Send, "m_pounceVictim");
-			if (currentVictim <= 0 && g_iHunterActivePipe[i] != 0)
+			if (currentVictim <= 0 && g_iHunterActivePipe[i] != 0 && !g_bHunterPipeDroppedByShove[i])
 			{
 				PickupPipebomb(i);
 			}
 		}
 	}
+}
+
+void Event_PlayerShoved(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_cvEnable.BoolValue) return;
+
+	int hunter = GetClientOfUserId(event.GetInt("userid"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (!IsValidAliveSurvivor(attacker) || !ShouldApplySubtype(hunter, true)) return;
+
+	g_bHunterPipeDroppedByShove[hunter] = true;
+	RemoveFakePipebomb(hunter);
+	DropActivePipebomb(hunter, true);
 }
 
 void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -370,7 +387,7 @@ void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		if (g_iHunterActivePipe[client] == 0)
 		{
 			RemoveFakePipebomb(client);
-			DropActivePipebomb(client);
+			DropActivePipebomb(client, false);
 		}
 	}
 }
@@ -409,14 +426,23 @@ void RemoveFakePipebomb(int client)
 	}
 }
 
-void DropActivePipebomb(int client)
+void DropActivePipebomb(int client, bool repositionExisting)
 {
-	// Ensure we only drop one
-	if (g_iHunterActivePipe[client] != 0) return;
-
 	float vPos[3], vAng[3];
 	GetClientAbsOrigin(client, vPos);
 	vPos[2] += 10.0;
+
+	// Ensure we only drop one, but shove should move the live pipe to the shoved Hunter's feet.
+	if (g_iHunterActivePipe[client] != 0)
+	{
+		int activePipe = EntRefToEntIndex(g_iHunterActivePipe[client]);
+		if (repositionExisting && activePipe > 0 && IsValidEntity(activePipe))
+		{
+			float vVel[3];
+			TeleportEntity(activePipe, vPos, NULL_VECTOR, vVel);
+		}
+		return;
+	}
 	
 	// Prepare changing fuse time
 	ConVar cvTimer = FindConVar("pipe_bomb_timer_duration");
@@ -493,6 +519,7 @@ void PickupPipebomb(int client)
 		}
 		g_iHunterActivePipe[client] = 0;
 	}
+	g_bHunterPipeDroppedByShove[client] = false;
 	CreateFakePipebomb(client);
 }
 
@@ -510,6 +537,15 @@ void ResetClientState(int client)
 
 	RemoveFakePipebomb(client);
 	g_iHunterActivePipe[client] = 0;
+	g_bHunterPipeDroppedByShove[client] = false;
+}
+
+bool IsValidAliveSurvivor(int client)
+{
+	return client > 0 && client <= MaxClients
+		&& IsClientInGame(client)
+		&& IsPlayerAlive(client)
+		&& GetClientTeam(client) == TEAM_SURVIVOR;
 }
 
 bool ShouldApplySubtype(int client, bool requireAlive)
